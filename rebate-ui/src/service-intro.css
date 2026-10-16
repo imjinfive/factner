@@ -1,0 +1,101 @@
+/* Scroll chapters share the header offset; each scene owns its choreography. */
+.rb-story {
+  --rb-header: 80px;
+  overflow: clip;
+}
+.rb-story h1, .rb-story h2 { font-weight: 760; letter-spacing: -.055em; line-height: 1.18; }
+.rb-story h2 { font-size: clamp(42px, 5.5vw, 76px); }
+.rb-story .rb-story-button { min-height: 58px; padding: 17px 26px; font-size: 17px; }
+.rb-scene { position: relative; }
+.rb-stage { position: sticky; top: var(--rb-header); height: calc(100svh - var(--rb-header)); overflow: hidden; }
+.rb-opening { height: 180svh; padding: 16px 16px 0; }
+.rb-opening .rb-stage { height: calc(100svh - var(--rb-header) - 16px); border-radius: 28px; }
+.rb-opening-frame { height: 100%; position: relative; overflow: hidden; background: #687266; }
+.rb-opening-image { position: absolute; width: 100%; height: 110%; inset: 0; object-fit: cover; object-position: 50% 54%; }
+.rb-opening-shade { position: absolute; inset: 0; background: linear-gradient(180deg, #15251b08 10%, #10221822 40%, #071a13c9 100%); }
+.rb-opening-title, .rb-opening-after { position: absolute; bottom: 10%; left: 8%; right: 7%; color: #fff; }
+.rb-opening h1 { font-size: clamp(52px, 7.3vw, 104px); max-width: 1100px; text-shadow: 0 2px 30px #10231b30; }
+.rb-opening h1 span { color: #baf1cf; }
+.rb-opening-after { font-size: clamp(42px, 6vw, 84px); font-weight: 740; line-height: 1.2; letter-spacing: -.05em; }
+.rb-onsite { height: 250svh; background: var(--soft); }
+.rb-onsite .rb-stage { isolation: isolate; background: #152b21; }
+.rb-onsite-image { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 52% 56%; transform-origin: 52% 57%; }
+.rb-onsite-shade { position: absolute; z-index: -1; inset: 0; background: linear-gradient(180deg, #071b16c7 0%, #071b1645 48%, #071b16b8 100%); }
+.rb-onsite-copy { position: absolute; top: 8%; left: 8%; color: #fff; }
+.rb-onsite-copy h2 { font-size: clamp(40px, 5.2vw, 72px); }
+.rb-onsite-copy p { margin-top: 24px; font-size: clamp(18px, 1.8vw, 24px); color: #eff7f0; line-height: 1.6; }
+.rb-review-note { position: absolute; left: 11%; top: 61%; padding: 25px 30px; background: #fffffff5; color: #202b26; border-radius: 18px; box-shadow: 0 22px 45px #07170b26; }
+.rb-review-note > span { display: flex; align-items: center; gap: 8px; color: #087047; font-size: 16px; font-weight: 650; }
+.rb-review-note p { margin-top: 14px; font-size: 20px; line-height: 1.55; font-weight: 550; }
+.rb-camera-frame { position: absolute; top: 43%; left: 48%; width: 28%; height: 31%; pointer-events: none; }
+.rb-camera-frame i { position: absolute; width: 35px; height: 35px; border: solid #fff; border-width: 0; }
+.rb-camera-frame i:nth-child(1) { top: 0; left: 0; border-top-width: 2px; border-left-width: 2px; }
+.rb-camera-frame i:nth-child(2) { top: 0; right: 0; border-top-width: 2px; border-right-width: 2px; }
+.rb-camera-frame i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 2px; border-left-width: 2px; }
+.rb-camera-frame i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 2px; border-right-width: 2px; }
+.rb-inspection-list { position: absolute; bottom: 7%; left: 8%; right: 8%; display: flex; gap: 45px; padding: 0; margin: 0; list-style: none; color: white; }
+.rb-inspection-list li { display: flex; gap: 12px; align-items: center; font-size: 24px; font-weight: 650; }
+.rb-inspection-list svg { color: #baf1cf; }
+.rb-mobile-break { display: none; }
+.rb-ending { height: 155svh; background: var(--bg); }
+.rb-ending .rb-stage { isolation: isolate; }
+.rb-ending-image { position: absolute; z-index: -2; right: 0; top: 0; width: 75%; height: 100%; object-fit: cover; object-position: 65% 50%; transform-origin: 75% 60%; }
+.rb-ending-shade { position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg, var(--bg) 14%, color-mix(in srgb, var(--bg) 93%, transparent) 29%, transparent 62%); }
+.rb-ending-copy { position: absolute; left: max(7%, calc((100% - 1400px) / 2)); top: 27%; width: 48%; }
+.rb-ending h2 { font-size: clamp(40px, 4.7vw, 72px); }
+.rb-ending h2 span { color: var(--green); }
+.rb-ending p { margin-top: 26px; font-size: clamp(20px, 1.8vw, 26px); line-height: 1.6; color: var(--muted); letter-spacing: -.03em; }
+.rb-ending-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 38px; }
+.rb-ending .outline { background: var(--bg); }
+
+/* Reduced motion and short viewports keep every chapter readable in normal flow. */
+.rb-story-static .rb-scene { height: auto; }
+.rb-story-static .rb-stage { position: relative; top: auto; }
+.rb-story-static .rb-opening .rb-stage { height: 650px; max-height: 90svh; min-height: 350px; }
+.rb-story-static .rb-onsite .rb-stage { height: 680px; }
+.rb-story-static .rb-ending .rb-stage { height: 680px; }
+
+@media (max-width: 900px) {
+  .rb-opening-title, .rb-opening-after { left: 7%; }
+  .rb-ending-copy { left: 6%; width: 55%; top: 22%; }
+  .rb-ending h2 { font-size: clamp(38px, 5vw, 48px); }
+  .rb-inspection-list { gap: 28px; }
+  .rb-inspection-list li { font-size: 21px; }
+}
+@media (max-width: 600px) {
+  .rb-story { --rb-header: 112px; }
+  .rb-opening { height: 165svh; padding: 10px 10px 0; }
+  .rb-opening .rb-stage { height: calc(100svh - 122px); border-radius: 20px; }
+  .rb-opening-image { object-position: 54% 50%; }
+  .rb-opening-title, .rb-opening-after { bottom: 11%; left: 7%; right: 4%; }
+  .rb-opening h1 { font-size: clamp(37px, 9vw, 54px); }
+  .rb-opening-after { font-size: clamp(35px, 8.7vw, 50px); }
+  .rb-onsite { height: 220svh; }
+  .rb-story h2 { font-size: clamp(32px, 8vw, 46px); }
+  .rb-onsite-copy { top: 8%; left: 7%; right: 5%; }
+  .rb-onsite-copy p { font-size: 18px; margin-top: 20px; }
+  .rb-mobile-break { display: initial; }
+  .rb-onsite-image { object-position: 57% 50%; }
+  .rb-review-note { top: 56%; left: 9%; padding: 18px 21px; }
+  .rb-review-note p { font-size: 17px; }
+  .rb-review-note > span { font-size: 14px; }
+  .rb-camera-frame { left: 28%; width: 50%; top: 47%; height: 28%; }
+  .rb-camera-frame i { width: 25px; height: 25px; }
+  .rb-inspection-list { left: 7%; right: 7%; gap: 14px; justify-content: space-between; }
+  .rb-inspection-list li { font-size: 16px; flex-direction: column; gap: 7px; }
+  .rb-inspection-list svg { width: 24px; height: 24px; }
+  .rb-ending { height: 145svh; }
+  .rb-ending-image { width: 100%; height: 67%; top: auto; bottom: 0; object-position: 70% 50%; }
+  .rb-ending-shade { background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 35%, transparent 64%); }
+  .rb-ending-copy { left: 7%; top: 3%; width: 86%; }
+  .rb-ending p { font-size: 19px; margin-top: 18px; }
+  .rb-ending-actions { margin-top: 22px; gap: 8px; }
+  .rb-story .rb-story-button { min-height: 54px; padding: 16px 20px; font-size: 16px; }
+  .rb-story-static .rb-opening .rb-stage { height: 520px; }
+  .rb-story-static .rb-onsite .rb-stage { height: 620px; }
+  .rb-story-static .rb-ending .rb-stage { height: 780px; }
+}
+@media (max-width: 360px) {
+  .rb-ending-actions { gap: 7px; }
+  .rb-story .rb-story-button { padding-inline: 13px; font-size: 15px; }
+}
