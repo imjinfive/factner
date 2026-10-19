@@ -60,6 +60,13 @@ const navItems = [
   ["guide", "이용 안내"],
   ["membership", "멤버십"],
 ];
+function currentPage() {
+  const hash = location.hash.slice(1);
+  const page = hash && hash !== "main" ? hash : history.state?.factnerPage;
+  return [...navItems.map(([key]) => key), "activity"].includes(page)
+    ? page
+    : "explore";
+}
 
 function Button({ children, className = "", tone = "primary", ...props }) {
   const reduce = useReducedMotion();
@@ -241,11 +248,7 @@ function SupplierCard({
 }
 
 function App() {
-  const [page, setPage] = useState(() =>
-    ["intro", "guide", "membership", "activity"].includes(location.hash.slice(1))
-      ? location.hash.slice(1)
-      : "explore",
-  );
+  const [page, setPage] = useState(currentPage);
   const [category, setCategory] = useState("전체");
   const [query, setQuery] = useState("");
   const [visitedOnly, setVisitedOnly] = useState(false);
@@ -282,15 +285,17 @@ function App() {
   }, [theme]);
   useEffect(() => {
     const sync = () => {
-      if (location.hash === "#main") return;
-      setPage(
-        ["intro", "guide", "membership", "activity"].includes(location.hash.slice(1))
-          ? location.hash.slice(1)
-          : "explore",
-      );
+      const next = currentPage();
+      history.replaceState({ ...history.state, factnerPage: next }, "", "/");
+      setPage(next);
     };
+    sync();
+    window.addEventListener("popstate", sync);
     window.addEventListener("hashchange", sync);
-    return () => window.removeEventListener("hashchange", sync);
+    return () => {
+      window.removeEventListener("popstate", sync);
+      window.removeEventListener("hashchange", sync);
+    };
   }, []);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
   function notify(message) {
@@ -299,8 +304,10 @@ function App() {
     toastTimer.current = setTimeout(() => setToast(""), 3400);
   }
   function navigate(next) {
+    if (history.state?.factnerPage !== next) {
+      history.pushState({ ...history.state, factnerPage: next }, "", "/");
+    }
     setPage(next);
-    location.hash = next;
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   function persist(key, value) {

@@ -26,7 +26,7 @@ npm --prefix rebate-ui run dev
 npm run dev:admin
 ```
 
-- 메인: http://127.0.0.1:5178/#intro
+- 메인: http://127.0.0.1:5178/ — 서비스 소개는 상단 메뉴에서 선택
 - 관리자: http://127.0.0.1:5179/
 
 로컬에서는 단일 Worker가 SQLite를 열고, 관리자 개발 서버는 해당 API로 프록시합니다. `wrangler.admin.jsonc`를 별도 dev 프로세스로 동시에 띄우면 로컬 SQLite 잠금 충돌이 생길 수 있습니다. 온라인 배포는 독립된 두 Worker입니다.
