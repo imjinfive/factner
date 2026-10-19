@@ -49,6 +49,7 @@ import {
 } from "./model";
 import "./styles.css";
 import ServiceIntro from "./ServiceIntro";
+import { api, makeReceipt, quoteStatuses } from "./api";
 
 const spring = { type: "spring", stiffness: 420, damping: 30, mass: 0.8 };
 const categoryIcons = [SquaresFour, Cube, Package, Gift, Tote, Stack];
@@ -254,9 +255,11 @@ function App() {
   const [favorites, setFavorites] = useState(() =>
     readSaved("rebate:favorites", []),
   );
-  const [requests, setRequests] = useState(() =>
-    readSaved("rebate:requests", []),
-  );
+  const [requests, setRequests] = useState(() => readSaved("factner:requests", []));
+  const [requestError, setRequestError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const sending = useRef(false);
+  const pendingReceipt = useRef(null);
   const [compare, setCompare] = useState([]);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
@@ -334,19 +337,64 @@ function App() {
     setModal(value);
   }
   function startRequest(supplier) {
+    setRequestError("");
+    try { pendingReceipt.current=JSON.parse(localStorage.getItem("factner:pending")) || null; } catch { pendingReceipt.current=null; }
     openModal({ type: "request", supplier });
   }
-  function submitRequest(form, supplier) {
-    const item = {
-      ...form,
-      id: crypto.randomUUID(),
-      supplier: supplier?.name || "",
-      createdAt: new Date().toISOString(),
-    };
-    const next = [item, ...requests];
-    setRequests(next);
-    persist("rebate:requests", next);
-    setModal({ type: "success", item });
+  async function submitRequest(form, supplier) {
+    if (sending.current) return;
+    sending.current = true;
+    setSubmitting(true);
+    setRequestError("");
+    try {
+      if (!pendingReceipt.current) pendingReceipt.current = {id:crypto.randomUUID(), receiptToken:makeReceipt()};
+      const receipt = pendingReceipt.current;
+      // Save the receipt before sending: network retries reuse the same request ID.
+      localStorage.setItem("factner:pending", JSON.stringify(receipt));
+      await api("quotes", {method:"POST",body:JSON.stringify({...form,...receipt,supplier:supplier?.name || ""})});
+      const item = {id:receipt.id,receiptToken:receipt.receiptToken,brand:form.brand,category:form.category,
+        quantity:Number(form.quantity),size:form.size,deadline:form.deadline,description:form.description,supplier:supplier?.name || "",createdAt:new Date().toISOString(),status:"received"};
+      const next = [item,...requests.filter(r=>r.id!==item.id)].slice(0,50);
+      setRequests(next);
+      persist("factner:requests",next);
+      pendingReceipt.current = null;
+      localStorage.removeItem("factner:pending");
+      setModal({type:"success",item});
+    } catch(error) {
+      setRequestError(error.message || "접수하지 못했습니다. 다시 시도해주세요.");
+    } finally {
+      sending.current = false;
+      setSubmitting(false);
+    }
+  }
+  useEffect(() => {
+    let cancelled=false;
+    async function refresh() {
+      const saved=readSaved("factner:requests",[]);
+      if (!saved.length) return;
+      const results=await Promise.allSettled(saved.map(async item=>({ ...item,
+        ...await api(`quotes/${item.id}`,{headers:{Authorization:`Bearer ${item.receiptToken}`}})
+      })));
+      if(cancelled) return;
+      const updates=new Map(results.map((result,i)=>[saved[i].id,result.status==="fulfilled"?result.value:
+        result.reason?.status===404?{...saved[i],status:"expired",customer_message:"요청을 찾을 수 없습니다. 접수 번호로 운영팀에 문의해주세요."}:saved[i]]));
+      // A request may have been submitted while this refresh was in flight.
+      const latest=readSaved("factner:requests",[]);
+      const next=latest.map(item=>updates.get(item.id)||item);
+      setRequests(next);
+      setModal(current=>current?.type==="requestDetail"&&updates.has(current.item.id)?{...current,item:updates.get(current.item.id)}:current);
+      try { localStorage.setItem("factner:requests",JSON.stringify(next)); } catch {}
+    }
+    if(page==="activity") refresh();
+    const timer=setInterval(()=>{if(page==="activity"&&document.visibilityState==="visible")refresh();},20000);
+    return ()=>{cancelled=true;clearInterval(timer);};
+  },[page]);
+  async function viewRequest(item) {
+    openModal({type:"requestDetail",item});
+    try {
+      const latest=await api(`quotes/${item.id}`,{headers:{Authorization:`Bearer ${item.receiptToken}`}});
+      setModal(current=>current?.type==="requestDetail"&&current.item.id===item.id?{...current,item:{...item,...latest}}:current);
+    } catch(error) { notify(error.message); }
   }
   function browse() {
     if (page !== "explore") navigate("explore");
@@ -367,7 +415,7 @@ function App() {
     activity: "나의 활동",
   };
   useEffect(() => {
-    document.title = `리베이트 | ${titleByPage[page]}`;
+    document.title = `팩트너 | ${titleByPage[page]}`;
   }, [page]);
 
   return (
@@ -386,12 +434,12 @@ function App() {
         <div className="header-inner">
           <button
             className="logo"
-            aria-label="리베이트 홈"
+            aria-label="팩트너 홈"
             onClick={() => navigate("explore")}
           >
             <Package size={28} weight="fill" />
             <span>
-              rebate<span className="logo-dot">.</span>
+              factner<span className="logo-dot">.</span>
             </span>
           </button>
           <nav aria-label="주 메뉴">
@@ -712,7 +760,7 @@ function App() {
                   <div>
                     <h3>현장 확인</h3>
                     <p>
-                      리베이트가 작업 현장과 완성품을 직접 살펴보고, 사진과 제작 사양을 기록합니다.
+                      팩트너가 작업 현장과 완성품을 직접 살펴보고, 사진과 제작 사양을 기록합니다.
                     </p>
                   </div>
                 </div>
@@ -733,7 +781,7 @@ function App() {
                     ],
                     [
                       "지금 요청하면 업체에 전달되나요?",
-                      "현재는 미리보기입니다. 요청은 이 브라우저에만 저장되며 업체에 전달되지 않습니다.",
+                      "팩트너 운영팀에 접수됩니다. 운영팀이 제작 조건을 확인한 뒤 상담하며, 예시 업체에 자동 발송되지는 않습니다.",
                     ],
                   ].map(([q, a]) => (
                     <details key={q}>
@@ -870,7 +918,7 @@ function App() {
                   ))}
                 </div>
                 <p className="demo-note">
-                  브라우저에만 저장된 요청이며, 업체에는 전달되지 않습니다.
+                  서버에 접수된 견적입니다. 접수 키는 이 브라우저에 보관됩니다. 다른 기기에서는 접수 번호로 운영팀에 문의해주세요.
                 </p>
                 {activityTab === "favorites" ? (
                   favorites.length ? (
@@ -907,7 +955,7 @@ function App() {
                         key={r.id}
                         className="request-row"
                         onClick={() =>
-                          openModal({ type: "requestDetail", item: r })
+                          viewRequest(r)
                         }
                       >
                         <span className="request-icon">
@@ -927,7 +975,7 @@ function App() {
                           </span>
                         </span>
                         <span className="request-status">
-                          작성 완료 <CaretRight size={18} />
+                          {quoteStatuses[r.status] || "접수"} <CaretRight size={18} />
                         </span>
                       </button>
                     ))}
@@ -951,9 +999,9 @@ function App() {
         <div>
           <button className="logo" onClick={() => navigate("explore")}>
             <Package size={24} weight="fill" />
-            <span>rebate.</span>
+            <span>factner.</span>
           </button>
-          <small>© {new Date().getFullYear()} rebate.</small>
+          <small>© {new Date().getFullYear()} factner.</small>
         </div>
         <div className="footer-right">
           <button onClick={() => navigate("guide")}>이용 안내</button>
@@ -1031,17 +1079,19 @@ function App() {
       </Modal>
       <Modal
         open={modal?.type === "request"}
-        onClose={() => setModal(null)}
+        onClose={() => { if (!submitting) setModal(null); }}
         title={
           modal?.supplier
             ? `${modal.supplier.name}에 매칭 요청`
             : "견적 요청"
         }
-        description="미리보기 · 요청은 브라우저에만 저장되며 업체에 전달되지 않습니다."
+        description="팩트너 운영팀에 접수됩니다. 제작 조건 확인 후 상담을 진행합니다."
       >
         {modal?.type === "request" && (
           <RequestForm
             supplier={modal.supplier}
+            submitting={submitting}
+            serverError={requestError}
             onSubmit={(form) => submitRequest(form, modal.supplier)}
           />
         )}
@@ -1049,8 +1099,8 @@ function App() {
       <Modal
         open={modal?.type === "success"}
         onClose={() => setModal(null)}
-        title="요청서 작성 완료"
-        description="업체에는 전달되지 않은 미리보기 요청서입니다."
+        title="견적 요청을 접수했어요"
+        description="운영팀에서 내용을 확인합니다. 진행 상황은 나의 활동에서 확인해주세요."
       >
         {modal?.type === "success" && (
           <div className="success-content">
@@ -1062,6 +1112,7 @@ function App() {
               <CheckCircle size={80} weight="fill" />
             </motion.div>
             <h3>{modal.item.brand}</h3>
+            <p className="helper-text">접수 번호: {modal.item.id}</p>
             <p>
               {modal.item.category} {money(modal.item.quantity)}개
             </p>
@@ -1166,12 +1217,14 @@ function App() {
         open={modal?.type === "requestDetail"}
         onClose={() => setModal(null)}
         title="작성한 요청서"
-        description="미발송 요청서"
+        description="서버에 접수된 견적 요청"
       >
         {modal?.type === "requestDetail" && (
           <div className="request-detail">
             <dl>
               {[
+                ["접수 번호", modal.item.id],
+                ["진행 상태", quoteStatuses[modal.item.status] || "접수"],
                 ["브랜드", modal.item.brand],
                 [
                   "요청 방식",
@@ -1191,7 +1244,9 @@ function App() {
               ))}
             </dl>
             <h3>요청 내용</h3>
-            <p className="request-description">{modal.item.description}</p>
+            <p className="request-description">{modal.item.description || "접수 내용을 불러오고 있습니다."}</p>
+            <h3>운영팀 안내</h3>
+            <p className="request-description">{modal.item.customer_message || "운영팀에서 내용을 확인 중입니다."}</p>
           </div>
         )}
       </Modal>
@@ -1351,7 +1406,7 @@ function SupplierDetail({ supplier: s, favorite, onFavorite, onRequest }) {
   );
 }
 
-function RequestForm({ supplier, onSubmit }) {
+function RequestForm({ supplier, onSubmit, submitting, serverError }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     category: supplier?.categories[0] || "",
@@ -1360,7 +1415,11 @@ function RequestForm({ supplier, onSubmit }) {
     size: "",
     deadline: "",
     description: "",
+    contactName: "", email: "", phone: "", referenceUrl: "", consent: false, testOnly: false,
   });
+  const [serviceConfig, setServiceConfig] = useState(null);
+  const [configError, setConfigError] = useState("");
+  useEffect(() => { api("config").then(setServiceConfig).catch(error=>setConfigError(error.message)); }, []);
   const [errors, setErrors] = useState({});
   const focusRef = useRef(null);
   const reduce = useReducedMotion();
@@ -1385,7 +1444,11 @@ function RequestForm({ supplier, onSubmit }) {
   }, [step]);
   function next(event) {
     event.preventDefault();
+    if (submitting) return;
     const nextErrors = validateRequest(form);
+    if(!form.contactName.trim()) nextErrors.contactName="담당자 이름을 입력해주세요.";
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) nextErrors.email="연락받을 이메일을 확인해주세요.";
+    if(form.referenceUrl && !/^https:\/\//i.test(form.referenceUrl)) nextErrors.referenceUrl="https:// 주소를 입력해주세요.";
     if (step === 0 && nextErrors.category) {
       setErrors({ category: nextErrors.category });
       return;
@@ -1394,7 +1457,11 @@ function RequestForm({ supplier, onSubmit }) {
       setErrors(nextErrors);
       return;
     }
-    if (step === 2) onSubmit(form);
+    if (step === 2) {
+      if (!serviceConfig) {setErrors({submit:"서버 연결을 확인해주세요."});return;}
+      if (!form.consent || (!serviceConfig.accepting && !form.testOnly)) {setErrors({submit:"정보 수집 동의와 테스트 접수 여부를 확인해주세요."});return;}
+      onSubmit(form);
+    }
     else setStep(step + 1);
   }
   const today = new Date();
@@ -1468,7 +1535,7 @@ function RequestForm({ supplier, onSubmit }) {
                   aria-invalid={!!errors.brand}
                   aria-describedby={errors.brand ? "brand-error" : undefined}
                   onChange={(e) => update("brand", e.target.value)}
-                  placeholder="예: 리베이트 스튜디오"
+                  placeholder="예: 팩트너 스튜디오"
                 />
                 {errors.brand && (
                   <span id="brand-error" className="field-error">
@@ -1512,6 +1579,22 @@ function RequestForm({ supplier, onSubmit }) {
                   />
                 </label>
               </div>
+              <label>담당자 이름 <span className="required">필수</span>
+                <input autoComplete="name" maxLength={60} value={form.contactName} onChange={e=>update("contactName",e.target.value)} aria-invalid={!!errors.contactName} />
+                {errors.contactName && <span className="field-error">{errors.contactName}</span>}
+              </label>
+              <label>연락받을 이메일 <span className="required">필수</span>
+                <input type="email" autoComplete="email" maxLength={254} value={form.email} onChange={e=>update("email",e.target.value)} aria-invalid={!!errors.email} />
+                {errors.email && <span className="field-error">{errors.email}</span>}
+              </label>
+              <label>전화번호 <span className="optional">선택</span>
+                <input type="tel" autoComplete="tel" maxLength={30} value={form.phone} onChange={e=>update("phone",e.target.value)} />
+              </label>
+              <label>참고 자료 링크 <span className="optional">선택</span>
+                <input type="url" maxLength={2000} placeholder="https://" value={form.referenceUrl} onChange={e=>update("referenceUrl",e.target.value)} />
+                {errors.referenceUrl && <span className="field-error">{errors.referenceUrl}</span>}
+                <span className="helper-text">제품 사진이나 사양서의 공유 링크를 넣어주세요.</span>
+              </label>
               <label>
                 희망 규격 <span className="optional">선택</span>
                 <input
@@ -1566,6 +1649,17 @@ function RequestForm({ supplier, onSubmit }) {
                 </div>
               </dl>
               <p className="request-description">{form.description}</p>
+              <p>연락처: {form.contactName} · {form.email}</p>
+              <div className="privacy-consent">
+                <details><summary>견적 상담을 위한 정보 수집 안내</summary>
+                  <p>수집 항목: 브랜드, 담당자명, 이메일, 제작 조건. 전화번호와 참고 링크는 선택 항목입니다.</p>
+                  <p>목적: 견적 확인과 상담. 보유 기간: 접수 후 1년. 동의를 거부할 수 있으나 견적 접수는 어렵습니다.</p>
+                  <p>운영자: {serviceConfig?.operator || "정식 운영 준비 중"} / 문의: {serviceConfig?.contactEmail || "정식 접수 전 등록 예정"}</p>
+                  <p>제작 업체에 개인정보를 자동 전달하지 않습니다.</p>
+                </details>
+                <label className="consent-check"><input type="checkbox" checked={form.consent} onChange={e=>update("consent",e.target.checked)} /> [필수] 견적 상담을 위한 정보 수집에 동의합니다.</label>
+                {serviceConfig && !serviceConfig.accepting && <><p className="field-error">현재 테스트 접수만 가능합니다. 실제 개인정보와 기밀 자료를 입력하지 마세요.</p><label className="consent-check"><input type="checkbox" checked={form.testOnly} onChange={e=>update("testOnly",e.target.checked)} /> 가상 정보로 테스트 요청을 보냅니다.</label></>}
+              </div>
               <div className="matching-note">
                 <SealCheck size={24} />
                 <div>
@@ -1574,14 +1668,14 @@ function RequestForm({ supplier, onSubmit }) {
                       ? `${supplier.name}에 매칭 요청`
                       : matches.length
                         ? `조건에 맞는 예시 업체 ${matches.length}곳`
-                        : "조건에 맞는 업체 없음"}
+                        : "운영팀에서 제작 조건 확인"}
                   </strong>
                   <p>
                     {supplier
                       ? "제작 가능 여부와 견적은 상담 후 확정됩니다."
                       : matches.length
                         ? "품목·수량·납기 기준이며, 세부 사양은 추가 확인이 필요합니다."
-                        : "수량이나 납기를 변경해보세요."}
+                        : "필요한 조건을 확인한 뒤 상담합니다."}
                   </p>
                 </div>
               </div>
@@ -1589,14 +1683,15 @@ function RequestForm({ supplier, onSubmit }) {
           )}
         </motion.div>
       </AnimatePresence>
+      {(serverError || configError || errors.submit) && <p className="field-error" role="alert">{serverError || configError || errors.submit}</p>}
       <div className="form-actions">
         {step > 0 && (
-          <Button tone="outline" onClick={() => setStep(step - 1)}>
+          <Button tone="outline" disabled={submitting} onClick={() => setStep(step - 1)}>
             <ArrowLeft size={18} /> 이전
           </Button>
         )}
-        <Button type="submit">
-          {step === 2 ? "작성 완료" : "다음"}
+        <Button type="submit" disabled={submitting || (step === 2 && !serviceConfig)}>
+          {submitting ? "접수 중…" : step === 2 ? "견적 요청 보내기" : "다음"}
           {step === 2 ? <Check size={18} /> : <ArrowRight size={18} />}
         </Button>
       </div>

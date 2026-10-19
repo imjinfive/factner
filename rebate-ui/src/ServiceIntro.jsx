@@ -36,7 +36,7 @@ function Opening({ still }) {
             </motion.h1>
           </motion.div>
           {!still && <motion.p className="rb-opening-after" style={{ opacity: afterOpacity, y: afterY }}>
-            그 시작을,<br />리베이트와 함께.
+            그 시작을,<br />팩트너와 함께.
           </motion.p>}
         </div>
       </div>
@@ -84,7 +84,7 @@ function OnSite({ still }) {
             <i /><i /><i /><i />
           </motion.div>
         </>}
-        <ol className="rb-inspection-list" aria-label="리베이트 현장 확인 항목">
+        <ol className="rb-inspection-list" aria-label="팩트너 현장 확인 항목">
           {["작업 현장", "제작 샘플", "납품 품질"].map((label, index) =>
             <InspectionPoint key={label} progress={progress} index={index} still={still}>{label}</InspectionPoint>)}
         </ol>
@@ -107,7 +107,7 @@ function Ending({ Button, onExplore, onRequest, still }) {
       <div className="rb-ending-shade" />
       <motion.div className="rb-ending-copy" style={still ? {} : { y: copyY }}>
         <h2 id="intro-ending-title">상자를 여는 순간,<br /><span>브랜드를 만납니다.</span></h2>
-        <p>그 첫 만남이 특별하도록.<br />리베이트가 함께합니다.</p>
+        <p>그 첫 만남이 특별하도록.<br />팩트너가 함께합니다.</p>
         <div className="rb-ending-actions">
           <Button className="rb-story-button" onClick={onExplore}>업체 찾기 <ArrowRight size={20} /></Button>
           <Button className="rb-story-button" tone="outline" onClick={onRequest}>견적 요청하기</Button>

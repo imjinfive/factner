@@ -1,0 +1,16 @@
+{
+  "name": "factner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix rebate-ui run build",
+    "test": "npm --prefix rebate-ui test && node --test server/*.test.js",
+    "dev:api": "wrangler dev --config wrangler.jsonc --port 8787",
+    "dev:admin": "node rebate-ui/node_modules/vite/bin/vite.js --config vite.admin.config.js",
+    "deploy:main": "npm run build && wrangler deploy --config wrangler.jsonc",
+    "deploy:admin": "wrangler deploy --config wrangler.admin.jsonc"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}

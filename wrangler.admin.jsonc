@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "account_id": "9253dd1d6c8b00b6bee6dfcf3ff080f4",
+  "name": "factner-admin",
+  "main": "server/worker.js",
+  "compatibility_date": "2026-10-19",
+  "workers_dev": false,
+  "triggers": {"crons":["0 18 * * *"]},
+  "routes": [{"pattern":"admin.factner.com","custom_domain":true}],
+  "assets": {"directory":"./admin-ui","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":true},
+  "vars": {"APP_KIND":"admin"},
+  "d1_databases": [{"binding":"DB","database_name":"factner-db","database_id":"404584fd-6ae3-483e-af2e-4999f343a6b1","migrations_dir":"migrations"}]
+}

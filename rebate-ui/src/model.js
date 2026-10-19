@@ -156,6 +156,8 @@ export function readSaved(key, fallback) {
     if (!Array.isArray(value)) return fallback;
     if (key === "rebate:favorites")
       return value.filter((id) => suppliers.some((s) => s.id === id));
+    if (key === "factner:requests")
+      return value.filter(r => r && /^[a-f0-9-]{36}$/.test(r.id) && /^[a-f0-9]{64}$/.test(r.receiptToken) && typeof r.brand === "string" && typeof r.category === "string" && Number.isSafeInteger(Number(r.quantity)) && Number(r.quantity)>0 && Number.isFinite(Date.parse(r.createdAt)));
     if (key === "rebate:requests")
       return value.filter(
         (r) =>

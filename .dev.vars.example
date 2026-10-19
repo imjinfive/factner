@@ -1,0 +1,4 @@
+# Copy to .dev.vars; generate a separate, random 64-character key locally.
+BOOTSTRAP_TOKEN="replace-with-a-random-64-character-secret"
+# LOCAL ONLY. Never set this variable on either production Worker.
+DEV_ORIGIN="http://127.0.0.1:5178"

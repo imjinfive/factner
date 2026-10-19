@@ -2365,3 +2365,6 @@ main:focus {
     --line: #879f8e;
   }
 }
+
+.privacy-consent {margin:24px 0;padding:20px;background:var(--surface, #f1f5ef);border:1px solid #cfdccc;border-radius:16px;font-size:16px;line-height:1.7;color:var(--text,#20392b)}
+.privacy-consent summary{cursor:pointer;font-weight:650}.privacy-consent p{margin:12px 0}.consent-check{display:flex!important;align-items:flex-start;gap:10px;margin-top:16px;font-size:16px;cursor:pointer}.consent-check input{width:20px!important;height:20px;flex-shrink:0;margin-top:4px;accent-color:#186745}.success-content .helper-text{overflow-wrap:anywhere}
