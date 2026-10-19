@@ -22,6 +22,10 @@ async function submit(event, action) {
 }
 function auth(setup=false) {
   clearInterval(refreshTimer); root.innerHTML=`<main class="auth"><div class="wordmark">factner.</div><h1>${setup?'첫 관리자 계정 만들기':'관리자 로그인'}</h1><p class="muted">${setup?'설정 키를 가진 운영자만 계정을 만들 수 있습니다.':'견적을 확인하고 상담을 이어가세요.'}</p><form id="auth-form">${setup?'<label>초기 설정 키<input name="setupToken" type="password" autocomplete="off" required></label><label>이름<input name="displayName" maxlength="60" required></label>':''}<label>아이디<input name="username" autocomplete="username" pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]{2,39}" minlength="3" maxlength="40" required></label><label>비밀번호<input name="password" type="password" autocomplete="${setup?'new-password':'current-password'}" minlength="12" maxlength="128" required></label>${setup?'<small>12자 이상의 고유한 비밀번호를 사용해주세요.</small>':''}<button type="submit">${setup?'계정 만들고 시작하기':'로그인'}</button></form><p class="muted">팩트너 운영자 전용 사이트입니다.</p></main>`;
+  if (!setup) {
+    const form = document.querySelector('#auth-form');
+    form.elements.username.oninput = () => { form.elements.password.minLength = form.elements.username.value.trim().toLowerCase() === 'admin' ? 5 : 12; };
+  }
   document.querySelector('#auth-form').onsubmit=e=>submit(e,async data=>{const result=await send(setup?'auth/setup':'auth/login',data);user=result.user;await navigate('quotes');});
 }
 function shell(content) {

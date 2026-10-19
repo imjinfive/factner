@@ -34,6 +34,23 @@ test('quote validation rejects malformed email, consent, links, dates and oversi
  for(const patch of [{email:'bad'},{consent:false},{referenceUrl:'javascript:alert(1)'},{deadline:'2027-02-31'},{quantity:0},{brand:'a'.repeat(61)},{receiptToken:'guess'},{category:'invalid'}])assert.throws(()=>quoteInput({...valid(),...patch}));
  assert.equal(quoteInput(valid()).quantity,500);
 });
+test('only the provisioned admin can use a shorter existing password; new passwords still require 12 characters',async()=>{
+ const DB=database(),env={DB,APP_KIND:'admin',BOOTSTRAP_TOKEN:randomToken()},admin=client(env);
+ const existingPassword='older';
+ assert.equal((await admin('auth/setup',{username:'admin',password:existingPassword,displayName:'운영자',setupToken:env.BOOTSTRAP_TOKEN})).status,400);
+ DB.raw.prepare('INSERT INTO admins(id,username,display_name,password_hash,role,created_at) VALUES(?,?,?,?,?,?)').run('initial-owner','admin','운영자',await passwordHash(existingPassword),'owner',new Date().toISOString());
+ assert.equal((await admin('auth/login',{username:'other',password:existingPassword})).status,400);
+ assert.equal((await admin('auth/login',{username:'admin',password:'four'})).status,400);
+ assert.equal((await admin('auth/login',{username:'admin',password:'incorrect'})).status,401);
+ assert.equal((await admin('auth/login',{username:'admin',password:existingPassword})).status,200);
+ assert.equal((await admin('admin/quotes')).status,200);
+ assert.equal((await admin('admin/users',{username:'staff',password:existingPassword,displayName:'담당자'})).status,400);
+ assert.equal((await admin('auth/password',{currentPassword:existingPassword,newPassword:'short'})).status,400);
+ assert.equal((await admin('auth/password',{currentPassword:existingPassword,newPassword:'replacement-password-123'})).status,200);
+ assert.equal((await admin('admin/quotes')).status,401);
+ assert.equal((await admin('auth/login',{username:'admin',password:existingPassword})).status,401);
+ assert.equal((await admin('auth/login',{username:'admin',password:'replacement-password-123'})).status,200);
+});
 test('end-to-end: receipt isolation, admin authentication, updates, conflict, roles and revoked sessions',async()=>{
  const DB=database();const common={DB,BOOTSTRAP_TOKEN:randomToken()};
  const publicClient=client({...common,APP_KIND:'main'});const admin=client({...common,APP_KIND:'admin'});

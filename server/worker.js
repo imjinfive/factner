@@ -120,7 +120,9 @@ async function adminApi(req, env, url) {
     await rate(env, `auth:${await digest(req.headers.get('CF-Connecting-IP') || 'local')}`, 15, 900);
     const input = await body(req);
     let cred;
-    try { cred = credentials(input); } catch (err) { fail(400,err.message); }
+    // Only the explicitly provisioned admin account accepts its shorter existing password.
+    const provisionedAdminLogin = path === '/api/auth/login' && typeof input.username === 'string' && input.username.trim().toLowerCase() === 'admin';
+    try { cred = credentials(input, provisionedAdminLogin ? 5 : 12); } catch (err) { fail(400,err.message); }
     let user;
     if (path.endsWith('setup')) {
       if (!env.BOOTSTRAP_TOKEN || !safeEqual(input.setupToken,env.BOOTSTRAP_TOKEN)) fail(403, '초기 설정 키가 일치하지 않습니다.');

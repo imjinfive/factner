@@ -20,9 +20,9 @@ export async function passwordHash(password, salt = randomToken()) {
 export async function verifyPassword(password, stored) {
   return safeEqual(await passwordHash(password, stored.split(':')[0]), stored);
 }
-export function credentials(body) {
+export function credentials(body, minimumPasswordLength = 12) {
   const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
   if (!/^[a-z0-9][a-z0-9_.-]{2,39}$/.test(username)) throw new Error('아이디는 영문 소문자·숫자·._-로 3~40자 입력해주세요.');
-  if (typeof body.password !== 'string' || body.password.length < 12 || body.password.length > 128) throw new Error('비밀번호는 12~128자로 입력해주세요.');
+  if (typeof body.password !== 'string' || body.password.length < minimumPasswordLength || body.password.length > 128) throw new Error(`비밀번호는 ${minimumPasswordLength}~128자로 입력해주세요.`);
   return {username, password:body.password};
 }
