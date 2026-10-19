@@ -1,4 +1,4 @@
-// All businesses, reviews and production conditions are fictional UI samples.
+// This static catalog is fictional and used only when the server explicitly reports test mode.
 export const categories = [
   "전체",
   "단상자",
@@ -134,7 +134,7 @@ export function eligibleSuppliers(
         s.moq <= Number(quantity) &&
         s.days <= days,
     )
-    .sort((a, b) => rank[a.tier] - rank[b.tier]);
+    .sort((a, b) => (rank[a.tier] ?? 3) - (rank[b.tier] ?? 3));
 }
 
 export function validateRequest(form) {
@@ -155,7 +155,7 @@ export function readSaved(key, fallback) {
     const value = JSON.parse(localStorage.getItem(key));
     if (!Array.isArray(value)) return fallback;
     if (key === "rebate:favorites")
-      return value.filter((id) => suppliers.some((s) => s.id === id));
+      return [...new Set(value.filter((id) => typeof id === 'string' && (suppliers.some((s) => s.id === id) || /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id))))].slice(0,200);
     if (key === "factner:requests")
       return value.filter(r => r && /^[a-f0-9-]{36}$/.test(r.id) && /^[a-f0-9]{64}$/.test(r.receiptToken) && typeof r.brand === "string" && typeof r.category === "string" && Number.isSafeInteger(Number(r.quantity)) && Number(r.quantity)>0 && Number.isFinite(Date.parse(r.createdAt)));
     if (key === "rebate:requests")

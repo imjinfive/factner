@@ -41,7 +41,6 @@ import {
 } from "@phosphor-icons/react";
 import {
   categories,
-  suppliers,
   filterSuppliers,
   eligibleSuppliers,
   validateRequest,
@@ -50,6 +49,8 @@ import {
 import "./styles.css";
 import ServiceIntro from "./ServiceIntro";
 import { api, makeReceipt, quoteStatuses } from "./api";
+import {useSuppliers} from "./useSuppliers";
+import Turnstile from "./Turnstile";
 
 const spring = { type: "spring", stiffness: 420, damping: 30, mass: 0.8 };
 const categoryIcons = [SquaresFour, Cube, Package, Gift, Tote, Stack];
@@ -91,6 +92,21 @@ function Photo({ index, className = "", label }) {
       className={`product-photo photo-${index} ${className}`}
     />
   );
+}
+function SupplierPhoto({supplier,photo,className=""}) {
+  const [failed,setFailed]=useState(false);
+  const url=photo?.url||supplier.imageUrl;
+  useEffect(()=>setFailed(false),[url]);
+  if(supplier.source!=="real")return <Photo index={supplier.image} className={className} label={`${supplier.name} 패키징 예시 이미지`}/>;
+  if(!url||failed)return <div className={`photo-placeholder ${className}`}><Camera size={26}/><span>사진을 불러오지 못했습니다.</span></div>;
+  return <img className={`product-photo actual-photo ${className}`} src={url} alt={photo?.caption||`${supplier.name} 제작 사진`} loading="lazy" onError={()=>setFailed(true)}/>;
+}
+function PolicyDocument({kind}) {
+  const [data,setData]=useState(null),[error,setError]=useState(""),[retry,setRetry]=useState(0);
+  useEffect(()=>{let active=true;setError("");api("policy").then(result=>{if(active)setData(result);}).catch(problem=>{if(active)setError(problem.message);});return()=>{active=false;};},[retry]);
+  if(error)return <Empty title="안내를 불러오지 못했습니다" description={error} action={<Button onClick={()=>setRetry(value=>value+1)}>다시 시도</Button>}/>;
+  if(!data)return <p role="status">안내를 불러오는 중입니다.</p>;
+  return <div className="policy-document">{!data.published&&<p className="demo-note">운영 정보 확정 전 검토용 초안입니다.</p>}<p className="request-description">{kind==="privacy"?data.privacy:data.terms}</p><p className="helper-text">운영자: {data.operator||"미정"} · 문의: {data.contactEmail||"미정"}</p></div>;
 }
 function Modal({ open, onClose, title, description, children, wide = false }) {
   const reduce = useReducedMotion();
@@ -184,7 +200,7 @@ function SupplierCard({
           onClick={() => openModal({ type: "supplier", supplier: s })}
           aria-label={`${s.name} 상세 보기`}
         >
-          <Photo index={s.image} label={`${s.name}의 패키징 예시`} />
+          <SupplierPhoto supplier={s} />
         </button>
         <Button
           tone="glass"
@@ -207,7 +223,7 @@ function SupplierCard({
             ) : (
               <Clock size={16} />
             )}{" "}
-            {s.visit ? "현장 확인" : "방문 예정"}
+            {s.visit ? (s.source==="real"?"현장 확인":"현장 확인 · 예시") : "미검증"}
           </span>
           <span>
             <MapPin size={13} /> {s.area}
@@ -226,10 +242,7 @@ function SupplierCard({
           ))}
         </div>
         <div className="card-bottom">
-          <span>
-            <Star size={15} weight="fill" /> <strong>{s.rating}</strong>{" "}
-            <span className="muted">({s.reviews})</span>
-          </span>
+          <span>{s.source==="real"?"등록된 리뷰 없음":<><Star size={15} weight="fill" /> <strong>{s.rating}</strong> <span className="muted">({s.reviews}) · 예시</span></>}</span>
           <span>
             최소 <strong>{money(s.moq)}개</strong>
           </span>
@@ -248,6 +261,7 @@ function SupplierCard({
 }
 
 function App() {
+  const {suppliers,loading:suppliersLoading,error:suppliersError,source:supplierSource,refresh:refreshSuppliers}=useSuppliers();
   const [page, setPage] = useState(currentPage);
   const [category, setCategory] = useState("전체");
   const [query, setQuery] = useState("");
@@ -260,6 +274,7 @@ function App() {
   );
   const [requests, setRequests] = useState(() => readSaved("factner:requests", []));
   const [requestError, setRequestError] = useState("");
+  const [submitAttempt,setSubmitAttempt]=useState(0);
   const [submitting, setSubmitting] = useState(false);
   const sending = useRef(false);
   const pendingReceipt = useRef(null);
@@ -273,6 +288,8 @@ function App() {
   );
   const reduce = useReducedMotion();
   const toastTimer = useRef();
+  const comparedSuppliers=suppliers.filter(s=>compare.includes(s.id));
+  const favoriteSuppliers=suppliers.filter(s=>favorites.includes(s.id));
   const results = filterSuppliers(suppliers, {
     category,
     query,
@@ -369,6 +386,7 @@ function App() {
       setModal({type:"success",item});
     } catch(error) {
       setRequestError(error.message || "접수하지 못했습니다. 다시 시도해주세요.");
+      setSubmitAttempt(value=>value+1);
     } finally {
       sending.current = false;
       setSubmitting(false);
@@ -500,7 +518,7 @@ function App() {
                 Photo={Photo}
                 onExplore={() => navigate("explore")}
                 onRequest={() => startRequest()}
-                onSupplier={(supplier) => openModal({ type: "supplier", supplier })}
+                onSupplier={(supplier) => supplierSource==="demo"?openModal({ type: "supplier", supplier:{...supplier,source:"demo"} }):browse()}
               />
             )}
             {page === "explore" && (
@@ -675,9 +693,7 @@ function App() {
                     <span>
                       업체 <strong>{results.length}곳</strong>
                     </span>
-                    <span>
-                      예시 업체
-                    </span>
+                    <span>{supplierSource==="demo"?"테스트용 예시 업체 · 실제 견적 대상이 아닙니다.":""}</span>
                   </div>
                   <motion.div className="supplier-grid" layout={!reduce}>
                     <AnimatePresence mode="popLayout">
@@ -694,10 +710,12 @@ function App() {
                       ))}
                     </AnimatePresence>
                   </motion.div>
-                  {results.length === 0 && (
+                  {suppliersLoading&&!suppliers.length&&<p role="status">업체 정보를 불러오는 중입니다.</p>}
+                  {suppliersError&&<Empty title="업체 정보를 불러오지 못했습니다" description={suppliersError} action={<Button onClick={refreshSuppliers}>다시 시도</Button>}/>}
+                  {!suppliersLoading&&!suppliersError&&results.length === 0 && (
                     <Empty
-                      title="조건에 맞는 업체가 아직 없어요"
-                      description="검색어나 필터를 조금 바꿔보세요."
+                      title={suppliers.length?"조건에 맞는 업체가 아직 없어요":"등록된 업체를 준비하고 있어요"}
+                      description={suppliers.length?"검색어나 필터를 조금 바꿔보세요.":"견적 요청을 남기면 운영팀이 제작 조건을 확인합니다."}
                       action={
                         <Button
                           tone="soft"
@@ -788,7 +806,7 @@ function App() {
                     ],
                     [
                       "지금 요청하면 업체에 전달되나요?",
-                      "팩트너 운영팀에 접수됩니다. 운영팀이 제작 조건을 확인한 뒤 상담하며, 예시 업체에 자동 발송되지는 않습니다.",
+                      "팩트너 운영팀에 접수됩니다. 운영팀이 제작 조건을 확인한 뒤 상담하며, 제작 업체에 자동 발송되지는 않습니다.",
                     ],
                   ].map(([q, a]) => (
                     <details key={q}>
@@ -913,7 +931,7 @@ function App() {
                 <div className="activity-tabs">
                   {[
                     ["requests", "견적·매칭 요청", requests.length],
-                    ["favorites", "관심 업체", favorites.length],
+                    ["favorites", "관심 업체", favoriteSuppliers.length],
                   ].map(([key, label, count]) => (
                     <button
                       key={key}
@@ -928,11 +946,9 @@ function App() {
                   서버에 접수된 견적입니다. 접수 키는 이 브라우저에 보관됩니다. 다른 기기에서는 접수 번호로 운영팀에 문의해주세요.
                 </p>
                 {activityTab === "favorites" ? (
-                  favorites.length ? (
+                  favoriteSuppliers.length ? (
                     <div className="supplier-grid">
-                      {suppliers
-                        .filter((s) => favorites.includes(s.id))
-                        .map((s) => (
+                      {favoriteSuppliers.map((s) => (
                           <SupplierCard
                             key={s.id}
                             supplier={s}
@@ -1013,6 +1029,8 @@ function App() {
         <div className="footer-right">
           <button onClick={() => navigate("guide")}>이용 안내</button>
           <button onClick={() => navigate("membership")}>멤버십</button>
+          <button onClick={()=>openModal({type:"policy",kind:"privacy"})}>개인정보처리방침</button>
+          <button onClick={()=>openModal({type:"policy",kind:"terms"})}>이용약관</button>
           <Button
             tone="ghost"
             className="icon-button"
@@ -1023,11 +1041,11 @@ function App() {
           >
             {theme === "light" ? <Moon size={20} /> : <Sun size={20} />}
           </Button>
-          <p>미리보기 · 업체·리뷰는 예시, 사진은 AI 생성 이미지입니다.</p>
+          <p>{supplierSource==="demo"?"테스트 화면 · 예시 업체·리뷰와 AI 이미지를 사용합니다.":"서비스 소개의 AI 이미지는 연출용입니다. 업체 사진은 등록된 실제 자료입니다."}</p>
         </div>
       </footer>
       <AnimatePresence>
-        {compare.length > 0 && (
+        {comparedSuppliers.length > 0 && (
           <motion.div
             className="compare-bar"
             initial={{ y: 100, opacity: 0 }}
@@ -1036,7 +1054,7 @@ function App() {
           >
             <div>
               <Scales size={22} />
-              <strong>{compare.length}개 업체</strong>
+              <strong>{comparedSuppliers.length}개 업체</strong>
             </div>
             <Button onClick={() => openModal({ type: "compare" })}>
               조건 비교하기 <ArrowRight size={17} />
@@ -1072,7 +1090,7 @@ function App() {
         open={modal?.type === "supplier"}
         onClose={() => setModal(null)}
         title={modal?.supplier?.name || ""}
-        description="예시 업체 · 현장 확인·리뷰·이미지는 가상 자료입니다."
+        description={modal?.supplier?.source==="real"?"등록된 실제 업체 정보입니다. 제작 조건은 상담을 통해 확인해주세요.":"예시 업체 · 현장 확인·리뷰·이미지는 가상 자료입니다."}
         wide
       >
         {modal?.type === "supplier" && (
@@ -1097,6 +1115,9 @@ function App() {
         {modal?.type === "request" && (
           <RequestForm
             supplier={modal.supplier}
+            suppliers={suppliers}
+            supplierSource={supplierSource}
+            resetKey={submitAttempt}
             submitting={submitting}
             serverError={requestError}
             onSubmit={(form) => submitRequest(form, modal.supplier)}
@@ -1139,7 +1160,7 @@ function App() {
         open={modal?.type === "compare"}
         onClose={() => setModal(null)}
         title="업체 비교"
-        description="예시 조건입니다. 실제 견적은 사양 확인 후 결정됩니다."
+        description={supplierSource==="demo"?"예시 조건입니다. 실제 견적은 사양 확인 후 결정됩니다.":"제작 가능 여부와 최종 견적은 사양 확인 후 결정됩니다."}
         wide
       >
         <div className="comparison-wrap">
@@ -1147,9 +1168,9 @@ function App() {
             <thead>
               <tr>
                 <th scope="col">제작 조건</th>
-                {compare.map((id) => (
-                  <th key={id} scope="col">
-                    {suppliers.find((s) => s.id === id).name}
+                {comparedSuppliers.map((supplier) => (
+                  <th key={supplier.id} scope="col">
+                    {supplier.name}
                   </th>
                 ))}
               </tr>
@@ -1162,27 +1183,27 @@ function App() {
                 ["소재지", (s) => s.area],
                 [
                   "현장 확인",
-                  (s) => (s.visit ? "확인 완료 (예시)" : "방문 예정"),
+                  (s) => (s.visit ? (s.source==="real"?"확인 완료":"확인 완료 (예시)") : "미검증"),
                 ],
-                ["리뷰", (s) => `${s.rating} / ${s.reviews}개 (예시)`],
+                ["리뷰", (s) => s.source==="real"?"등록된 리뷰 없음":`${s.rating} / ${s.reviews}개 (예시)`],
               ].map(([label, render]) => (
                 <tr key={label}>
                   <th scope="row">{label}</th>
-                  {compare.map((id) => (
-                    <td key={id}>
-                      {render(suppliers.find((s) => s.id === id))}
+                  {comparedSuppliers.map((supplier) => (
+                    <td key={supplier.id}>
+                      {render(supplier)}
                     </td>
                   ))}
                 </tr>
               ))}
               <tr>
                 <th scope="row">상담</th>
-                {compare.map((id) => (
-                  <td key={id}>
+                {comparedSuppliers.map((supplier) => (
+                  <td key={supplier.id}>
                     <Button
                       tone="soft"
                       onClick={() =>
-                        startRequest(suppliers.find((s) => s.id === id))
+                        startRequest(supplier)
                       }
                     >
                       매칭 요청
@@ -1219,6 +1240,9 @@ function App() {
             <Button onClick={() => setModal(null)}>확인</Button>
           </div>
         )}
+      </Modal>
+      <Modal open={modal?.type==="policy"} onClose={()=>setModal(null)} title={modal?.kind==="privacy"?"개인정보처리방침":"이용약관"} description="팩트너 서비스 운영 안내">
+        {modal?.type==="policy"&&<PolicyDocument kind={modal.kind}/>}
       </Modal>
       <Modal
         open={modal?.type === "requestDetail"}
@@ -1262,158 +1286,35 @@ function App() {
 }
 
 function SupplierDetail({ supplier: s, favorite, onFavorite, onRequest }) {
-  const [tab, setTab] = useState("portfolio");
-  return (
-    <>
-      <Photo index={s.image} className="detail-photo" />
-      <div className="detail-intro">
-        <div className="verified">
-          <SealCheck weight="fill" size={18} />
-          {s.visit ? "현장 확인 (예시)" : "방문 예정"}
-        </div>
-        <p>{s.description}</p>
-        <div className="detail-stats">
-          <div>
-            <small>최소 주문 수량</small>
-            <strong>{money(s.moq)}개</strong>
-          </div>
-          <div>
-            <small>예상 제작 기간</small>
-            <strong>약 {s.days}일</strong>
-          </div>
-          <div>
-            <small>브랜드 리뷰</small>
-            <strong>
-              <Star weight="fill" size={17} /> {s.rating}{" "}
-              <small>({s.reviews})</small>
-            </strong>
-          </div>
-        </div>
-      </div>
-      <div className="detail-tabs" role="tablist" aria-label="업체 상세 정보">
-        {[
-          ["portfolio", "제작 사례"],
-          ["visit", "현장 확인"],
-          ["reviews", "브랜드 리뷰"],
-        ].map(([key, label], index) => (
-          <button
-            id={`tab-${key}`}
-            role="tab"
-            aria-controls="supplier-panel"
-            aria-selected={tab === key}
-            tabIndex={tab === key ? 0 : -1}
-            key={key}
-            className={tab === key ? "active" : ""}
-            onClick={() => setTab(key)}
-            onKeyDown={(event) => {
-              const keys = ['portfolio', 'visit', 'reviews'];
-              let next = index;
-              if (event.key === 'ArrowRight') next = (index + 1) % 3;
-              else if (event.key === 'ArrowLeft') next = (index + 2) % 3;
-              else if (event.key === 'Home') next = 0;
-              else if (event.key === 'End') next = 2;
-              else return;
-              event.preventDefault();
-              setTab(keys[next]);
-              document.getElementById(`tab-${keys[next]}`)?.focus();
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div
-        id="supplier-panel"
-        role="tabpanel"
-        tabIndex={0}
-        aria-labelledby={`tab-${tab}`}
-        className="detail-panel"
-      >
-        {tab === "portfolio" ? (
-          <>
-            <h3>제작 품목</h3>
-            <div className="tags">
-              {s.categories.map((c) => (
-                <span key={c}>{c}</span>
-              ))}
-            </div>
-            <dl className="spec-list">
-              <div>
-                <dt>사용 소재</dt>
-                <dd>{s.material}</dd>
-              </div>
-              <div>
-                <dt>후가공</dt>
-                <dd>{s.finish}</dd>
-              </div>
-              <div>
-                <dt>제작 수량</dt>
-                <dd>{money(s.moq)}개부터 상담 가능</dd>
-              </div>
-            </dl>
-          </>
-        ) : tab === "visit" ? (
-          <>
-            <h3>
-              {s.visit ? "현장 확인 항목" : "방문 예정"}
-            </h3>
-            <div className="visit-items">
-              {[
-                "설비와 작업 공간",
-                "인쇄·접착·마감 상태",
-                "검수와 완성품 보관",
-              ].map((t) => (
-                <div key={t}>
-                  <CheckCircle size={20} />
-                  <span>{t}</span>
-                  <small>{s.visit ? "확인 예시" : "확인 예정"}</small>
-                </div>
-              ))}
-            </div>
-            <div className="photo-placeholder">
-              <Camera size={26} />
-              <span>현장 사진 미등록</span>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="review-heading">
-              <Star weight="fill" size={28} />
-              <strong>{s.rating}</strong>
-              <span>리뷰 {s.reviews}개 · 예시</span>
-            </div>
-            <article className="review">
-              <strong>
-                뷰티 브랜드 담당자 <span>거래 리뷰 예시</span>
-              </strong>
-              <p>{s.review}</p>
-              <div className="tags">
-                <span>친절한 상담</span>
-                <span>샘플 만족</span>
-              </div>
-            </article>
-          </>
-        )}
-      </div>
-      <div className="detail-actions">
-        <Button
-          tone="outline"
-          className={favorite ? "is-saved" : ""}
-          onClick={onFavorite}
-          aria-pressed={favorite}
-        >
-          <Heart size={21} weight={favorite ? "fill" : "regular"} />
-          {favorite ? "관심 업체" : "찜하기"}
-        </Button>
-        <Button onClick={onRequest}>
-          매칭 요청 <ArrowRight size={19} />
-        </Button>
-      </div>
-    </>
-  );
+  const [tab,setTab]=useState("portfolio");
+  const real=s.source==="real";
+  const evidence=(s.photos||[]).filter(photo=>["workshop","sample","delivery"].includes(photo.kind));
+  const gallery=photos=><div className="supplier-gallery">{photos.map(photo=><figure key={photo.id}><SupplierPhoto supplier={s} photo={photo}/><figcaption>{photo.caption}</figcaption></figure>)}</div>;
+  return <>
+    <SupplierPhoto supplier={s} className="detail-photo"/>
+    <div className="detail-intro">
+      <div className={s.visit?"verified":"muted"}>{s.visit&&<SealCheck weight="fill" size={18}/>} {s.visit?(real?`현장 확인 · ${s.visitedAt}`:"현장 확인 (예시)"):"현장 미검증"}</div>
+      <p>{s.description}</p>
+      <div className="detail-stats"><div><small>최소 주문 수량</small><strong>{money(s.moq)}개</strong></div><div><small>예상 제작 기간</small><strong>약 {s.days}일</strong></div><div><small>브랜드 리뷰</small><strong>{real?"등록 전":<><Star weight="fill" size={17}/> {s.rating} <small>({s.reviews}) · 예시</small></>}</strong></div></div>
+    </div>
+    <div className="detail-tabs" role="tablist" aria-label="업체 상세 정보">
+      {[["portfolio","제작 사례"],["visit","현장 확인"],["reviews","브랜드 리뷰"]].map(([key,label],index)=><button id={`tab-${key}`} role="tab" aria-controls="supplier-panel" aria-selected={tab===key} tabIndex={tab===key?0:-1} key={key} className={tab===key?"active":""} onClick={()=>setTab(key)} onKeyDown={event=>{
+        const keys=['portfolio','visit','reviews'];let next=index;
+        if(event.key==='ArrowRight')next=(index+1)%3;else if(event.key==='ArrowLeft')next=(index+2)%3;else if(event.key==='Home')next=0;else if(event.key==='End')next=2;else return;
+        event.preventDefault();setTab(keys[next]);document.getElementById(`tab-${keys[next]}`)?.focus();
+      }}>{label}</button>)}
+    </div>
+    <div id="supplier-panel" role="tabpanel" tabIndex={0} aria-labelledby={`tab-${tab}`} className="detail-panel">
+      {tab==="portfolio"?<><h3>제작 품목</h3><div className="tags">{s.categories.map(category=><span key={category}>{category}</span>)}</div><dl className="spec-list"><div><dt>사용 소재</dt><dd>{s.material}</dd></div><div><dt>후가공</dt><dd>{s.finish}</dd></div><div><dt>제작 수량</dt><dd>{money(s.moq)}개부터 상담 가능</dd></div></dl>{real&&gallery(s.photos||[])}</>:tab==="visit"?<>
+        <h3>{s.visit?"현장 확인 자료":"현장 검증 전입니다"}</h3>
+        {real?<>{s.visit&&<p className="helper-text">{s.visitedAt} 방문 · 작업 현장, 제작 샘플, 납품 품질 확인</p>}{evidence.length?gallery(evidence):<div className="photo-placeholder"><Camera size={26}/><span>등록된 현장 사진이 없습니다.</span></div>}</>:<><div className="visit-items">{["설비와 작업 공간","인쇄·접착·마감 상태","검수와 완성품 보관"].map(label=><div key={label}><CheckCircle size={20}/><span>{label}</span><small>{s.visit?"확인 예시":"미확인"}</small></div>)}</div><p className="helper-text">서비스 이해를 위한 가상 검증 예시입니다.</p></>}
+      </>:real?<Empty title="등록된 리뷰가 없습니다" description="실제 고객 리뷰 기능을 준비하고 있습니다."/>:<><div className="review-heading"><Star weight="fill" size={28}/><strong>{s.rating}</strong><span>리뷰 {s.reviews}개 · 예시</span></div><article className="review"><strong>뷰티 브랜드 담당자 <span>거래 리뷰 예시</span></strong><p>{s.review}</p><div className="tags"><span>친절한 상담</span><span>샘플 만족</span></div></article></>}
+    </div>
+    <div className="detail-actions"><Button tone="outline" className={favorite?"is-saved":""} onClick={onFavorite} aria-pressed={favorite}><Heart size={21} weight={favorite?"fill":"regular"}/>{favorite?"관심 업체":"찜하기"}</Button><Button onClick={onRequest}>매칭 요청 <ArrowRight size={19}/></Button></div>
+  </>;
 }
 
-function RequestForm({ supplier, onSubmit, submitting, serverError }) {
+function RequestForm({ supplier, suppliers, supplierSource, onSubmit, submitting, serverError, resetKey }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     category: supplier?.categories[0] || "",
@@ -1422,18 +1323,27 @@ function RequestForm({ supplier, onSubmit, submitting, serverError }) {
     size: "",
     deadline: "",
     description: "",
-    contactName: "", email: "", phone: "", referenceUrl: "", consent: false, testOnly: false,
+    contactName: "", email: "", phone: "", referenceUrl: "", consent: false, termsConsent:false, testOnly: false, website:"",turnstileToken:"",
   });
   const [serviceConfig, setServiceConfig] = useState(null);
-  const [configError, setConfigError] = useState("");
-  useEffect(() => { api("config").then(setServiceConfig).catch(error=>setConfigError(error.message)); }, []);
+  const [configError,setConfigError]=useState(""),[policy,setPolicy]=useState(null),[configRetry,setConfigRetry]=useState(0);
+  useEffect(()=>{
+    let active=true;setConfigError("");setServiceConfig(null);setPolicy(null);
+    Promise.all([api("config"),api("policy")]).then(([config,document])=>{
+      if(!active)return;
+      if(config.consentVersion!==document.version)throw new Error("운영 안내가 변경되었습니다. 새로 불러와주세요.");
+      setServiceConfig(config);setPolicy(document);
+      setForm(previous=>({...previous,consent:false,termsConsent:false,consentVersion:document.version,turnstileToken:""}));
+    }).catch(error=>{if(active)setConfigError(error.message);});
+    return()=>{active=false;};
+  },[configRetry]);
   const [errors, setErrors] = useState({});
   const focusRef = useRef(null);
   const reduce = useReducedMotion();
   const allowed = supplier ? supplier.categories : categories.slice(1);
   const update = (key, value) => {
-    setForm({ ...form, [key]: value });
-    setErrors({ ...errors, [key]: "" });
+    setForm(previous=>({ ...previous, [key]: value }));
+    setErrors(previous=>({ ...previous, [key]: "" }));
   };
   const matches = eligibleSuppliers(suppliers, {
     category: form.category,
@@ -1465,9 +1375,10 @@ function RequestForm({ supplier, onSubmit, submitting, serverError }) {
       return;
     }
     if (step === 2) {
-      if (!serviceConfig) {setErrors({submit:"서버 연결을 확인해주세요."});return;}
-      if (!form.consent || (!serviceConfig.accepting && !form.testOnly)) {setErrors({submit:"정보 수집 동의와 테스트 접수 여부를 확인해주세요."});return;}
-      onSubmit(form);
+      if (!serviceConfig||!policy) {setErrors({submit:"서버 연결을 확인해주세요."});return;}
+      if (!form.consent||!form.termsConsent || (!serviceConfig.accepting && !form.testOnly)) {setErrors({submit:"정보 수집·이용약관 동의와 테스트 접수 여부를 확인해주세요."});return;}
+      if(serviceConfig.turnstileSiteKey&&!form.turnstileToken){setErrors({submit:"보안 확인을 완료해주세요."});return;}
+      onSubmit({...form,consentVersion:policy.version});
     }
     else setStep(step + 1);
   }
@@ -1475,6 +1386,7 @@ function RequestForm({ supplier, onSubmit, submitting, serverError }) {
   const minDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   return (
     <form onSubmit={next} className="request-form">
+      <div hidden aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" value={form.website} onChange={event=>update("website",event.target.value)}/></label></div>
       <div className="stepper" aria-label={`3단계 중 ${step + 1}단계`}>
         {["패키징 선택", "제작 조건", "내용 확인"].map((label, i) => (
           <span key={label} className={i <= step ? "current" : ""}>
@@ -1658,14 +1570,16 @@ function RequestForm({ supplier, onSubmit, submitting, serverError }) {
               <p className="request-description">{form.description}</p>
               <p>연락처: {form.contactName} · {form.email}</p>
               <div className="privacy-consent">
-                <details><summary>견적 상담을 위한 정보 수집 안내</summary>
-                  <p>수집 항목: 브랜드, 담당자명, 이메일, 제작 조건. 전화번호와 참고 링크는 선택 항목입니다.</p>
-                  <p>목적: 견적 확인과 상담. 보유 기간: 접수 후 1년. 동의를 거부할 수 있으나 견적 접수는 어렵습니다.</p>
-                  <p>운영자: {serviceConfig?.operator || "정식 운영 준비 중"} / 문의: {serviceConfig?.contactEmail || "정식 접수 전 등록 예정"}</p>
-                  <p>제작 업체에 개인정보를 자동 전달하지 않습니다.</p>
-                </details>
-                <label className="consent-check"><input type="checkbox" checked={form.consent} onChange={e=>update("consent",e.target.checked)} /> [필수] 견적 상담을 위한 정보 수집에 동의합니다.</label>
-                {serviceConfig && !serviceConfig.accepting && <><p className="field-error">현재 테스트 접수만 가능합니다. 실제 개인정보와 기밀 자료를 입력하지 마세요.</p><label className="consent-check"><input type="checkbox" checked={form.testOnly} onChange={e=>update("testOnly",e.target.checked)} /> 가상 정보로 테스트 요청을 보냅니다.</label></>}
+                {policy&&!policy.published&&<p className="helper-text">운영 정보 확정 전 검토용 안내입니다.</p>}
+                <details><summary>견적 상담을 위한 정보 수집 안내</summary><p className="request-description">{policy?.collection||"안내를 불러오는 중입니다."}</p></details>
+                <details><summary>제작 업체에 정보를 전달하는 절차</summary><p className="request-description">{policy?.transfer||"안내를 불러오는 중입니다."}</p></details>
+                <details><summary>개인정보처리방침 전체 보기</summary><p className="request-description">{policy?.privacy||"안내를 불러오는 중입니다."}</p></details>
+                <details><summary>이용약관 전체 보기</summary><p className="request-description">{policy?.terms||"안내를 불러오는 중입니다."}</p></details>
+                <p>운영자: {serviceConfig?.operator||"미정"} · 문의: {serviceConfig?.contactEmail||"미정"}</p>
+                <label className="consent-check"><input type="checkbox" checked={form.consent} onChange={e=>update("consent",e.target.checked)}/> [필수] 견적 상담을 위한 정보 수집에 동의합니다.</label>
+                <label className="consent-check"><input type="checkbox" checked={form.termsConsent} onChange={e=>update("termsConsent",e.target.checked)}/> [필수] {policy&&!policy.published?"테스트용 ":""}이용약관에 동의합니다.</label>
+                {serviceConfig && !serviceConfig.accepting && <><p className="field-error">현재 테스트 접수만 가능합니다. 실제 개인정보와 기밀 자료를 입력하지 마세요.</p><label className="consent-check"><input type="checkbox" checked={form.testOnly} onChange={e=>update("testOnly",e.target.checked)}/> 가상 정보로 테스트 요청을 보냅니다.</label></>}
+                {serviceConfig?.turnstileSiteKey&&<Turnstile siteKey={serviceConfig.turnstileSiteKey} onToken={token=>update("turnstileToken",token)} resetKey={resetKey}/>}
               </div>
               <div className="matching-note">
                 <SealCheck size={24} />
@@ -1674,7 +1588,7 @@ function RequestForm({ supplier, onSubmit, submitting, serverError }) {
                     {supplier
                       ? `${supplier.name}에 매칭 요청`
                       : matches.length
-                        ? `조건에 맞는 예시 업체 ${matches.length}곳`
+                        ? `조건에 맞는 ${supplierSource==="demo"?"예시 ":""}업체 ${matches.length}곳`
                         : "운영팀에서 제작 조건 확인"}
                   </strong>
                   <p>
@@ -1691,13 +1605,14 @@ function RequestForm({ supplier, onSubmit, submitting, serverError }) {
         </motion.div>
       </AnimatePresence>
       {(serverError || configError || errors.submit) && <p className="field-error" role="alert">{serverError || configError || errors.submit}</p>}
+      {(configError||serverError)&&<Button tone="ghost" disabled={submitting} onClick={()=>setConfigRetry(value=>value+1)}>운영 안내 새로 불러오기</Button>}
       <div className="form-actions">
         {step > 0 && (
           <Button tone="outline" disabled={submitting} onClick={() => setStep(step - 1)}>
             <ArrowLeft size={18} /> 이전
           </Button>
         )}
-        <Button type="submit" disabled={submitting || (step === 2 && !serviceConfig)}>
+        <Button type="submit" disabled={submitting || (step === 2 && (!serviceConfig||!policy))}>
           {submitting ? "접수 중…" : step === 2 ? "견적 요청 보내기" : "다음"}
           {step === 2 ? <Check size={18} /> : <ArrowRight size={18} />}
         </Button>

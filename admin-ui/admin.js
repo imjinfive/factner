@@ -1,3 +1,7 @@
+import {createSecurity} from './security.js';
+import {renderSuppliers} from './suppliers.js';
+import {operationsView} from './operations.js';
+import {policyView} from './policy.js';
 const root = document.querySelector('#app');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const states = {received:'접수',reviewing:'검토 중',consulting:'상담 중',quoted:'견적 안내',completed:'완료',cancelled:'취소'};
@@ -9,7 +13,7 @@ async function api(path, options = {}) {
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 401 && user) { user = null; await boot(); }
-    throw new Error(data.error || '연결하지 못했습니다.');
+    const error=new Error(data.error || '연결하지 못했습니다.');error.status=response.status;throw error;
   }
   return data;
 }
@@ -20,16 +24,8 @@ async function submit(event, action) {
   event.preventDefault();const form=event.currentTarget;const button=form.querySelector('[type=submit]');button.disabled=true;
   try{await action(Object.fromEntries(new FormData(form)),form);}catch(error){formError(form,error);}finally{button.disabled=false;}
 }
-function auth(setup=false) {
-  clearInterval(refreshTimer); root.innerHTML=`<main class="auth"><div class="wordmark">factner.</div><h1>${setup?'첫 관리자 계정 만들기':'관리자 로그인'}</h1><p class="muted">${setup?'설정 키를 가진 운영자만 계정을 만들 수 있습니다.':'견적을 확인하고 상담을 이어가세요.'}</p><form id="auth-form">${setup?'<label>초기 설정 키<input name="setupToken" type="password" autocomplete="off" required></label><label>이름<input name="displayName" maxlength="60" required></label>':''}<label>아이디<input name="username" autocomplete="username" pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]{2,39}" minlength="3" maxlength="40" required></label><label>비밀번호<input name="password" type="password" autocomplete="${setup?'new-password':'current-password'}" minlength="12" maxlength="128" required></label>${setup?'<small>12자 이상의 고유한 비밀번호를 사용해주세요.</small>':''}<button type="submit">${setup?'계정 만들고 시작하기':'로그인'}</button></form><p class="muted">팩트너 운영자 전용 사이트입니다.</p></main>`;
-  if (!setup) {
-    const form = document.querySelector('#auth-form');
-    form.elements.username.oninput = () => { form.elements.password.minLength = form.elements.username.value.trim().toLowerCase() === 'admin' ? 5 : 12; };
-  }
-  document.querySelector('#auth-form').onsubmit=e=>submit(e,async data=>{const result=await send(setup?'auth/setup':'auth/login',data);user=result.user;await navigate('quotes');});
-}
 function shell(content) {
-  root.innerHTML=`<div class="layout"><aside><div class="wordmark">factner.</div><small>관리자</small><nav><button data-nav="quotes" class="${view==='quotes'?'selected':''}">견적 관리</button>${user.role==='owner'?`<button data-nav="users" class="${view==='users'?'selected':''}">관리자 계정</button><button data-nav="settings" class="${view==='settings'?'selected':''}">운영 설정</button>`:''}<button data-nav="password" class="${view==='password'?'selected':''}">비밀번호 변경</button></nav><div class="account"><p>${esc(user.display_name)}<br><small>${user.role==='owner'?'대표 관리자':'관리자'}</small></p><button id="logout" class="quiet">로그아웃</button></div></aside><main class="content">${content}</main></div>`;
+  root.innerHTML=`<div class="layout"><aside><div class="wordmark">factner.</div><small>관리자</small><nav><button data-nav="quotes" class="${view==='quotes'?'selected':''}">견적 관리</button>${user.role==='owner'?`<button data-nav="suppliers" class="${view==='suppliers'?'selected':''}">업체 관리</button><button data-nav="policy" class="${view==='policy'?'selected':''}">운영 문서</button><button data-nav="operations" class="${view==='operations'?'selected':''}">알림·점검</button><button data-nav="users" class="${view==='users'?'selected':''}">관리자 계정</button><button data-nav="settings" class="${view==='settings'?'selected':''}">운영 설정</button>`:''}<button data-nav="password" class="${view==='password'?'selected':''}">보안 설정</button></nav><div class="account"><p>${esc(user.display_name)}<br><small>${user.role==='owner'?'대표 관리자':'관리자'}</small></p><button id="logout" class="quiet">로그아웃</button></div></aside><main class="content">${content}</main></div>`;
   root.querySelectorAll('[data-nav]').forEach(button=>button.addEventListener('click',()=>{if(!dirty||confirm('저장하지 않은 내용이 있습니다. 이동할까요?'))navigate(button.dataset.nav);}));
   document.querySelector('#logout').addEventListener('click',async()=>{try{await send('auth/logout',{});user=null;await boot();}catch(error){notice(error.message);}});
 }
@@ -39,7 +35,10 @@ async function navigate(next) {
     if(next==='quotes'){await list();refreshTimer=setInterval(()=>{if(!currentId&&!dirty&&document.visibilityState==='visible')list(false).catch(error=>notice(error.message));},20000);}
     if(next==='users')await users();
     if(next==='settings')await settings();
-    if(next==='password')password();
+    if(next==='password')security.password(shell);
+    if(next==='suppliers')await renderSuppliers({api,send,shell,esc,submit,notice,setDirty:value=>dirty=value,isActive:()=>view==='suppliers'});
+    if(next==='operations')await operationsView({api,send,shell,esc,submit,notice});
+    if(next==='policy')await policyView({api,send,shell,esc,submit,notice,setDirty:value=>dirty=value});
   }catch(error){notice(error.message);if(user)shell(`<h1>연결을 확인해주세요</h1><p role="alert">${esc(error.message)}</p><button id="retry">다시 시도</button>`);document.querySelector('#retry')?.addEventListener('click',()=>navigate(next));}
 }
 async function list(reset=true) {
@@ -72,17 +71,15 @@ async function users() {
   document.querySelector('#user-form').onsubmit=e=>submit(e,async data=>{await send('admin/users',data);notice('관리자 계정을 만들었어요.');await users();});
   root.querySelectorAll('[data-user]').forEach(button=>button.addEventListener('click',async()=>{try{await send(`admin/users/${button.dataset.user}`,{active:button.dataset.active==='true'},'PATCH');await users();}catch(error){notice(error.message);}}));
 }
-function password() {
-  shell(`<header><div><h1>비밀번호 변경</h1><p class="muted">변경 후 모든 기기에서 로그아웃됩니다.</p></div></header><section class="panel narrow"><form id="password-form"><label>현재 비밀번호<input name="currentPassword" type="password" autocomplete="current-password" maxlength="128" required></label><label>새 비밀번호<input name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>새 비밀번호 확인<input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><button type="submit">비밀번호 변경</button></form></section>`);
-  document.querySelector('#password-form').onsubmit=e=>submit(e,async data=>{if(data.newPassword!==data.confirmPassword)throw new Error('새 비밀번호가 일치하지 않습니다.');await send('auth/password',data);user=null;notice('비밀번호를 변경했어요. 다시 로그인해주세요.');await boot();});
-}
 async function settings() {
   const config=await api('admin/settings');
-  shell(`<header><div><h1>운영 설정</h1><p class="muted">정식 접수 전 운영 정보를 등록해주세요.</p></div></header><section class="panel narrow"><p class="hint">현재 ${config.accepting?'정식 접수':'테스트 접수'} 상태입니다. 테스트 중에는 실제 고객 정보를 입력하지 않도록 안내합니다.</p><form id="settings-form"><label>운영자명 / 상호<input name="operator" value="${esc(config.operator)}" maxlength="100"></label><label>문의 이메일<input name="contactEmail" type="email" value="${esc(config.contactEmail)}" maxlength="254"></label><label class="check"><input name="accepting" type="checkbox" ${config.accepting?'checked':''}> 정식 견적 접수 시작</label><p class="muted">정보 수집 목적은 견적 상담, 보유 기간은 접수 후 1년입니다. 정식 접수 전 개인정보 안내와 실제 운영 방침이 일치하는지 확인해주세요.</p><button type="submit">운영 설정 저장</button></form></section>`);
+  shell(`<header><div><h1>운영 설정</h1><p class="muted">정식 접수 전 운영 정보를 등록해주세요.</p></div></header><section class="panel narrow"><p class="hint">현재 ${config.accepting?'정식 접수':'테스트 접수'} 상태입니다. 테스트 중에는 실제 고객 정보를 입력하지 않도록 안내합니다.</p><ul class="readiness">${config.readiness.map(item=>`<li>${item.ready?'✓':'○'} ${esc(item.label)} — ${item.ready?'준비됨':'확인 필요'}</li>`).join('')}</ul><form id="settings-form"><label>운영자명 / 상호<input name="operator" value="${esc(config.operator)}" maxlength="100"></label><label>문의 이메일<input name="contactEmail" type="email" value="${esc(config.contactEmail)}" maxlength="254"></label><label class="check"><input name="accepting" type="checkbox" ${config.accepting?'checked':''}> 정식 견적 접수 시작</label><p class="muted">정보 수집 목적은 견적 상담, 보유 기간은 접수 후 1년입니다. 운영 문서·업체·보안·스팸 방지·알림 설정까지 준비되어야 정식 접수를 켤 수 있습니다.</p><button type="submit">운영 설정 저장</button></form></section>`);
   document.querySelector('#settings-form').onsubmit=e=>submit(e,async data=>{await send('admin/settings',{...data,accepting:data.accepting==='on'},'PUT');notice('운영 설정을 저장했어요.');await settings();});
 }
 async function boot() {
-  try{const data=await api('auth/me');user=data.user;await navigate('quotes');}catch{try{const state=await api('auth/state');auth(state.setupRequired);}catch(error){root.innerHTML=`<main class="auth"><h1>서버 연결을 확인해주세요</h1><p>${esc(error.message)}</p><button id="reconnect">다시 연결</button></main>`;document.querySelector('#reconnect').addEventListener('click',boot);}}
+  clearInterval(refreshTimer);user=null;
+  try{const data=await api('auth/me');await security.accept(data);}catch{try{const state=await api('auth/state');security.auth(state.setupRequired);}catch(error){root.innerHTML=`<main class="auth"><h1>서버 연결을 확인해주세요</h1><p>${esc(error.message)}</p><button id="reconnect">다시 연결</button></main>`;document.querySelector('#reconnect').addEventListener('click',boot);}}
 }
+const security=createSecurity({root,api,send,esc,submit,boot,onAuthenticated:async current=>{user=current;await navigate('quotes');}});
 window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
 boot();

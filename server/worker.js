@@ -1,59 +1,12 @@
 import { validateRequest } from '../rebate-ui/src/model.js';
-import { credentials, digest, passwordHash, randomToken, safeEqual, verifyPassword } from './security.js';
+import {digest,safeEqual} from './security.js';
+import {json,HttpError,fail,now,stmt,body,text,rate} from './http.js';
+import {authApi,identity,owner} from './auth.js';
+import {supplierPublicApi,supplierAdminApi} from './suppliers.js';
+import {quoteNotificationStatement,operationsApi,drainNotifications,recordFailure,cleanOperations} from './operations.js';
+import {service,policy,policyApi,readiness} from './policy.js';
+import {verifyQuoteSubmission} from './spam.js';
 export const statuses = {received:'접수', reviewing:'검토 중', consulting:'상담 중', quoted:'견적 안내', completed:'완료', cancelled:'취소'};
-const json = (data, status = 200, headers = {}) => Response.json(data, {status, headers:{'Cache-Control':'no-store', ...headers}});
-class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
-const fail = (status, message) => { throw new HttpError(status, message); };
-const now = () => new Date().toISOString();
-const stmt = (env, sql, ...args) => env.DB.prepare(sql).bind(...args);
-async function body(req) {
-  if (!req.headers.get('content-type')?.startsWith('application/json')) fail(415, 'JSON 형식으로 보내주세요.');
-  // Bound the stream before parsing; Content-Length can be absent or misleading.
-  const reader = req.body?.getReader();
-  if (!reader) fail(400, '내용이 비어 있습니다.');
-  let size = 0, chunks = [];
-  for (;;) {
-    const {done, value} = await reader.read();
-    if (done) break;
-    size += value.length;
-    if (size > 20000) { await reader.cancel(); fail(413, '입력 내용이 너무 큽니다.'); }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(size); let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  let data;
-  try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch { fail(400, '입력 내용을 확인해주세요.'); }
-  if (!data || Array.isArray(data) || typeof data !== 'object') fail(400, '입력 내용을 확인해주세요.');
-  return data;
-}
-function text(value, max, required = false) {
-  if (value === undefined && !required) return '';
-  if (typeof value !== 'string' || value.length > max || (required && !value.trim())) fail(400, '필수 입력 또는 글자 수를 확인해주세요.');
-  return value.trim();
-}
-async function service(env) {
-  const row = await stmt(env, "SELECT value FROM settings WHERE key='service'").first();
-  return JSON.parse(row.value);
-}
-async function rate(env, key, limit, seconds) {
-  const t = Math.floor(Date.now() / 1000);
-  const row = await stmt(env, `INSERT INTO rate_limits(key,count,reset_at) VALUES(?,1,?)
-    ON CONFLICT(key) DO UPDATE SET count=CASE WHEN reset_at<=? THEN 1 ELSE count+1 END,
-    reset_at=CASE WHEN reset_at<=? THEN excluded.reset_at ELSE reset_at END RETURNING count`, key, t + seconds, t, t).first();
-  if (row.count > limit) fail(429, '잠시 후 다시 시도해주세요.');
-}
-async function identity(req, env) {
-  const token = req.headers.get('cookie')?.match(/(?:^|;\s*)factner_session=([a-f0-9]{64})(?:;|$)/)?.[1];
-  if (!token) fail(401, '로그인이 필요합니다.');
-  const user = await stmt(env, `SELECT a.id,a.username,a.display_name,a.role FROM sessions s JOIN admins a ON a.id=s.admin_id
-    WHERE s.token_hash=? AND s.expires_at>? AND a.active=1`, await digest(token), Date.now()).first();
-  if (!user) fail(401, '로그인이 만료되었습니다. 다시 로그인해주세요.');
-  return user;
-}
-function owner(user) { if (user.role !== 'owner') fail(403, '대표 관리자만 사용할 수 있습니다.'); }
-function sessionCookie(req, token, seconds) {
-  return `factner_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${seconds}${new URL(req.url).protocol === 'https:' ? '; Secure' : ''}`;
-}
 export function quoteInput(input) {
   const data = {
     brand:text(input.brand,60,true), category:text(input.category,30,true), quantity:Number(input.quantity),
@@ -76,9 +29,12 @@ export function quoteInput(input) {
   return data;
 }
 async function mainApi(req, env, url) {
+  const publicResult=await supplierPublicApi(req,env,url)||(url.pathname==='/api/policy'?await policyApi(req,env,url):null);
+  if(publicResult)return publicResult;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     const config = await service(env);
-    return json({...config, mode:config.accepting ? 'live' : 'test', consentVersion:'2026-10-19'});
+    const doc=await policy(env);
+    return json({...config, mode:config.accepting ? 'live' : 'test', consentVersion:doc.version,turnstileSiteKey:env.TURNSTILE_SECRET_KEY?env.TURNSTILE_SITE_KEY||'':''});
   }
   if (url.pathname === '/api/quotes' && req.method === 'POST') {
     await rate(env, `quote:${await digest(req.headers.get('CF-Connecting-IP') || 'local')}`, 10, 3600);
@@ -91,11 +47,16 @@ async function mainApi(req, env, url) {
       if (!safeEqual(hash, existing.receipt_hash)) fail(409, '접수 번호를 다시 생성해주세요.');
       return json({id:existing.id, created:true}, 200);
     }
+    const doc=await policy(env);
+    if(input.consentVersion!==doc.version||input.termsConsent!==true)fail(409,'운영 안내가 변경되었습니다. 창을 다시 열고 동의 내용을 확인해주세요.');
+    if(config.accepting&&!doc.published)fail(503,'정식 접수 준비 중입니다.');
+    await verifyQuoteSubmission(req,env,input,config);
     const date = now();
     await env.DB.batch([
-      stmt(env, `INSERT INTO quotes(id,receipt_hash,brand,category,quantity,size,deadline,description,supplier,contact_name,email,phone,reference_url,consent_version,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, input.id,hash,data.brand,data.category,data.quantity,data.size,data.deadline,data.description,data.supplier,data.contactName,data.email,data.phone,data.referenceUrl,'2026-10-19',date,date),
+      stmt(env, `INSERT INTO quotes(id,receipt_hash,brand,category,quantity,size,deadline,description,supplier,contact_name,email,phone,reference_url,consent_version,created_at,updated_at,terms_version,intake_mode)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, input.id,hash,data.brand,data.category,data.quantity,data.size,data.deadline,data.description,data.supplier,data.contactName,data.email,data.phone,data.referenceUrl,doc.version,date,date,doc.version,config.accepting?'live':'test'),
       stmt(env, 'INSERT INTO quote_events VALUES(?,?,?,?,?)',crypto.randomUUID(),input.id,'고객', config.accepting ? '견적 접수' : '테스트 견적 접수',date),
+      quoteNotificationStatement(env,input.id,date),
     ]);
     return json({id:input.id, created:true}, 201);
   }
@@ -112,89 +73,18 @@ async function mainApi(req, env, url) {
 }
 async function adminApi(req, env, url) {
   const path = url.pathname;
-  if (path === '/api/auth/state' && req.method === 'GET') {
-    const row = await stmt(env, 'SELECT count(*) AS count FROM admins').first();
-    return json({setupRequired:row.count === 0});
-  }
-  if ((path === '/api/auth/login' || path === '/api/auth/setup') && req.method === 'POST') {
-    await rate(env, `auth:${await digest(req.headers.get('CF-Connecting-IP') || 'local')}`, 15, 900);
-    const input = await body(req);
-    let cred;
-    // Only the explicitly provisioned admin account accepts its shorter existing password.
-    const provisionedAdminLogin = path === '/api/auth/login' && typeof input.username === 'string' && input.username.trim().toLowerCase() === 'admin';
-    try { cred = credentials(input, provisionedAdminLogin ? 5 : 12); } catch (err) { fail(400,err.message); }
-    let user;
-    if (path.endsWith('setup')) {
-      if (!env.BOOTSTRAP_TOKEN || !safeEqual(input.setupToken,env.BOOTSTRAP_TOKEN)) fail(403, '초기 설정 키가 일치하지 않습니다.');
-      // Fixed owner ID and UNIQUE constraint close concurrent first-account registration.
-      const row = await stmt(env, 'SELECT count(*) AS count FROM admins').first();
-      if (row.count) fail(409, '초기 계정이 이미 생성되었습니다.');
-      user = {id:'initial-owner',username:cred.username,display_name:text(input.displayName,60,true),role:'owner'};
-      await stmt(env, 'INSERT INTO admins(id,username,display_name,password_hash,role,created_at) VALUES(?,?,?,?,?,?)',user.id,user.username,user.display_name,await passwordHash(cred.password),user.role,now()).run();
-    } else {
-      user = await stmt(env, 'SELECT * FROM admins WHERE username=? AND active=1',cred.username).first();
-      // Always perform PBKDF2, including when the username doesn't exist.
-      const hash = user?.password_hash || `${'0'.repeat(64)}:${'0'.repeat(64)}`;
-      if (!(await verifyPassword(cred.password,hash)) || !user) fail(401, '아이디 또는 비밀번호가 올바르지 않습니다.');
-    }
-    const token = randomToken();
-    await env.DB.batch([
-      stmt(env, 'DELETE FROM sessions WHERE expires_at<?',Date.now()),
-      stmt(env, 'INSERT INTO sessions VALUES(?,?,?)',await digest(token),user.id,Date.now()+8*3600*1000),
-    ]);
-    return json({user:{id:user.id,username:user.username,display_name:user.display_name,role:user.role}},200,{'Set-Cookie':sessionCookie(req,token,8*3600)});
-  }
-  const user = await identity(req,env);
-  if (path === '/api/auth/me' && req.method === 'GET') return json({user});
-  if (path === '/api/auth/logout' && req.method === 'POST') {
-    const token = req.headers.get('cookie')?.match(/factner_session=([a-f0-9]{64})/)?.[1];
-    if (token) await stmt(env, 'DELETE FROM sessions WHERE token_hash=?',await digest(token)).run();
-    return json({ok:true},200,{'Set-Cookie':sessionCookie(req,'',0)});
-  }
-  if (path === '/api/auth/password' && req.method === 'POST') {
-    await rate(env,`password:${user.id}`,10,900);
-    const input = await body(req);
-    try { credentials({username:user.username,password:input.newPassword}); } catch(err) {fail(400,err.message);}
-    const row = await stmt(env,'SELECT password_hash FROM admins WHERE id=?',user.id).first();
-    if (typeof input.currentPassword !== 'string' || input.currentPassword.length>128 || !(await verifyPassword(input.currentPassword,row.password_hash))) fail(400,'현재 비밀번호가 올바르지 않습니다.');
-    await env.DB.batch([
-      stmt(env,'UPDATE admins SET password_hash=? WHERE id=?',await passwordHash(input.newPassword),user.id),
-      stmt(env,'DELETE FROM sessions WHERE admin_id=?',user.id),
-    ]);
-    return json({ok:true},200,{'Set-Cookie':sessionCookie(req,'',0)});
-  }
-  if (path === '/api/admin/users') {
-    owner(user);
-    if (req.method === 'GET') return json({users:(await stmt(env,'SELECT id,username,display_name,role,active,created_at FROM admins ORDER BY created_at').all()).results});
-    if (req.method === 'POST') {
-      const input = await body(req); let cred;
-      try { cred = credentials(input); } catch(err) {fail(400,err.message);}
-      if (await stmt(env,'SELECT id FROM admins WHERE username=?',cred.username).first()) fail(409,'이미 사용 중인 아이디입니다.');
-      await stmt(env, "INSERT INTO admins(id,username,display_name,password_hash,role,created_at) VALUES(?,?,?,?,'staff',?)",crypto.randomUUID(),cred.username,text(input.displayName,60,true),await passwordHash(cred.password),now()).run();
-      return json({ok:true},201);
-    }
-  }
-  const userMatch = path.match(/^\/api\/admin\/users\/([a-z0-9-]+)$/);
-  if (userMatch && req.method === 'PATCH') {
-    owner(user);
-    const input = await body(req);
-    if (typeof input.active !== 'boolean') fail(400,'계정 상태를 확인해주세요.');
-    const target = await stmt(env,'SELECT role FROM admins WHERE id=?',userMatch[1]).first();
-    if (!target) fail(404,'계정을 찾을 수 없습니다.');
-    if (target.role === 'owner') fail(400,'대표 관리자 계정은 비활성화할 수 없습니다.');
-    await env.DB.batch([
-      stmt(env,'UPDATE admins SET active=? WHERE id=?',Number(input.active),userMatch[1]),
-      stmt(env,'DELETE FROM sessions WHERE admin_id=?',userMatch[1]),
-    ]);
-    return json({ok:true});
-  }
+  const authResult=await authApi(req,env,url);
+  if(authResult)return authResult;
+  const user=await identity(req,env);
+  const moduleResult=await supplierAdminApi(req,env,url,user)||await operationsApi(req,env,url,user)||await policyApi(req,env,url,user);
+  if(moduleResult)return moduleResult;
   if (path === '/api/admin/settings') {
     owner(user);
-    if (req.method === 'GET') return json(await service(env));
+    if (req.method === 'GET') {const config=await service(env);return json({...config,readiness:await readiness(env,config)});}
     if (req.method === 'PUT') {
       const input = await body(req);
       const config = {operator:text(input.operator,100),contactEmail:text(input.contactEmail,254),accepting:input.accepting === true};
-      if (config.accepting && (!config.operator || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.contactEmail))) fail(400,'정식 접수 전 운영자명과 문의 이메일을 설정해주세요.');
+      if(config.accepting){const missing=(await readiness(env,config)).filter(item=>!item.ready);if(missing.length)fail(400,`정식 접수 전 확인: ${missing.map(item=>item.label).join(', ')}`);}
       await stmt(env,"UPDATE settings SET value=? WHERE key='service'",JSON.stringify(config)).run();
       return json(config);
     }
@@ -236,14 +126,19 @@ async function adminApi(req, env, url) {
   fail(404,'없는 API입니다.');
 }
 export default {
-  async scheduled(_event, env) {
-    // Consent promises one-year retention. Cascade removes the associated history.
-    const cutoff = new Date(Date.now() - 365 * 86400000).toISOString();
-    await env.DB.batch([
-      stmt(env, 'DELETE FROM quotes WHERE created_at < ?', cutoff),
-      stmt(env, 'DELETE FROM sessions WHERE expires_at < ?', Date.now()),
-      stmt(env, 'DELETE FROM rate_limits WHERE reset_at < ?', Math.floor(Date.now()/1000)),
-    ]);
+  async scheduled(event, env) {
+    try {
+      await drainNotifications(env);
+      if(!event.cron||event.cron==='0 18 * * *') {
+        const cutoff=new Date(Date.now()-365*86400000).toISOString();
+        await env.DB.batch([
+          stmt(env,'DELETE FROM quotes WHERE created_at < ?',cutoff),
+          stmt(env,'DELETE FROM sessions WHERE expires_at < ?',Date.now()),
+          stmt(env,'DELETE FROM rate_limits WHERE reset_at < ?',Math.floor(Date.now()/1000)),
+        ]);
+        await cleanOperations(env);
+      }
+    }catch(error){await recordFailure(env,'SCHEDULED_FAILED','cron').catch(()=>{});throw error;}
   },
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -261,7 +156,11 @@ export default {
         response = await env.ASSETS.fetch(req);
       }
     } catch(err) {
-      if (!(err instanceof HttpError)) console.error('Factner request failed:',err.name);
+      if (!(err instanceof HttpError)) {
+        console.error('Factner request failed:',err.name);
+        const incident=recordFailure(env,'REQUEST_FAILED',env.APP_KIND==='admin'?'admin-api':'main-api').catch(()=>{});
+        if(ctx)ctx.waitUntil(incident);else await incident;
+      }
       response = json({error:err instanceof HttpError ? err.message : '처리하지 못했습니다. 잠시 후 다시 시도해주세요.'},err.status || 500);
     }
     const headers = new Headers(response.headers);
