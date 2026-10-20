@@ -79,3 +79,35 @@ test('public catalog uses examples only in explicit test mode and never fills an
   assert.equal(catalogFromResponse({accepting:false},{suppliers:real}).source,'real');
   assert.equal(catalogFromResponse({accepting:true},{suppliers:real}).suppliers,real);
 });
+
+test('new supplier saves selected photos before publication and resumes a partial upload',async()=>{
+  const {saveNewSupplier}=await import('../admin-ui/supplier-save.js');
+  const env={DB:database()},admin=client(env),publicApi=client(env,false);
+  let failSecond=true,uploads=0,creates=0;
+  const checked=result=>{if(result.status>=400)throw Object.assign(new Error(result.error),{status:result.status});return result.data;};
+  const send=async(path,data,method)=>{if(path==='admin/suppliers')creates++;return checked(await admin(path.replace('admin/',''),data,method));};
+  const api=async(path,options)=>{
+    uploads++;
+    if(uploads===2&&failSecond)throw new Error('temporary upload failure');
+    return checked(await admin(path.replace('admin/',''),new Uint8Array(await options.body.arrayBuffer()),options.method,Object.fromEntries(new Headers(options.headers))));
+  };
+  const state={supplier:null},photos=['workshop','sample','delivery'].map(kind=>({file:new File([png],kind+'.png',{type:'image/png'}),caption:kind,kind}));
+  const payload={...valid(),state:'published',visit:true,visitedAt:'2026-01-01',verifiedBy:'방문 담당자'};
+  await assert.rejects(()=>saveNewSupplier({api,send,state,payload,photos}),/temporary upload failure/);
+  assert.equal(creates,1);assert.equal(photos[0].uploaded,true);assert.equal(photos[1].uploaded,undefined);
+  assert.equal((await admin('suppliers')).data.suppliers.length,1);
+  assert.equal((await publicApi('suppliers')).data.suppliers.length,0);
+  failSecond=false;
+  const result=await saveNewSupplier({api,send,state,payload,photos});
+  assert.equal(creates,1);assert.equal(uploads,4);assert.equal(result.supplier.state,'published');
+  assert.deepEqual(result.supplier.photos.map(p=>p.kind).sort(),['delivery','sample','workshop']);
+  assert.equal((await publicApi('suppliers')).data.suppliers[0].visit,true);
+  assert.equal(env.DB.raw.prepare('SELECT count(*) AS n FROM supplier_images').get().n,3);
+});
+test('new supplier can be saved without photos as a private draft',async()=>{
+  const {saveNewSupplier}=await import('../admin-ui/supplier-save.js');
+  const env={DB:database()},admin=client(env);
+  const send=async(path,data,method)=>{const result=await admin(path.replace('admin/',''),data,method);assert.ok(result.status<300,result.error);return result.data;};
+  const result=await saveNewSupplier({send,api:()=>assert.fail('no upload expected'),state:{supplier:null},payload:valid(),photos:[]});
+  assert.equal(result.supplier.state,'draft');assert.equal(result.supplier.photos.length,0);
+});
