@@ -3,7 +3,7 @@ import {owner} from './auth.js';
 import {notificationReadiness} from './operations.js';
 
 const draft = {
- version:'draft-2026-10-19',published:false,
+ version:'draft-2026-10-20',published:false,
  privacy:`개인정보 처리방침 초안 — 정식 운영 전 검토 중
 현재는 가상 정보로만 테스트하는 상태입니다. 실제 개인정보와 기밀 자료를 입력하지 마세요.
 
@@ -18,7 +18,7 @@ const draft = {
 Cloudflare를 웹 서비스와 데이터 저장에 사용합니다. 위탁 업무, 계약, 처리 국가, 국외 이전 근거·시기·방법·보유 기간·거부 방법은 운영자가 확인해 이 문서에 확정 기재한 뒤 정식 접수를 시작합니다.
 
 4. 권리와 보호 조치
-고객은 운영자에게 열람·정정·삭제·처리 정지·동의 철회를 요청할 수 있습니다. 본인 확인 후 처리합니다. 운영자명, 개인정보 담당자와 연락처는 아직 미정입니다. 관리자 접근 권한과 추가 인증, 암호화 통신을 적용합니다.
+고객은 운영자에게 열람·정정·삭제·처리 정지·동의 철회를 요청할 수 있습니다. 본인 확인 후 처리합니다. 운영자명, 개인정보 담당자와 연락처는 아직 미정입니다. 관리자 접근 권한과 암호화 통신을 적용합니다.
 
 5. 브라우저 저장
 관심 업체와 견적 조회 키는 현재 브라우저에 저장됩니다. 공용 기기 이용 시 유의하세요. 기기를 바꾸면 자동 복원되지 않습니다. 보안 검증 서비스의 처리 정보와 보관 조건은 운영 전 검토합니다.`,
@@ -48,13 +48,13 @@ export async function policy(env) {
 export async function readiness(env,config) {
  const doc=await policy(env);
  const suppliers=await stmt(env,`SELECT count(*) AS n FROM suppliers WHERE state='published'`).first();
- const admin=await stmt(env,"SELECT count(*) AS n FROM admins WHERE active=1 AND role='owner' AND mfa_secret<>'' AND must_change_password=0").first();
+ const admin=await stmt(env,"SELECT count(*) AS n FROM admins WHERE active=1 AND role='owner' AND must_change_password=0").first();
  const op=await stmt(env,"SELECT value FROM settings WHERE key='operations'").first();
  const notify=op?JSON.parse(op.value):{};
  return [
   {label:'운영 상호·문의 이메일',ready:!!config.operator&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.contactEmail)},
   {label:'개인정보·약관 및 위탁·국외 처리 검토',ready:doc.published&&doc.operator===config.operator&&doc.contactEmail===config.contactEmail},
-  {label:'대표 관리자 비밀번호·추가 인증',ready:admin.n>0},
+  {label:'대표 관리자 계정',ready:admin.n>0},
   {label:'실제 공개 업체 등록',ready:suppliers.n>0},
   {label:'스팸 방지 연결',ready:!!env.TURNSTILE_SITE_KEY&&!!env.TURNSTILE_SECRET_KEY},
   {label:'새 견적·장애 알림 연결',ready:notificationReadiness(env,notify).ready},

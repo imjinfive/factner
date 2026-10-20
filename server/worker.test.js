@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync,readdirSync } from 'node:fs';
 import worker, {quoteInput} from './worker.js';
-import {passwordHash,verifyPassword,randomToken,totp} from './security.js';
+import {passwordHash,verifyPassword,randomToken} from './security.js';
 function database() {
   const db=new DatabaseSync(':memory:'),directory=new URL('../migrations/',import.meta.url);
   for(const file of readdirSync(directory).filter(file=>file.endsWith('.sql')).sort())db.exec(readFileSync(new URL(file,directory),'utf8'));
@@ -17,7 +17,7 @@ function database() {
     raw:db,
   };
 }
-const valid = ()=>({id:crypto.randomUUID(),receiptToken:randomToken(),brand:'테스트 브랜드',category:'단상자',quantity:500,description:'가상 제품 패키징',contactName:'테스트',email:'qa@example.com',consent:true,consentVersion:'draft-2026-10-19',termsConsent:true,website:'',testOnly:true});
+const valid = ()=>({id:crypto.randomUUID(),receiptToken:randomToken(),brand:'테스트 브랜드',category:'단상자',quantity:500,description:'가상 제품 패키징',contactName:'테스트',email:'qa@example.com',consent:true,consentVersion:'draft-2026-10-20',termsConsent:true,website:'',testOnly:true});
 function client(env) {
   let cookie='';const ip=crypto.randomUUID();
   return async(path,data,method=data?'POST':'GET',headers={})=>{
@@ -35,13 +35,8 @@ test('quote validation rejects malformed email, consent, links, dates and oversi
  for(const patch of [{email:'bad'},{consent:false},{referenceUrl:'javascript:alert(1)'},{deadline:'2027-02-31'},{quantity:0},{brand:'a'.repeat(61)},{receiptToken:'guess'},{category:'invalid'}])assert.throws(()=>quoteInput({...valid(),...patch}));
  assert.equal(quoteInput(valid()).quantity,500);
 });
-async function enroll(admin) {
- const begin=await admin('auth/mfa/begin',{});assert.equal(begin.status,200);
- const finish=await admin('auth/mfa/confirm',{code:await totp(begin.data.secret)});assert.equal(finish.status,200);
- return finish.data;
-}
-test('admin no longer has a short-password exemption and MFA protects the actual quote API',async()=>{
- const DB=database(),env={DB,APP_KIND:'admin',BOOTSTRAP_TOKEN:randomToken(),MFA_ENCRYPTION_KEY:randomToken()},admin=client(env);
+test('password validation and required password changes protect the actual quote API',async()=>{
+ const DB=database(),env={DB,APP_KIND:'admin',BOOTSTRAP_TOKEN:randomToken()},admin=client(env);
  const existingPassword='admin';
  assert.equal((await admin('auth/setup',{username:'admin',password:existingPassword,displayName:'운영자',setupToken:env.BOOTSTRAP_TOKEN})).status,400);
  DB.raw.prepare('INSERT INTO admins(id,username,display_name,password_hash,role,created_at,must_change_password) VALUES(?,?,?,?,?,?,1)').run('initial-owner','admin','운영자',await passwordHash('temporary-strong-password'),'owner',new Date().toISOString());
@@ -51,11 +46,11 @@ test('admin no longer has a short-password exemption and MFA protects the actual
  assert.equal((await admin('auth/password',{currentPassword:'temporary-strong-password',newPassword:'replacement-password-123'})).status,200);
  assert.equal((await admin('admin/quotes')).status,401);
  assert.equal((await admin('auth/login',{username:'admin',password:'replacement-password-123'})).status,200);
- assert.equal((await admin('admin/quotes')).status,403);
- await enroll(admin);assert.equal((await admin('admin/quotes')).status,200);
+ assert.equal((await admin('admin/quotes')).status,200);
+ assert.equal((await admin('auth/mfa/begin',{})).status,404);
 });
 test('end-to-end: receipt isolation, admin authentication, updates, conflict, roles and revoked sessions',async()=>{
- const DB=database();const common={DB,BOOTSTRAP_TOKEN:randomToken(),MFA_ENCRYPTION_KEY:randomToken()};
+ const DB=database();const common={DB,BOOTSTRAP_TOKEN:randomToken()};
  const publicClient=client({...common,APP_KIND:'main'});const admin=client({...common,APP_KIND:'admin'});
  assert.equal((await admin('admin/quotes')).status,401);
  assert.equal((await publicClient('admin/quotes')).status,404);
@@ -63,8 +58,7 @@ test('end-to-end: receipt isolation, admin authentication, updates, conflict, ro
  assert.equal((await admin('auth/setup',{...setup,setupToken:'bad'})).status,403);
  assert.equal((await admin('auth/setup',setup)).status,200);
  assert.equal((await admin('auth/setup',setup)).status,409);
- assert.equal((await admin('admin/quotes')).status,403);
- const ownerMfa=await enroll(admin);
+ assert.equal((await admin('admin/quotes')).status,200);
  const form=valid();
  assert.equal((await publicClient('quotes',{...form,testOnly:false})).status,503);
  assert.equal((await publicClient('quotes',form)).status,201);
@@ -84,7 +78,6 @@ test('end-to-end: receipt isolation, admin authentication, updates, conflict, ro
  assert.equal((await staff('admin/quotes')).status,403);
  assert.equal((await staff('auth/password',{currentPassword:'long-staff-password-123',newPassword:'private-staff-password-123'})).status,200);
  assert.equal((await staff('auth/login',{username:'staff',password:'private-staff-password-123'})).status,200);
- await enroll(staff);
  assert.equal((await staff('admin/quotes')).status,200);assert.equal((await staff('admin/users')).status,403);
  const users=await admin('admin/users');const staffId=users.data.users.find(u=>u.username==='staff').id;
  assert.equal((await admin(`admin/users/${staffId}`,{active:false},'PATCH')).status,200);
@@ -93,8 +86,7 @@ test('end-to-end: receipt isolation, admin authentication, updates, conflict, ro
  assert.equal((await admin('admin/quotes')).status,401);
  assert.equal((await admin('auth/login',{username:'owner',password:setup.password})).status,401);
  assert.equal((await admin('auth/login',{username:'owner',password:'changed-owner-password-123'})).status,200);
- assert.equal((await admin('admin/quotes')).status,403);
- assert.equal((await admin('auth/mfa/verify',{recoveryCode:ownerMfa.recoveryCodes[0]})).status,200);
+ assert.equal((await admin('admin/quotes')).status,200);
  assert.equal((await admin('admin/settings',{accepting:true,operator:'',contactEmail:''},'PUT')).status,400);
 });
 test('reject cross-origin writes, non-JSON input and unbounded bodies',async()=>{

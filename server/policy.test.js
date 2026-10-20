@@ -5,7 +5,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import worker from './worker.js';
 import {policy,policyApi,readiness} from './policy.js';
 import {drainNotifications} from './operations.js';
-import {randomToken,totp} from './security.js';
+import {randomToken} from './security.js';
 function database() {
  const raw=new DatabaseSync(':memory:'),dir=new URL('../migrations/',import.meta.url);
  for(const file of readdirSync(dir).filter(file=>file.endsWith('.sql')).sort())raw.exec(readFileSync(new URL(file,dir),'utf8'));
@@ -25,18 +25,16 @@ function client(env) {
 async function administrator(env) {
  const admin=client({...env,APP_KIND:'admin'});
  assert.equal((await admin('auth/setup',{username:'owner',displayName:'테스트 관리자',password:'a-private-test-owner-password',setupToken:env.BOOTSTRAP_TOKEN})).status,200);
- const begin=await admin('auth/mfa/begin',{});assert.equal(begin.status,200);
- assert.equal((await admin('auth/mfa/confirm',{code:await totp(begin.data.secret)})).status,200);
  return admin;
 }
-const environment=()=>({DB:database(),APP_KIND:'main',BOOTSTRAP_TOKEN:randomToken(),MFA_ENCRYPTION_KEY:randomToken()});
-const valid=()=>({id:crypto.randomUUID(),receiptToken:randomToken(),brand:'가상 브랜드',category:'단상자',quantity:500,description:'가상 패키징 견적 테스트',contactName:'테스트 담당',email:'test@example.com',consent:true,termsConsent:true,consentVersion:'draft-2026-10-19',website:'',testOnly:true});
+const environment=()=>({DB:database(),APP_KIND:'main',BOOTSTRAP_TOKEN:randomToken()});
+const valid=()=>({id:crypto.randomUUID(),receiptToken:randomToken(),brand:'가상 브랜드',category:'단상자',quantity:500,description:'가상 패키징 견적 테스트',contactName:'테스트 담당',email:'test@example.com',consent:true,termsConsent:true,consentVersion:'draft-2026-10-20',website:'',testOnly:true});
 const operator={operator:'가상 운영자',contactEmail:'hello@example.com',accepting:false};
 function setOperations(env,value){env.DB.raw.prepare("UPDATE settings SET value=? WHERE key='operations'").run(JSON.stringify(value));}
 function addSupplier(env){const time=new Date().toISOString();env.DB.raw.prepare("INSERT INTO suppliers(id,name,state,actual_confirmed,created_at,updated_at) VALUES('test-only-supplier','가상 협력업체','published',1,?,?)").run(time,time);}
 test('draft defaults are public, publication requires operator/review, and only owner may edit',async()=>{
  const env=environment(),publicClient=client(env),admin=await administrator(env);
- const draft=await policy(env);assert.equal(draft.published,false);assert.equal(draft.version,'draft-2026-10-19');assert.equal(draft.operator,'');
+ const draft=await policy(env);assert.equal(draft.published,false);assert.equal(draft.version,'draft-2026-10-20');assert.equal(draft.operator,'');
  const config=await publicClient('config');assert.equal(config.data.mode,'test');assert.equal(config.data.consentVersion,draft.version);
  assert.equal((await publicClient('policy')).data.version,draft.version);
  assert.equal((await admin('admin/policy',{...draft,published:true,reviewed:true},'PUT')).status,400);
@@ -86,7 +84,7 @@ test('stale consent is rejected, accepted consent is retained, and unconfigured 
  assert.equal(env.DB.raw.prepare('SELECT count(*) n FROM quotes').get().n,0);
  assert.equal((await publicClient('quotes',form)).status,201);
  const saved=env.DB.raw.prepare('SELECT consent_version,terms_version,intake_mode FROM quotes WHERE id=?').get(form.id);
- assert.deepEqual({...saved},{consent_version:'draft-2026-10-19',terms_version:'draft-2026-10-19',intake_mode:'test'});
+ assert.deepEqual({...saved},{consent_version:'draft-2026-10-20',terms_version:'draft-2026-10-20',intake_mode:'test'});
  assert.equal(env.DB.raw.prepare('SELECT count(*) n FROM notification_outbox').get().n,1);
  assert.equal((await drainNotifications(env)).blocked,true);assert.equal(sends,0);
  const draft=await policy(env),updated=await admin('admin/policy',{...draft,privacy:`${draft.privacy}\n가상 수정 확인`,published:false},'PUT');assert.equal(updated.status,200);
