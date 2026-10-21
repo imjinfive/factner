@@ -124,6 +124,22 @@ test('password changes invalidate all member sessions without affecting admin se
  assert.equal((await brand('member/login',{email:'brand@test.test',password:'replacement-password-123'})).status,200);
 });
 
+test('owner edits contact details with audit and optimistic locking while preserving login and approved history',async()=>{
+ const {admin,brand,DB}=await fixture();const id=await approve(admin,brand,'profile@test.test');
+ const input=request(spec([]));await brand('orders',input);
+ const before=DB.raw.prepare('SELECT * FROM orders WHERE id=?').get(input.id);
+ const edit={action:'profile',version:2,name:'변경 브랜드',contact:'새 담당자',phone:'010-1234-5678'};
+ assert.equal((await admin(`admin/members/${id}`,edit,'PATCH')).status,200);
+ const me=await brand('member/me');assert.equal(me.status,200);assert.equal(me.data.member.name,edit.name);assert.equal(me.data.member.phone,edit.phone);
+ const detail=(await admin(`admin/members/${id}`)).data;assert.equal(detail.member.version,3);assert.equal(detail.profileEvents.length,1);assert.equal(detail.profileEvents[0].changes.name.after,edit.name);
+ assert.equal(detail.member.email,'profile@test.test');assert.equal(detail.member.status,'approved');assert.equal('password_hash' in detail.member,false);
+ assert.equal((await admin(`admin/members/${id}`,edit,'PATCH')).status,409);
+ assert.equal((await admin(`admin/members/${id}`,{...edit,version:3,email:'other@test.test'},'PATCH')).status,400);
+ assert.equal((await admin(`admin/members/${id}`,{...edit,version:3,phone:'invalid'},'PATCH')).status,400);
+ assert.deepEqual(DB.raw.prepare('SELECT * FROM orders WHERE id=?').get(input.id),before);
+ assert.equal((await brand('member/me')).status,200);
+});
+
 test('member management searches literal text and normalized numbers, combines filters and paginates without losing counts',async()=>{
  const {admin,DB}=await fixture();
  const insert=DB.raw.prepare('INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,status,consent_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');

@@ -8,6 +8,7 @@ import {service,policy,policyApi,readiness} from './policy.js';
 import {verifyQuoteSubmission} from './spam.js';
 import {memberApi,memberAdminApi} from './members.js';
 import {orderApi} from './orders.js';
+import {partnerApi} from './partners.js';
 export const statuses = {received:'접수', reviewing:'검토 중', consulting:'상담 중', quoted:'견적 안내', completed:'완료', cancelled:'취소'};
 export function quoteInput(input) {
   const data = {
@@ -31,7 +32,7 @@ export function quoteInput(input) {
   return data;
 }
 async function mainApi(req, env, url) {
-  const memberResult=await memberApi(req,env,url)||await orderApi(req,env,url);
+  const memberResult=await memberApi(req,env,url)||await partnerApi(req,env,url)||await orderApi(req,env,url);
   if(memberResult)return memberResult;
   const publicResult=await supplierPublicApi(req,env,url)||(url.pathname==='/api/policy'?await policyApi(req,env,url):null);
   if(publicResult)return publicResult;
@@ -80,7 +81,7 @@ async function adminApi(req, env, url) {
   const authResult=await authApi(req,env,url);
   if(authResult)return authResult;
   const user=await identity(req,env);
-  const moduleResult=await memberAdminApi(req,env,url,user)||await orderApi(req,env,url,user)||await supplierAdminApi(req,env,url,user)||await operationsApi(req,env,url,user)||await policyApi(req,env,url,user);
+  const moduleResult=await memberAdminApi(req,env,url,user)||await partnerApi(req,env,url,user)||await orderApi(req,env,url,user)||await supplierAdminApi(req,env,url,user)||await operationsApi(req,env,url,user)||await policyApi(req,env,url,user);
   if(moduleResult)return moduleResult;
   if (path === '/api/admin/settings') {
     owner(user);

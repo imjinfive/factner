@@ -19,7 +19,7 @@ const parseOrder=row=>({...row,spec:JSON.parse(row.spec),proposal:row.proposal?J
 const orderSelect=`SELECT o.*,b.name AS brand_name,s.name AS supplier_name FROM orders o JOIN members b ON b.id=o.brand_id LEFT JOIN members s ON s.id=o.supplier_id`;
 async function getOrder(env,id,user,admin){
  const row=await stmt(env,`${orderSelect} WHERE o.id=?`,id).first();
- if(!row||(!admin&&row.brand_id!==user.id&&(row.supplier_id!==user.id||['requested','matched','cancelled'].includes(row.status))))fail(404,'발주를 찾을 수 없습니다.');
+ if(!row||(!admin&&row.brand_id!==user.id&&(row.supplier_id!==user.id||['requested','matched'].includes(row.status)||(row.status==='cancelled'&&!row.shared_at))))fail(404,'발주를 찾을 수 없습니다.');
  return row;
 }
 async function mutate(env,order,input,user,patch,action,details={}){
@@ -62,7 +62,7 @@ export async function orderApi(req,env,url,adminUser){
  if(path===`${base}/orders`){
   if(req.method==='GET'){
    const page=Math.max(1,Math.min(10000,Number.parseInt(url.searchParams.get('page'),10)||1)),status=text(url.searchParams.get('status')||'',30);
-   const access=admin?'1=1':user.role==='brand'?'o.brand_id=?':"o.supplier_id=? AND o.status NOT IN ('requested','matched','cancelled')";
+   const access=admin?'1=1':user.role==='brand'?'o.brand_id=?':"o.supplier_id=? AND (o.status NOT IN ('requested','matched','cancelled') OR (o.status='cancelled' AND o.shared_at IS NOT NULL))";
    const args=admin?[]:[user.id],where=`WHERE ${access} AND (?='' OR o.status=?)`;
    let memberFilter='';const memberId=admin?url.searchParams.get('memberId'):null;
    if(memberId!==null){
@@ -81,13 +81,24 @@ export async function orderApi(req,env,url,adminUser){
    if(!uuid(input.id)||!Number.isSafeInteger(quantity)||quantity<1||quantity>100000000)fail(400,'수량과 접수 번호를 확인해주세요.');
    const existing=await stmt(env,'SELECT id,brand_id FROM orders WHERE id=?',input.id).first();
    if(existing){if(existing.brand_id!==user.id)fail(409,'접수 번호를 다시 생성해주세요.');return json({id:existing.id});}
+   const supplierId=input.supplierId===undefined||input.supplierId===null||input.supplierId===''?null:input.supplierId;
+   if(supplierId!==null&&(!uuid(supplierId)||input.sharingConsent!==true))fail(400,'받을 제작 업체와 자료 전달 동의를 확인해주세요.');
+   let partner=null;
+   if(supplierId){
+    partner=await stmt(env,"SELECT p.id,s.name FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved'",user.id,supplierId).first();
+    if(!partner)fail(409,'현재 연결된 제작 업체가 아닙니다. 매칭 상태를 다시 확인해주세요.');
+   }
    let source=null;if(input.sourceId){source=await getOrder(env,input.sourceId,user,false);if(source.brand_id!==user.id)fail(404,'이전 발주를 찾을 수 없습니다.');}
    const spec=await specInput(env,user,input.spec),time=now();
-   await env.DB.batch([
-    stmt(env,'INSERT INTO orders(id,brand_id,source_id,spec,quantity,requested_date,address,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',input.id,user.id,source?.id||null,JSON.stringify(spec),quantity,deadline,address,note,time,time),
-    ...spec.files.map(f=>stmt(env,'INSERT INTO order_files VALUES(?,?)',input.id,f.id)),
-    stmt(env,'INSERT INTO order_events VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),input.id,user.id,user.name,source?'지난 발주로 다시 요청':'발주 요청',JSON.stringify({spec,quantity,requestedDate:deadline,address,note}),time),
-   ]);return json({id:input.id},201);
+   const details={spec,quantity,requestedDate:deadline,address,note};
+   if(partner)details.sharing={partnerId:partner.id,supplierId,supplier:partner.name,consent:true,items:'패키징 사양·첨부 파일·수량·납기·배송지·요청 사항',purpose:'견적 및 제작 진행',version:'partner-order-sharing-2026-10-21'};
+   const result=await env.DB.batch([
+    stmt(env,`INSERT INTO orders(id,brand_id,supplier_id,source_id,spec,quantity,requested_date,address,note,status,shared_at,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=? AND role='brand' AND status='approved') AND (? IS NULL OR EXISTS(SELECT 1 FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved'))`,input.id,user.id,supplierId,source?.id||null,JSON.stringify(spec),quantity,deadline,address,note,partner?'assigned':'requested',partner?time:null,time,time,user.id,supplierId,user.id,supplierId),
+    ...spec.files.map(f=>stmt(env,'INSERT INTO order_files SELECT ?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND brand_id=?)',input.id,f.id,input.id,user.id)),
+    stmt(env,'INSERT INTO order_events SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND brand_id=?)',crypto.randomUUID(),input.id,user.id,user.name,partner?'연결된 제작 업체에 발주 요청':source?'지난 발주로 다시 요청':'발주 요청',JSON.stringify(details),time,input.id,user.id),
+   ]);
+   if(!result[0].meta.changes)fail(409,'회원 또는 매칭 상태가 변경되었습니다. 다시 확인해주세요.');
+   return json({id:input.id},201);
   }
  }
  if(path==='/api/admin/orders/suppliers'&&admin&&req.method==='GET'){
@@ -115,7 +126,7 @@ export async function orderApi(req,env,url,adminUser){
     if(action==='share'&&row.status==='matched'){
      if(input.consent!==true)fail(400,'업체에 전달할 정보를 확인해주세요.');
      const active=await stmt(env,"SELECT id FROM members WHERE id=? AND status='approved'",row.supplier_id).first();if(!active)fail(409,'업체 이용 상태가 변경되었습니다. 운영팀에 문의해주세요.');
-     return mutate(env,row,input,user,{status:'assigned'},'업체 연결 및 제작 자료 전달 동의',{supplierId:row.supplier_id,supplier:row.supplier_name,items:'패키징 사양·첨부 파일·수량·납기·배송지·요청 사항',purpose:'견적 및 제작 진행',version:'pilot-sharing-2026-10-21'});
+     return mutate(env,row,input,user,{status:'assigned',shared_at:now()},'업체 연결 및 제작 자료 전달 동의',{supplierId:row.supplier_id,supplier:row.supplier_name,items:'패키징 사양·첨부 파일·수량·납기·배송지·요청 사항',purpose:'견적 및 제작 진행',version:'pilot-sharing-2026-10-21'});
     }
     if(action==='approve'&&row.status==='quoted'){
      if(input.consent!==true)fail(400,'최종 조건을 확인해주세요.');

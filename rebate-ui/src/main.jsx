@@ -52,6 +52,8 @@ import { api, makeReceipt, quoteStatuses } from "./api";
 import {useSuppliers} from "./useSuppliers";
 import Turnstile from "./Turnstile";
 import MemberPortal from "./MemberPortal";
+import {PackagingChoice,PostcodeAddress} from './PackagingFields';
+import {formatInput,formatPhone} from '../../admin-ui/input-format.js';
 
 const spring = { type: "spring", stiffness: 420, damping: 30, mass: 0.8 };
 const categoryIcons = [SquaresFour, Cube, Package, Gift, Tote, Stack];
@@ -1329,6 +1331,7 @@ function RequestForm({ supplier, suppliers, supplierSource, onSubmit, submitting
     size: "",
     deadline: "",
     description: "",
+    packagingName: "", material: "", printing: "", finish: "", address: "",
     contactName: "", email: "", phone: "", referenceUrl: "", consent: false, termsConsent:false, testOnly: false, website:"",turnstileToken:"",
   });
   const [serviceConfig, setServiceConfig] = useState(null);
@@ -1384,7 +1387,9 @@ function RequestForm({ supplier, suppliers, supplierSource, onSubmit, submitting
       if (!serviceConfig||!policy) {setErrors({submit:"서버 연결을 확인해주세요."});return;}
       if (!form.consent||!form.termsConsent || (!serviceConfig.accepting && !form.testOnly)) {setErrors({submit:"정보 수집·이용약관 동의와 테스트 접수 여부를 확인해주세요."});return;}
       if(serviceConfig.turnstileSiteKey&&!form.turnstileToken){setErrors({submit:"보안 확인을 완료해주세요."});return;}
-      onSubmit({...form,consentVersion:policy.version});
+      const description=[['패키징 이름',form.packagingName],['소재',form.material],['인쇄',form.printing],['후가공',form.finish],['배송지',form.address]].filter(([,value])=>value).map(([label,value])=>`${label}: ${value}`).concat(form.description).join('\n');
+      if(description.length>1500){setErrors({submit:'제작 조건과 요청 사항을 합쳐 1,500자 이내로 입력해주세요.'});return;}
+      onSubmit({...form,description,consentVersion:policy.version});
     }
     else setStep(step + 1);
   }
@@ -1513,7 +1518,7 @@ function RequestForm({ supplier, suppliers, supplierSource, onSubmit, submitting
                 {errors.email && <span className="field-error">{errors.email}</span>}
               </label>
               <label>전화번호 <span className="optional">선택</span>
-                <input type="tel" autoComplete="tel" maxLength={30} value={form.phone} onChange={e=>update("phone",e.target.value)} />
+                <input type="tel" inputMode="tel" autoComplete="tel" maxLength={30} value={form.phone} placeholder="숫자만 입력해주세요" onInput={e=>formatInput(e,formatPhone)} onChange={e=>update("phone",e.target.value)} />
               </label>
               <label>참고 자료 링크 <span className="optional">선택</span>
                 <input type="url" maxLength={2000} placeholder="https://" value={form.referenceUrl} onChange={e=>update("referenceUrl",e.target.value)} />
@@ -1526,9 +1531,12 @@ function RequestForm({ supplier, suppliers, supplierSource, onSubmit, submitting
                   maxLength={100}
                   value={form.size}
                   onChange={(e) => update("size", e.target.value)}
-                  placeholder="예: 가로 80 × 세로 80 × 높이 150 mm"
+                  placeholder="직접 입력"
                 />
               </label>
+              <label>패키징 이름 <span className="optional">선택</span><input value={form.packagingName} onChange={e=>update('packagingName',e.target.value)} maxLength={100} placeholder="직접 입력"/></label>
+              <div className="field-pair">{[['material','소재'],['printing','인쇄'],['finish','후가공']].map(([kind,label])=><PackagingChoice key={kind} kind={kind} label={label} value={form[kind]} onChange={value=>update(kind,value)}/>)}</div>
+              <PostcodeAddress initialValue={form.address} required={false} onChange={value=>update('address',value)}/>
               <label>
                 제품과 원하는 패키징 <span className="required">필수</span>
                 <textarea
@@ -1540,7 +1548,7 @@ function RequestForm({ supplier, suppliers, supplierSource, onSubmit, submitting
                   }
                   value={form.description}
                   onChange={(e) => update("description", e.target.value)}
-                  placeholder="제품, 재질, 인쇄 등 필요한 조건"
+                  placeholder="제품 특징이나 추가 요청 사항"
                 />
                 {errors.description && (
                   <span id="description-error" className="field-error">
@@ -1574,6 +1582,7 @@ function RequestForm({ supplier, suppliers, supplierSource, onSubmit, submitting
                 </div>
               </dl>
               <p className="request-description">{form.description}</p>
+              <dl className="summary-list">{[['패키징 이름',form.packagingName],['소재',form.material],['인쇄',form.printing],['후가공',form.finish],['배송지',form.address]].filter(([,value])=>value).map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
               <p>연락처: {form.contactName} · {form.email}</p>
               <div className="privacy-consent">
                 {policy&&!policy.published&&<p className="helper-text">운영 정보 확정 전 검토용 안내입니다.</p>}

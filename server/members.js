@@ -39,7 +39,7 @@ export async function memberFile(req,env,id,user,admin=false){
  const file=await stmt(env,'SELECT * FROM member_files WHERE id=?',id).first();
  if(!file)fail(404,'파일을 찾을 수 없습니다.');
  if(!admin&&file.member_id!==user.id){
-  const shared=await stmt(env,`SELECT o.id FROM order_files f JOIN orders o ON o.id=f.order_id WHERE f.file_id=? AND o.supplier_id=? AND o.status NOT IN ('requested','matched','cancelled')`,id,user.id).first();
+  const shared=await stmt(env,`SELECT o.id FROM order_files f JOIN orders o ON o.id=f.order_id WHERE f.file_id=? AND o.supplier_id=? AND (o.status NOT IN ('requested','matched','cancelled') OR (o.status='cancelled' AND o.shared_at IS NOT NULL))`,id,user.id).first();
   if(!shared||!['design','sample'].includes(file.kind))fail(404,'파일을 찾을 수 없습니다.');
  }
  const bytes=file.content instanceof ArrayBuffer?file.content:new Uint8Array(file.content);
@@ -133,10 +133,26 @@ export async function memberAdminApi(req,env,url,user){
    const files=await stmt(env,"SELECT id,name,mime,kind FROM member_files WHERE member_id=? AND kind IN ('certificate','workplace')",member.id).all();
    const reviews=await stmt(env,'SELECT actor,status,note,created_at FROM member_reviews WHERE member_id=? ORDER BY created_at DESC,rowid DESC',member.id).all();
    const orderCounts=await stmt(env,`SELECT count(*) AS total,COALESCE(SUM(status NOT IN ('received','cancelled')),0) AS active,COALESCE(SUM(status='received'),0) AS received,COALESCE(SUM(status='cancelled'),0) AS cancelled FROM orders WHERE ${member.role==='brand'?'brand_id':'supplier_id'}=?`,member.id).first();
-   return json({member,files:files.results,reviews:reviews.results,orderCounts});
+   const profileEvents=await stmt(env,'SELECT actor,changes,created_at FROM member_profile_events WHERE member_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50',member.id).all();
+   return json({member,files:files.results,reviews:reviews.results,orderCounts,profileEvents:profileEvents.results.map(e=>({...e,changes:JSON.parse(e.changes)}))});
   }
   if(req.method==='PATCH'){
    const input=await body(req),note=text(input.note,1000);
+   if(input.action==='profile'){
+    if(Object.keys(input).some(key=>!['action','version','name','contact','phone'].includes(key)))fail(400,'업체명·담당자·연락처만 수정할 수 있습니다.');
+    const values={name:text(input.name,100,true),contact:text(input.contact,60,true),phone:text(input.phone,30,true)};
+    if(!/^[+0-9 ()-]{7,30}$/.test(values.phone))fail(400,'연락처를 확인해주세요.');
+    if(!Number.isSafeInteger(input.version)||input.version!==member.version)fail(409,'회원정보가 변경되었습니다. 새로고침해주세요.');
+    const changes=Object.fromEntries(Object.entries(values).filter(([key,value])=>value!==member[key]).map(([key,value])=>[key,{before:member[key],after:value}]));
+    if(!Object.keys(changes).length)return json({ok:true});
+    const time=now(),result=await env.DB.batch([
+     stmt(env,'UPDATE members SET name=?,contact=?,phone=?,updated_at=?,version=version+1 WHERE id=? AND version=?',values.name,values.contact,values.phone,time,member.id,input.version),
+     stmt(env,'INSERT INTO member_profile_events SELECT ?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),member.id,user.display_name,JSON.stringify(changes),time),
+     stmt(env,'UPDATE member_sessions SET member_version=? WHERE member_id=? AND member_version=? AND changes()=1',input.version+1,member.id,input.version),
+    ]);
+    if(!result[0].meta.changes)fail(409,'회원정보가 변경되었습니다. 새로고침해주세요.');
+    return json({ok:true});
+   }
    if(!['approved','rejected','suspended'].includes(input.status))fail(400,'심사 결과를 선택해주세요.');
    if(input.status!=='approved'&&!note)fail(400,'회원에게 안내할 사유를 입력해주세요.');
    if(!Number.isSafeInteger(input.version))fail(400,'심사 버전을 확인해주세요.');

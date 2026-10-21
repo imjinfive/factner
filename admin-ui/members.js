@@ -1,4 +1,6 @@
 import {ordersView} from './orders.js';
+import {partnersView} from './partners.js';
+import {formatPhone,formatInput} from './input-format.js';
 
 const states={pending:'심사 대기',approved:'이용 중',rejected:'가입 보류',suspended:'이용 중지'};
 const legal={individual:'개인',sole:'개인사업자',corporate:'법인사업자'};
@@ -42,11 +44,11 @@ export async function membersView(context){
  }
 
  async function detail(id){
-  const {member:m,files,reviews,orderCounts}=await api(`admin/members/${id}`);
+  const [{member:m,files,reviews,orderCounts,profileEvents=[]},{partners}]=await Promise.all([api(`admin/members/${id}`),api(`admin/partners?memberId=${encodeURIComponent(id)}`)]);
   const reviewing=['pending','rejected'].includes(m.status),choices=reviewing?{approved:'가입 승인',rejected:'가입 보류'}:{approved:'이용 재개',suspended:'이용 중지'};
   shell(`<header><div><button class="quiet" id="member-back">← 회원 목록</button><h1>${esc(m.name)}</h1><p>${roles[m.role]} · ${legal[m.legal_type]}</p></div>${badge(m)}</header>
    <div class="detail-grid">
-    <section class="panel"><h2>회원 정보</h2><dl>${[['담당자',m.contact],['이메일',m.email],['연락처',m.phone],['사업자번호',m.business_number||'해당 없음'],['가입일',date(m.created_at)]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></section>
+    <section class="panel"><h2>회원 정보</h2><dl>${[['담당자',m.contact],['이메일',m.email],['연락처',m.phone],['사업자번호',m.business_number||'해당 없음'],['가입일',date(m.created_at)]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl><details class="member-profile-edit"><summary>회원정보 수정</summary><form id="member-profile"><label>업체명 / 브랜드명<input name="name" value="${esc(m.name)}" maxlength="100" required></label><label>담당자<input name="contact" value="${esc(m.contact)}" maxlength="60" required></label><label>연락처<input name="phone" type="tel" value="${esc(m.phone)}" maxlength="30" required></label><button type="submit">회원정보 저장</button></form></details></section>
     <section class="panel"><h2>${reviewing?'가입 심사':'이용 상태 관리'}</h2>
      <form id="member-review"><label>변경할 상태<select name="status" required><option value="">선택해주세요</option>${options(choices,'')}</select></label>
       <label>회원에게 보이는 안내<textarea name="note" rows="3" maxlength="1000" placeholder="보류·중지 시 사유를 남겨주세요."></textarea></label>
@@ -55,14 +57,19 @@ export async function membersView(context){
       <button type="submit" disabled>${reviewing?'심사 결과 저장':'상태 변경'}</button>
      </form>
     </section>
+    <section class="panel wide"><div class="member-section-heading"><h2>${m.role==='brand'?'연결된 제작 업체':'연결된 브랜드'}</h2><button id="member-partners" class="secondary">매칭 관리 →</button></div><div class="member-partner-list">${partners.filter(p=>p.status==='active').map(p=>`<div><strong>${esc(m.role==='brand'?p.supplier_name:p.brand_name)}</strong><span class="badge">${p.available?'거래 연결 중':'회원 상태 확인 필요'}</span><small>${esc(m.role==='brand'?p.supplier_contact:p.brand_contact)} · ${esc(m.role==='brand'?p.supplier_phone:p.brand_phone)}</small></div>`).join('')||'<p class="muted">아직 연결된 거래 업체가 없습니다.</p>'}</div></section>
     <section class="panel wide"><div class="member-section-heading"><h2>발주 현황</h2><button id="member-orders" class="secondary">발주 내역 보기 →</button></div>
      <dl class="member-order-stats">${[['전체',orderCounts.total],['진행 중',orderCounts.active],['입고 완료',orderCounts.received],['취소',orderCounts.cancelled]].map(([label,count])=>`<div><dt>${label}</dt><dd>${count.toLocaleString('ko-KR')}<small>건</small></dd></div>`).join('')}</dl>
     </section>
     <section class="panel wide"><h2>가입 자료</h2><div class="review-files">${files.map(f=>`<a href="/api/admin/members/files/${f.id}" target="_blank" rel="noreferrer" class="review-file">${f.mime.startsWith('image/')?`<img src="/api/admin/members/files/${f.id}" alt="${esc(f.name)}">`:'<span class="review-document">PDF</span>'}<strong>${f.kind==='certificate'?'사업자등록증':'현장·패키징 사진'}</strong><span>${esc(f.name)}</span></a>`).join('')||'<p class="muted">첨부 자료가 없습니다.</p>'}</div></section>
     <section class="panel wide"><h2>상태 변경 기록</h2><ul class="timeline">${reviews.map(r=>`<li><strong>${r.status==='approved'?'승인 / 이용 재개':states[r.status]}</strong><p class="pre">${esc(r.note)||'별도 안내 없음'}</p><small>${esc(r.actor)} · ${date(r.created_at)}</small></li>`).join('')||'<li>아직 심사하지 않았습니다.</li>'}</ul></section>
+    ${profileEvents.length?`<section class="panel wide"><details><summary>회원정보 수정 기록 ${profileEvents.length}건</summary><ul class="timeline">${profileEvents.map(event=>`<li><small>${esc(event.actor)} · ${date(event.created_at)}</small>${Object.entries(event.changes).map(([key,value])=>`<p>${{name:'업체명',contact:'담당자',phone:'연락처'}[key]||esc(key)}: ${esc(value.before)} → ${esc(value.after)}</p>`).join('')}</li>`).join('')}</ul></details></section>`:''}
    </div>`);
   document.querySelector('#member-back').onclick=()=>list().catch(showError);
   document.querySelector('#member-orders').onclick=()=>ordersView({...context,memberId:id,memberName:m.name,onBack:()=>detail(id)}).catch(showError);
+  document.querySelector('#member-partners').onclick=()=>partnersView({...context,initialMember:m,onBack:()=>detail(id)}).catch(showError);
+  const profile=document.querySelector('#member-profile');profile.elements.phone.oninput=e=>formatInput(e,formatPhone);
+  profile.onsubmit=e=>submit(e,async data=>{await send(`admin/members/${id}`,{...data,action:'profile',version:m.version},'PATCH');notice('회원정보를 저장했어요.');await detail(id);});
   const form=document.querySelector('#member-review');
   form.elements.status.onchange=()=>{form.querySelector('[type=submit]').disabled=!form.elements.status.value||form.elements.status.value===m.status;form.elements.note.required=form.elements.status.value!=='approved';};
   form.onsubmit=e=>submit(e,async data=>{await send(`admin/members/${id}`,{...data,version:m.version},'PATCH');notice('회원 상태를 변경했어요.');await detail(id);});
