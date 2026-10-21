@@ -16,7 +16,7 @@ function loadTurnstile() {
   }).catch(error=>{scriptPromise=undefined;throw error;});
   return scriptPromise;
 }
-export default function Turnstile({siteKey,onToken,resetKey}) {
+export default function Turnstile({siteKey,onToken,resetKey,action='quote'}) {
   const container=useRef(null),callback=useRef(onToken);
   const [error,setError]=useState(''),[retry,setRetry]=useState(0);
   callback.current=onToken;
@@ -25,7 +25,7 @@ export default function Turnstile({siteKey,onToken,resetKey}) {
     callback.current('');setError('');
     loadTurnstile().then(api=>{
       if(!active)return;
-      widget=api.render(container.current,{sitekey:siteKey,action:'quote',size:'flexible',theme:'auto',
+      widget=api.render(container.current,{sitekey:siteKey,action,size:'flexible',theme:'auto',
         callback:token=>{if(!active)return;setError('');callback.current(token);clearTimeout(timer);timer=setTimeout(()=>{if(active){callback.current('');api.reset(widget);}},240000);},
         'expired-callback':()=>{if(active){clearTimeout(timer);callback.current('');}},
         'timeout-callback':()=>{if(active){clearTimeout(timer);callback.current('');}},
@@ -33,6 +33,6 @@ export default function Turnstile({siteKey,onToken,resetKey}) {
       });
     }).catch(problem=>{if(active)setError(problem.message);});
     return()=>{active=false;clearTimeout(timer);if(widget!==undefined)window.turnstile?.remove(widget);callback.current('');};
-  },[siteKey,resetKey,retry]);
+  },[siteKey,resetKey,retry,action]);
   return <div className="turnstile-check"><div ref={container}/>{error&&<p className="field-error" role="alert">{error} <button type="button" onClick={()=>setRetry(value=>value+1)}>다시 확인</button></p>}</div>;
 }

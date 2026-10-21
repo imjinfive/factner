@@ -51,6 +51,7 @@ import ServiceIntro from "./ServiceIntro";
 import { api, makeReceipt, quoteStatuses } from "./api";
 import {useSuppliers} from "./useSuppliers";
 import Turnstile from "./Turnstile";
+import MemberPortal from "./MemberPortal";
 
 const spring = { type: "spring", stiffness: 420, damping: 30, mass: 0.8 };
 const categoryIcons = [SquaresFour, Cube, Package, Gift, Tote, Stack];
@@ -64,7 +65,7 @@ const navItems = [
 function currentPage() {
   const hash = location.hash.slice(1);
   const page = hash && hash !== "main" ? hash : history.state?.factnerPage;
-  return [...navItems.map(([key]) => key), "activity"].includes(page)
+  return [...navItems.map(([key]) => key), "activity", "account"].includes(page)
     ? page
     : "explore";
 }
@@ -261,6 +262,8 @@ function SupplierCard({
 }
 
 function App() {
+  const [member,setMember]=useState(null),[authLoading,setAuthLoading]=useState(true);
+  useEffect(()=>{let active=true;api('member/me').then(data=>{if(active)setMember(data.member);}).catch(()=>{}).finally(()=>{if(active)setAuthLoading(false);});return()=>{active=false;};},[]);
   const {suppliers,loading:suppliersLoading,error:suppliersError,source:supplierSource,refresh:refreshSuppliers}=useSuppliers();
   const [page, setPage] = useState(currentPage);
   const [category, setCategory] = useState("전체");
@@ -438,6 +441,7 @@ function App() {
     guide: "이용 안내",
     membership: "멤버십",
     activity: "나의 활동",
+    account: "마이페이지",
   };
   useEffect(() => {
     document.title = `팩트너 | ${titleByPage[page]}`;
@@ -497,6 +501,7 @@ function App() {
                 <span className="count">{requests.length}</span>
               )}
             </button>
+            <button className="member-login-link" onClick={()=>navigate('account')}>{member?'마이페이지':'로그인·가입'}</button>
             <Button className="header-cta" onClick={() => startRequest()}>
               견적 요청하기 <ArrowUpRight size={17} />
             </Button>
@@ -512,6 +517,7 @@ function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
+            {page === "account" && <MemberPortal member={member} onMember={setMember} authLoading={authLoading} Button={Button} Modal={Modal} onLegacy={()=>navigate('activity')}/>}
             {page === "intro" && (
               <ServiceIntro
                 Button={Button}

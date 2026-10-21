@@ -1,9 +1,9 @@
 import {fail,rate} from './http.js';
 import {digest} from './security.js';
 
-export async function verifyQuoteSubmission(req,env,input,config) {
+export async function verifyQuoteSubmission(req,env,input,config,action='quote') {
  if(input.website)fail(400,'요청을 확인해주세요.');
- await rate(env,`quote-email:${await digest(input.email.trim().toLowerCase())}`,10,86400);
+ await rate(env,`${action}-email:${await digest(input.email.trim().toLowerCase())}`,10,86400);
  if(!env.TURNSTILE_SITE_KEY||!env.TURNSTILE_SECRET_KEY) {
   if(config.accepting)fail(503,'접수 준비 중입니다. 잠시 후 다시 시도해주세요.');
   return;
@@ -16,5 +16,5 @@ export async function verifyQuoteSubmission(req,env,input,config) {
   result=await response.json();
   if(!result||typeof result.success!=='boolean')throw new Error();
  } catch {fail(503,'보안 확인에 연결하지 못했습니다. 다시 시도해주세요.');}
- if(result.success!==true||result.hostname!==new URL(req.url).hostname||result.action!=='quote')fail(400,'보안 확인이 만료되었거나 일치하지 않습니다. 다시 확인해주세요.');
+ if(result.success!==true||result.hostname!==new URL(req.url).hostname||result.action!==action)fail(400,'보안 확인이 만료되었거나 일치하지 않습니다. 다시 확인해주세요.');
 }
