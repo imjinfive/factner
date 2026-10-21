@@ -123,3 +123,73 @@ test('password changes invalidate all member sessions without affecting admin se
  assert.equal((await second('member/me')).status,401);assert.equal((await brand('member/me')).status,401);assert.equal((await admin('admin/members')).status,200);
  assert.equal((await brand('member/login',{email:'brand@test.test',password:'replacement-password-123'})).status,200);
 });
+
+test('member management searches literal text and normalized numbers, combines filters and paginates without losing counts',async()=>{
+ const {admin,DB}=await fixture();
+ const insert=DB.raw.prepare('INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,status,consent_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
+ const seed=(overrides={})=>{
+  const m={id:crypto.randomUUID(),email:`${crypto.randomUUID()}@test.test`,role:'brand',legal:'individual',name:'관리 브랜드',contact:'담당자',phone:'010-0000-0000',number:'',status:'pending',date:'2026-10-21T00:00:00.000Z',...overrides};
+  insert.run(m.id,m.email,'unused-test-hash',m.role,m.legal,m.name,m.contact,m.phone,m.number,m.status,'test',m.date,m.date);return m;
+ };
+ const target=seed({name:'관리 100%_\\브랜드',email:'literal-brand@test.test',contact:'김담당',phone:'010-1234-5678',number:'1234567890',legal:'corporate',status:'approved'});
+ seed({name:'관리 100XX브랜드',role:'supplier',legal:'sole',status:'pending'});
+ seed({status:'rejected'});seed({status:'suspended'});
+ const find=async(q,suffix='')=>{const r=await admin(`admin/members?q=${encodeURIComponent(q)}${suffix}`);assert.equal(r.status,200);return r.data;};
+ for(const q of ['100%','_','\\','김담당','literal-brand@','01012345678','010 1234 5678','123-45-67890']){
+  const data=await find(q);assert.deepEqual(data.members.map(m=>m.id),[target.id],q);assert.equal(data.total,1,q);
+ }
+ const all=await find('관리');assert.equal(all.total,4);assert.deepEqual(all.counts,{all:4,pending:1,approved:1,rejected:1,suspended:1});
+ const brands=await find('관리','&role=brand&status=approved');assert.equal(brands.total,1);assert.deepEqual(brands.counts,{all:3,pending:0,approved:1,rejected:1,suspended:1});
+ const corporate=await find('관리','&role=brand&legalType=corporate&status=pending');assert.equal(corporate.total,0);assert.deepEqual(corporate.counts,{all:1,pending:0,approved:1,rejected:0,suspended:0});
+ for(const filter of ['role=owner','legalType=unknown','status=deleted'])assert.equal((await admin(`admin/members?${filter}`)).status,400,filter);
+ for(let i=0;i<32;i++)seed({name:`페이지 ${i}`,date:new Date(Date.UTC(2026,9,21,0,i)).toISOString()});
+ const first=await find('페이지','&page=1'),second=await find('페이지','&page=2');
+ assert.equal(first.total,32);assert.equal(first.members.length,30);assert.equal(second.members.length,2);assert.equal(second.page,2);assert.equal(second.counts.all,32);
+ assert.equal(new Set([...first.members,...second.members].map(m=>m.id)).size,32);
+ assert.ok(first.members.every(m=>!('password_hash' in m)&&!('consent_version' in m)));
+});
+
+test('member management remains owner-only while ordinary administrators can manage orders',async()=>{
+ const {admin,brand,common}=await fixture();const id=await approve(admin,brand,'managed@test.test');
+ const file=(await admin(`admin/members/${id}`)).data.files[0];
+ assert.equal((await admin('admin/users',{username:'staff',password,displayName:'테스트 직원'})).status,201);
+ const staff=client({...common,APP_KIND:'admin'}),nextPassword='staff-replacement-password-123';
+ assert.equal((await staff('auth/login',{username:'staff',password})).status,200);
+ assert.equal((await staff('auth/password',{currentPassword:password,newPassword:nextPassword})).status,200);
+ assert.equal((await staff('auth/login',{username:'staff',password:nextPassword})).status,200);
+ assert.equal((await staff('admin/orders')).status,200);
+ for(const path of ['admin/members',`admin/members/${id}`,`admin/members/files/${file.id}`])assert.equal((await staff(path)).status,403,path);
+ assert.equal((await staff(`admin/members/${id}`,{status:'suspended',version:2,note:'허용되지 않은 변경'},'PATCH')).status,403);
+ assert.equal((await brand('member/me')).status,200);
+});
+
+test('member order summaries and filters preserve ownership and history across suspension and reactivation',async()=>{
+ const {admin,brand,supplier,other,DB,common}=await fixture();
+ const bid=await approve(admin,brand,'managed-brand@test.test'),sid=await approve(admin,supplier,'managed-supplier@test.test','supplier'),oid=await approve(admin,other,'other-brand@test.test');
+ const states=['producing','received','cancelled'],ids=[];
+ for(const status of states){
+  const input=request(spec([]));assert.equal((await brand('orders',input)).status,201);ids.push(input.id);
+  DB.raw.prepare('UPDATE orders SET supplier_id=?,status=?,approved_snapshot=? WHERE id=?').run(sid,status,JSON.stringify({spec:input.spec,quantity:input.quantity,proposal:{totalPrice:650000}}),input.id);
+ }
+ const unrelated=request(spec([]));assert.equal((await other('orders',unrelated)).status,201);
+ for(const id of [bid,sid]){
+  const detail=await admin(`admin/members/${id}`);assert.deepEqual(detail.data.orderCounts,{total:3,active:1,received:1,cancelled:1});
+  const list=await admin(`admin/orders?memberId=${id}`);assert.equal(list.status,200);assert.equal(list.data.total,3);assert.deepEqual(new Set(list.data.orders.map(o=>o.id)),new Set(ids));
+ }
+ assert.deepEqual((await admin(`admin/members/${oid}`)).data.orderCounts,{total:1,active:1,received:0,cancelled:0});
+ assert.equal((await admin(`admin/orders?memberId=${bid}&status=received`)).data.total,1);
+ assert.equal((await admin('admin/orders?memberId=not-a-uuid')).status,400);
+ assert.equal((await admin(`admin/orders?memberId=${crypto.randomUUID()}`)).status,404);
+ const own=await other(`orders?memberId=${bid}`);assert.equal(own.data.total,1);assert.equal(own.data.orders[0].id,unrelated.id);
+ const supplierOwn=await supplier(`orders?memberId=${oid}`);assert.equal(supplierOwn.data.total,2);assert.ok(supplierOwn.data.orders.every(o=>o.supplier_id===sid));
+ const oldSession=client({...common,APP_KIND:'main'});assert.equal((await oldSession('member/login',{email:'managed-brand@test.test',password})).status,200);
+ const before=DB.raw.prepare('SELECT * FROM orders ORDER BY id').all();
+ assert.equal((await admin(`admin/members/${bid}`,{status:'suspended',version:2,note:'상태 변경 검증'},'PATCH')).status,200);
+ assert.equal((await oldSession('orders')).status,401);
+ assert.equal((await admin(`admin/members/${bid}`,{status:'approved',version:3,note:'이용 재개'},'PATCH')).status,200);
+ assert.equal((await oldSession('orders')).status,401);
+ assert.equal((await brand('member/login',{email:'managed-brand@test.test',password})).status,200);
+ assert.equal((await brand('orders')).data.total,3);
+ assert.deepEqual(DB.raw.prepare('SELECT * FROM orders ORDER BY id').all(),before);
+ const reviews=(await admin(`admin/members/${bid}`)).data.reviews;assert.equal(reviews.length,3);assert.deepEqual(reviews.map(r=>r.status),['approved','suspended','approved']);
+});

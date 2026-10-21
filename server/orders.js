@@ -64,9 +64,17 @@ export async function orderApi(req,env,url,adminUser){
    const page=Math.max(1,Math.min(10000,Number.parseInt(url.searchParams.get('page'),10)||1)),status=text(url.searchParams.get('status')||'',30);
    const access=admin?'1=1':user.role==='brand'?'o.brand_id=?':"o.supplier_id=? AND o.status NOT IN ('requested','matched','cancelled')";
    const args=admin?[]:[user.id],where=`WHERE ${access} AND (?='' OR o.status=?)`;
-   const rows=await stmt(env,`${orderSelect} ${where} ORDER BY o.created_at DESC LIMIT 30 OFFSET ?`,...args,status,status,(page-1)*30).all();
-   const total=await stmt(env,`SELECT count(*) AS n FROM orders o ${where}`,...args,status,status).first();
-   return json({orders:rows.results.map(parseOrder),total:total.n,page});
+   let memberFilter='';const memberId=admin?url.searchParams.get('memberId'):null;
+   if(memberId!==null){
+    if(!uuid(memberId))fail(400,'회원을 확인해주세요.');
+    const member=await stmt(env,'SELECT role FROM members WHERE id=?',memberId).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
+    memberFilter=` AND o.${member.role==='brand'?'brand_id':'supplier_id'}=?`;
+   }
+   const params=[...args,status,status,...(memberId!==null?[memberId]:[])];
+   const total=await stmt(env,`SELECT count(*) AS n FROM orders o ${where}${memberFilter}`,...params).first();
+   const currentPage=Math.min(page,Math.max(1,Math.ceil(total.n/30)));
+   const rows=await stmt(env,`${orderSelect} ${where}${memberFilter} ORDER BY o.created_at DESC,o.id DESC LIMIT 30 OFFSET ?`,...params,(currentPage-1)*30).all();
+   return json({orders:rows.results.map(parseOrder),total:total.n,page:currentPage});
   }
   if(req.method==='POST'&&!admin){
    requireRole(user,'brand');const input=await body(req),quantity=Number(input.quantity),deadline=date(input.requestedDate),address=text(input.address,300,true),note=text(input.note,2000);

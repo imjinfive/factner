@@ -112,12 +112,17 @@ export async function memberApi(req,env,url){
 export async function memberAdminApi(req,env,url,user){
  const path=url.pathname;if(!path.startsWith('/api/admin/members'))return null;owner(user);
  if(path==='/api/admin/members'&&req.method==='GET'){
-  const q=`%${text(url.searchParams.get('q')||'',100)}%`,status=url.searchParams.get('status')||'';
+  const query=text(url.searchParams.get('q')||'',100),q=`%${query.replace(/[\\%_]/g,'\\$&')}%`,status=url.searchParams.get('status')||'',role=url.searchParams.get('role')||'',legalType=url.searchParams.get('legalType')||'';
+  if(!['','pending','approved','rejected','suspended'].includes(status)||!['','brand','supplier'].includes(role)||!['','individual','sole','corporate'].includes(legalType))fail(400,'회원 검색 조건을 확인해주세요.');
+  const digits=query.replace(/[+ ()-]/g,''),number=/^\d+$/.test(digits)?`%${digits}%`:'';
   const page=Math.max(1,Math.min(10000,Number.parseInt(url.searchParams.get('page'),10)||1));
-  const where="WHERE (name LIKE ? OR email LIKE ?) AND (?='' OR status=?)";
-  const rows=await stmt(env,`SELECT ${fields} FROM members ${where} ORDER BY created_at DESC LIMIT 30 OFFSET ?`,q,q,status,status,(page-1)*30).all();
-  const total=await stmt(env,`SELECT count(*) AS n FROM members ${where}`,q,q,status,status).first();
-  return json({members:rows.results,total:total.n,page});
+  const where=`WHERE (name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR contact LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR business_number LIKE ? ESCAPE '\\' OR (?<>'' AND (REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,'-',''),' ',''),'(',''),')',''),'+','') LIKE ? OR business_number LIKE ?))) AND (?='' OR role=?) AND (?='' OR legal_type=?)`;
+  const args=[q,q,q,q,q,number,number,number,role,role,legalType,legalType];
+  const grouped=await stmt(env,`SELECT status,count(*) AS n FROM members ${where} GROUP BY status`,...args).all();
+  const counts={all:0,pending:0,approved:0,rejected:0,suspended:0};for(const row of grouped.results){counts[row.status]=row.n;counts.all+=row.n;}
+  const total=status?counts[status]:counts.all,lastPage=Math.max(1,Math.ceil(total/30)),currentPage=Math.min(page,lastPage);
+  const rows=await stmt(env,`SELECT ${fields} FROM members ${where} AND (?='' OR status=?) ORDER BY created_at DESC,id DESC LIMIT 30 OFFSET ?`,...args,status,status,(currentPage-1)*30).all();
+  return json({members:rows.results,total,page:currentPage,counts});
  }
  const file=path.match(/^\/api\/admin\/members\/files\/([a-f0-9-]{36})$/);
  if(file&&req.method==='GET')return memberFile(req,env,file[1],user,true);
@@ -127,7 +132,8 @@ export async function memberAdminApi(req,env,url,user){
   if(req.method==='GET'){
    const files=await stmt(env,"SELECT id,name,mime,kind FROM member_files WHERE member_id=? AND kind IN ('certificate','workplace')",member.id).all();
    const reviews=await stmt(env,'SELECT actor,status,note,created_at FROM member_reviews WHERE member_id=? ORDER BY created_at DESC,rowid DESC',member.id).all();
-   return json({member,files:files.results,reviews:reviews.results});
+   const orderCounts=await stmt(env,`SELECT count(*) AS total,COALESCE(SUM(status NOT IN ('received','cancelled')),0) AS active,COALESCE(SUM(status='received'),0) AS received,COALESCE(SUM(status='cancelled'),0) AS cancelled FROM orders WHERE ${member.role==='brand'?'brand_id':'supplier_id'}=?`,member.id).first();
+   return json({member,files:files.results,reviews:reviews.results,orderCounts});
   }
   if(req.method==='PATCH'){
    const input=await body(req),note=text(input.note,1000);
