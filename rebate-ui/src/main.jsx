@@ -52,6 +52,7 @@ import { api, makeReceipt, quoteStatuses } from "./api";
 import {useSuppliers} from "./useSuppliers";
 import Turnstile from "./Turnstile";
 import MemberPortal from "./MemberPortal";
+import OrderAlerts,{OrderAlertContext,OrderAlertNotice} from "./OrderAlerts";
 import {PackagingChoice,PostcodeAddress} from './PackagingFields';
 import {formatInput,formatPhone} from '../../admin-ui/input-format.js';
 
@@ -144,6 +145,7 @@ function Modal({ open, onClose, title, description, children, wide = false }) {
                 }
                 transition={spring}
               >
+                <OrderAlertNotice/>
                 <div className="modal-heading">
                   <div>
                     <Dialog.Title>{title}</Dialog.Title>
@@ -265,6 +267,7 @@ function SupplierCard({
 
 function App() {
   const [member,setMember]=useState(null),[authLoading,setAuthLoading]=useState(true);
+  const [requestedOrder,setRequestedOrder]=useState(null),[attentionRefresh,setAttentionRefresh]=useState(0),[orderAlertNotice,setOrderAlertNotice]=useState(null);
   useEffect(()=>{let active=true;api('member/me').then(data=>{if(active)setMember(data.member);}).catch(()=>{}).finally(()=>{if(active)setAuthLoading(false);});return()=>{active=false;};},[]);
   const {suppliers,loading:suppliersLoading,error:suppliersError,source:supplierSource,refresh:refreshSuppliers}=useSuppliers();
   const [page, setPage] = useState(currentPage);
@@ -331,6 +334,10 @@ function App() {
     }
     setPage(next);
     window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function openOrderAlert(id) {
+    if(modal){notify('입력 중인 창을 닫은 뒤 발주 알림을 확인해주세요.');return;}
+    setRequestedOrder({id,key:Date.now()});navigate('account');
   }
   function persist(key, value) {
     try {
@@ -450,7 +457,7 @@ function App() {
   }, [page]);
 
   return (
-    <MotionConfig transition={spring} reducedMotion="user">
+    <OrderAlertContext.Provider value={member?.role==='supplier'&&orderAlertNotice?.memberId===member.id?orderAlertNotice:null}><MotionConfig transition={spring} reducedMotion="user">
       <a
         href="#main"
         className="skip-link"
@@ -519,7 +526,7 @@ function App() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
-            {page === "account" && <MemberPortal member={member} onMember={setMember} authLoading={authLoading} Button={Button} Modal={Modal} onLegacy={()=>navigate('activity')}/>}
+            {page === "account" && <MemberPortal member={member} onMember={setMember} authLoading={authLoading} Button={Button} Modal={Modal} onLegacy={()=>navigate('activity')} requestedOrder={requestedOrder} onOrderOpened={()=>setRequestedOrder(null)} onAttentionChange={()=>setAttentionRefresh(value=>value+1)}/>}
             {page === "intro" && (
               <ServiceIntro
                 Button={Button}
@@ -1078,6 +1085,7 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      {member?.role==='supplier'&&<OrderAlerts key={member.id} member={member} refreshKey={attentionRefresh} onNotice={setOrderAlertNotice} onOpen={openOrderAlert} onSessionExpired={()=>setMember(null)}/>}
       <div className="toast-region" role="status" aria-live="polite">
         <AnimatePresence>
           {toast && (
@@ -1289,7 +1297,7 @@ function App() {
           </div>
         )}
       </Modal>
-    </MotionConfig>
+    </MotionConfig></OrderAlertContext.Provider>
   );
 }
 

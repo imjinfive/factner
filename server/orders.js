@@ -15,7 +15,21 @@ async function specInput(env,user,input){
  }
  return spec;
 }
-const parseOrder=row=>({...row,spec:JSON.parse(row.spec),proposal:row.proposal?JSON.parse(row.proposal):null,approved_snapshot:row.approved_snapshot?JSON.parse(row.approved_snapshot):null,shipping:row.shipping?JSON.parse(row.shipping):null});
+const responseHours=24,responseMillis=responseHours*60*60*1000;
+const nextResponseAt=row=>new Date(Math.max(Date.now(),(Date.parse(row.response_requested_at)||0)+1)).toISOString();
+const pendingSql="o.status='assigned' AND o.supplier_id IS NOT NULL AND o.shared_at IS NOT NULL AND o.response_requested_at IS NOT NULL";
+export function orderAttention(row,time=now()){
+ const pending=row.status==='assigned'&&!!row.supplier_id&&!!row.shared_at&&!!row.response_requested_at;
+ const due=row.response_requested_at?new Date(Date.parse(row.response_requested_at)+responseMillis).toISOString():null;
+ return {response_due_at:due,unread:pending&&!row.supplier_seen_at,overdue:pending&&Date.parse(due)<=Date.parse(time)};
+}
+async function memberFilter(env,url,admin){
+ const id=admin?url.searchParams.get('memberId'):null;if(id===null)return {sql:'',args:[]};
+ if(!uuid(id))fail(400,'회원을 확인해주세요.');
+ const member=await stmt(env,'SELECT role FROM members WHERE id=?',id).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
+ return {sql:` AND o.${member.role==='brand'?'brand_id':'supplier_id'}=?`,args:[id]};
+}
+const parseOrder=(row,time=now())=>({...row,...orderAttention(row,time),spec:JSON.parse(row.spec),proposal:row.proposal?JSON.parse(row.proposal):null,approved_snapshot:row.approved_snapshot?JSON.parse(row.approved_snapshot):null,shipping:row.shipping?JSON.parse(row.shipping):null});
 const orderSelect=`SELECT o.*,b.name AS brand_name,s.name AS supplier_name FROM orders o JOIN members b ON b.id=o.brand_id LEFT JOIN members s ON s.id=o.supplier_id`;
 async function getOrder(env,id,user,admin){
  const row=await stmt(env,`${orderSelect} WHERE o.id=?`,id).first();
@@ -26,7 +40,7 @@ async function mutate(env,order,input,user,patch,action,details={}){
  if(!Number.isSafeInteger(input.version)||input.version!==order.version)fail(409,'변경된 내용이 있습니다. 새로고침 후 다시 확인해주세요.');
  const entries=Object.entries(patch),time=now();
  const result=await env.DB.batch([
-  stmt(env,`UPDATE orders SET ${entries.map(([key])=>`${key}=?`).join(',')},updated_at=?,version=version+1 WHERE id=? AND version=?`,...entries.map(([,value])=>value),time,order.id,input.version),
+  stmt(env,`UPDATE orders SET ${entries.map(([key,value])=>key==='supplier_seen_at'&&value!==null?'supplier_seen_at=COALESCE(supplier_seen_at,?)':`${key}=?`).join(',')},updated_at=?,version=version+1 WHERE id=? AND version=?`,...entries.map(([,value])=>value),time,order.id,input.version),
   stmt(env,'INSERT INTO order_events SELECT ?,?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),order.id,user.id,user.name||user.display_name,action,JSON.stringify(details),time),
  ]);
  if(!result[0].meta.changes)fail(409,'변경된 내용이 있습니다. 새로고침해주세요.');
@@ -59,22 +73,30 @@ export async function orderApi(req,env,url,adminUser){
   const result=await stmt(env,'UPDATE packagings SET spec=?,favorite=?,archived=?,version=version+1,updated_at=? WHERE id=? AND brand_id=? AND version=?',JSON.stringify(spec),typeof input.favorite==='boolean'?Number(input.favorite):row.favorite,input.archived===true?1:0,now(),row.id,user.id,input.version||0).run();
   if(!result.meta.changes)fail(409,'패키징이 변경되었습니다. 다시 열어주세요.');return json({ok:true});
  }
+ if(path===`${base}/orders/attention`&&req.method==='GET'){
+  if(!admin)requireRole(user,'supplier');
+  const time=now(),cutoff=new Date(Date.parse(time)-responseMillis).toISOString(),filter=await memberFilter(env,url,admin);
+  const where=`WHERE ${pendingSql}${admin?'':' AND o.supplier_id=?'}${filter.sql}`,args=[...(admin?[]:[user.id]),...filter.args];
+  const counts=await stmt(env,`SELECT count(*) AS pending,COALESCE(SUM(o.supplier_seen_at IS NULL),0) AS unread,COALESCE(SUM(o.response_requested_at<=?),0) AS overdue FROM orders o ${where}`,cutoff,...args).first();
+  const select="SELECT o.id,json_extract(o.spec,'$.name') AS name,b.name AS brand_name,s.name AS supplier_name,o.response_requested_at,o.supplier_seen_at,o.status,o.supplier_id,o.shared_at FROM orders o JOIN members b ON b.id=o.brand_id JOIN members s ON s.id=o.supplier_id";
+  const rows=await stmt(env,`${select} ${where} ORDER BY (o.response_requested_at<=?) DESC,(o.supplier_seen_at IS NULL) DESC,o.response_requested_at,o.id LIMIT 20`,...args,cutoff).all();
+  const latest=await stmt(env,`${select} ${where} AND o.supplier_seen_at IS NULL ORDER BY o.response_requested_at DESC,o.id DESC LIMIT 1`,...args).first();
+  const item=({status,supplier_id,shared_at,...value})=>({...value,...orderAttention({...value,status,supplier_id,shared_at},time)});
+  return json({...counts,responseHours,items:rows.results.map(item),latestUnread:latest?item(latest):null,serverTime:time});
+ }
  if(path===`${base}/orders`){
   if(req.method==='GET'){
    const page=Math.max(1,Math.min(10000,Number.parseInt(url.searchParams.get('page'),10)||1)),status=text(url.searchParams.get('status')||'',30);
    const access=admin?'1=1':user.role==='brand'?'o.brand_id=?':"o.supplier_id=? AND (o.status NOT IN ('requested','matched','cancelled') OR (o.status='cancelled' AND o.shared_at IS NOT NULL))";
    const args=admin?[]:[user.id],where=`WHERE ${access} AND (?='' OR o.status=?)`;
-   let memberFilter='';const memberId=admin?url.searchParams.get('memberId'):null;
-   if(memberId!==null){
-    if(!uuid(memberId))fail(400,'회원을 확인해주세요.');
-    const member=await stmt(env,'SELECT role FROM members WHERE id=?',memberId).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
-    memberFilter=` AND o.${member.role==='brand'?'brand_id':'supplier_id'}=?`;
-   }
-   const params=[...args,status,status,...(memberId!==null?[memberId]:[])];
-   const total=await stmt(env,`SELECT count(*) AS n FROM orders o ${where}${memberFilter}`,...params).first();
+   const filter=await memberFilter(env,url,admin),attention=text(url.searchParams.get('attention')||'',20),time=now();
+   if(!['','unread','overdue'].includes(attention))fail(400,'알림 필터를 확인해주세요.');
+   const attentionSql=attention?` AND ${pendingSql} AND ${attention==='unread'?'o.supplier_seen_at IS NULL':'o.response_requested_at<=?'}`:'';
+   const params=[...args,status,status,...filter.args,...(attention==='overdue'?[new Date(Date.parse(time)-responseMillis).toISOString()]:[])];
+   const total=await stmt(env,`SELECT count(*) AS n FROM orders o ${where}${filter.sql}${attentionSql}`,...params).first();
    const currentPage=Math.min(page,Math.max(1,Math.ceil(total.n/30)));
-   const rows=await stmt(env,`${orderSelect} ${where}${memberFilter} ORDER BY o.created_at DESC,o.id DESC LIMIT 30 OFFSET ?`,...params,(currentPage-1)*30).all();
-   return json({orders:rows.results.map(parseOrder),total:total.n,page:currentPage});
+   const rows=await stmt(env,`${orderSelect} ${where}${filter.sql}${attentionSql} ORDER BY o.created_at DESC,o.id DESC LIMIT 30 OFFSET ?`,...params,(currentPage-1)*30).all();
+   return json({orders:rows.results.map(row=>parseOrder(row,time)),total:total.n,page:currentPage});
   }
   if(req.method==='POST'&&!admin){
    requireRole(user,'brand');const input=await body(req),quantity=Number(input.quantity),deadline=date(input.requestedDate),address=text(input.address,300,true),note=text(input.note,2000);
@@ -93,7 +115,7 @@ export async function orderApi(req,env,url,adminUser){
    const details={spec,quantity,requestedDate:deadline,address,note};
    if(partner)details.sharing={partnerId:partner.id,supplierId,supplier:partner.name,consent:true,items:'패키징 사양·첨부 파일·수량·납기·배송지·요청 사항',purpose:'견적 및 제작 진행',version:'partner-order-sharing-2026-10-21'};
    const result=await env.DB.batch([
-    stmt(env,`INSERT INTO orders(id,brand_id,supplier_id,source_id,spec,quantity,requested_date,address,note,status,shared_at,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=? AND role='brand' AND status='approved') AND (? IS NULL OR EXISTS(SELECT 1 FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved'))`,input.id,user.id,supplierId,source?.id||null,JSON.stringify(spec),quantity,deadline,address,note,partner?'assigned':'requested',partner?time:null,time,time,user.id,supplierId,user.id,supplierId),
+    stmt(env,`INSERT INTO orders(id,brand_id,supplier_id,source_id,spec,quantity,requested_date,address,note,status,shared_at,response_requested_at,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=? AND role='brand' AND status='approved') AND (? IS NULL OR EXISTS(SELECT 1 FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved'))`,input.id,user.id,supplierId,source?.id||null,JSON.stringify(spec),quantity,deadline,address,note,partner?'assigned':'requested',partner?time:null,partner?time:null,time,time,user.id,supplierId,user.id,supplierId),
     ...spec.files.map(f=>stmt(env,'INSERT INTO order_files SELECT ?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND brand_id=?)',input.id,f.id,input.id,user.id)),
     stmt(env,'INSERT INTO order_events SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND brand_id=?)',crypto.randomUUID(),input.id,user.id,user.name,partner?'연결된 제작 업체에 발주 요청':source?'지난 발주로 다시 요청':'발주 요청',JSON.stringify(details),time,input.id,user.id),
    ]);
@@ -117,6 +139,18 @@ export async function orderApi(req,env,url,adminUser){
   }
   if(req.method==='PATCH'){
    const input=await body(req),action=input.action;
+   if(action==='seen'){
+    if(admin||user.role!=='supplier'||row.supplier_id!==user.id)fail(403,'제작 업체만 확인할 수 있습니다.');
+    if(row.status!=='assigned'||!row.shared_at||!row.response_requested_at||input.responseRequestedAt!==row.response_requested_at)fail(409,'발주가 변경되었습니다. 다시 열어주세요.');
+    const time=now();
+    await env.DB.batch([
+     stmt(env,"UPDATE orders SET supplier_seen_at=? WHERE id=? AND supplier_id=? AND status='assigned' AND shared_at IS NOT NULL AND response_requested_at=? AND supplier_seen_at IS NULL",time,row.id,user.id,input.responseRequestedAt),
+     stmt(env,'INSERT INTO order_events SELECT ?,?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),row.id,user.id,user.name,'제작 업체 발주 확인',JSON.stringify({responseRequestedAt:input.responseRequestedAt}),time),
+    ]);
+    const current=await stmt(env,'SELECT status,supplier_id,response_requested_at,supplier_seen_at FROM orders WHERE id=?',row.id).first();
+    if(current.status!=='assigned'||current.supplier_id!==user.id||current.response_requested_at!==input.responseRequestedAt)fail(409,'발주가 변경되었습니다. 다시 열어주세요.');
+    return json({ok:true,supplier_seen_at:current.supplier_seen_at});
+   }
    if(action==='assign'&&admin){
     if(!['requested','matched'].includes(row.status))fail(409,'견적 진행 중에는 업체를 변경할 수 없습니다.');
     const supplier=await stmt(env,"SELECT id,name FROM members WHERE id=? AND role='supplier' AND status='approved'",text(input.supplierId,36,true)).first();if(!supplier)fail(400,'승인된 제작 업체를 선택해주세요.');
@@ -126,7 +160,7 @@ export async function orderApi(req,env,url,adminUser){
     if(action==='share'&&row.status==='matched'){
      if(input.consent!==true)fail(400,'업체에 전달할 정보를 확인해주세요.');
      const active=await stmt(env,"SELECT id FROM members WHERE id=? AND status='approved'",row.supplier_id).first();if(!active)fail(409,'업체 이용 상태가 변경되었습니다. 운영팀에 문의해주세요.');
-     return mutate(env,row,input,user,{status:'assigned',shared_at:now()},'업체 연결 및 제작 자료 전달 동의',{supplierId:row.supplier_id,supplier:row.supplier_name,items:'패키징 사양·첨부 파일·수량·납기·배송지·요청 사항',purpose:'견적 및 제작 진행',version:'pilot-sharing-2026-10-21'});
+     const time=now();return mutate(env,row,input,user,{status:'assigned',shared_at:time,response_requested_at:time,supplier_seen_at:null},'업체 연결 및 제작 자료 전달 동의',{supplierId:row.supplier_id,supplier:row.supplier_name,items:'패키징 사양·첨부 파일·수량·납기·배송지·요청 사항',purpose:'견적 및 제작 진행',version:'pilot-sharing-2026-10-21'});
     }
     if(action==='approve'&&row.status==='quoted'){
      if(input.consent!==true)fail(400,'최종 조건을 확인해주세요.');
@@ -136,7 +170,7 @@ export async function orderApi(req,env,url,adminUser){
      return mutate(env,row,input,user,{status:'approved',approved_snapshot:JSON.stringify(snapshot)},'브랜드 최종 승인',snapshot);
     }
     if(action==='revise'&&row.status==='quoted'){
-     const message=text(input.message,2000,true);return mutate(env,row,input,user,{status:'assigned',proposal:null},'조건 재확인 요청',{message});
+     const message=text(input.message,2000,true);return mutate(env,row,input,user,{status:'assigned',proposal:null,response_requested_at:nextResponseAt(row),supplier_seen_at:null},'조건 재확인 요청',{message});
     }
     if(action==='receive'&&row.status==='shipped')return mutate(env,row,input,user,{status:'received'},'브랜드 입고 확인');
    }
@@ -144,7 +178,7 @@ export async function orderApi(req,env,url,adminUser){
     if(action==='quote'&&['assigned','quoted'].includes(row.status)){
      const totalPrice=Number(input.totalPrice);if(!Number.isSafeInteger(totalPrice)||totalPrice<1||totalPrice>100000000000)fail(400,'총 견적 금액을 확인해주세요.');
      const proposal={totalPrice,deliveryDate:date(input.deliveryDate),terms:text(input.terms,2000,true),quotedAt:now(),quotedBy:user.id};
-     return mutate(env,row,input,user,{status:'quoted',proposal:JSON.stringify(proposal)},'업체 견적 제안',proposal);
+     return mutate(env,row,input,user,{status:'quoted',proposal:JSON.stringify(proposal),supplier_seen_at:row.supplier_seen_at||now()},'업체 견적 제안',proposal);
     }
     if(action==='produce'&&row.status==='approved')return mutate(env,row,input,user,{status:'producing'},'제작 시작');
     if(action==='ship'&&row.status==='producing'){
