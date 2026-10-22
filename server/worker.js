@@ -170,13 +170,13 @@ export default {
       response = json({error:err instanceof HttpError ? err.message : '처리하지 못했습니다. 잠시 후 다시 시도해주세요.'},err.status || 500);
     }
     const headers = new Headers(response.headers);
+    headers.set('X-Robots-Tag','noindex, nofollow');
     headers.set('X-Content-Type-Options','nosniff');
     headers.set('Referrer-Policy','strict-origin-when-cross-origin');
     headers.set('X-Frame-Options','DENY');
     headers.set('Permissions-Policy','camera=(), microphone=(), geolocation=()');
     if (url.protocol === 'https:') headers.set('Strict-Transport-Security','max-age=31536000');
     if (env.APP_KIND === 'admin') {
-      headers.set('X-Robots-Tag','noindex, nofollow');
       headers.set('Cache-Control','no-store');
       headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     }
