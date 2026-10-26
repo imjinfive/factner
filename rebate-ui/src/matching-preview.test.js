@@ -3,11 +3,19 @@ import assert from 'node:assert/strict';
 import { getMatchingPreview } from './matching-preview.js';
 
 test('preview respects category and preferred region without falling back to unrelated candidates', () => {
-  const boxes = getMatchingPreview({ role: 'brand', category: 'box', region: 'capital' });
-  const supplies = getMatchingPreview({ role: 'brand', category: 'supplies', region: 'capital' });
+  const boxes = getMatchingPreview({ role: 'brand', category: 'box', region: 'chungcheong' });
+  const supplies = getMatchingPreview({ role: 'brand', category: 'supplies', region: 'chungcheong' });
   assert.ok(boxes.length > 0 && supplies.length > 0);
-  assert.ok(boxes.every(item => item.category === '박스' && item.region === '서울·경기'));
+  assert.ok(boxes.every(item => item.category === '박스' && item.region === '충청'));
   assert.notDeepEqual(boxes.map(item => item.title), supplies.map(item => item.title));
+});
+
+test('Seoul, Gyeonggi and Incheon select distinct regional candidates', () => {
+  for (const [region, label, category] of [['seoul', '서울', 'box'], ['gyeonggi', '경기', 'supplies'], ['incheon', '인천', 'box']]) {
+    const candidates = getMatchingPreview({ role: 'brand', category, region });
+    assert.ok(candidates.length > 0);
+    assert.ok(candidates.every(item => item.region === label));
+  }
 });
 
 test('supplier capacity excludes brand requests above available quantity', () => {

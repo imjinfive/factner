@@ -4,9 +4,9 @@ import { ArrowRight, Check } from "@phosphor-icons/react";
 import "./intro-choice.css";
 
 const choices = [
-  { id: "a", name: "A업체", item: "박스", region: "수도권", moq: 500, image: 0 },
+  { id: "a", name: "A업체", item: "박스", region: "서울", moq: 500, image: 0 },
   { id: "b", name: "B업체", item: "패키징", region: "충청", moq: 1000, image: 1 },
-  { id: "c", name: "C업체", item: "부자재", region: "수도권", moq: 300, image: 2 },
+  { id: "c", name: "C업체", item: "부자재", region: "경기", moq: 300, image: 2 },
 ];
 const spring = { type: "spring", stiffness: 240, damping: 25, mass: 0.9 };
 
@@ -19,7 +19,7 @@ export default function IntroChoice({ Button, Photo, onRequest }) {
   const reduce = useReducedMotion();
   const id = useId();
   const [item, setItem] = useState("박스");
-  const [region, setRegion] = useState("수도권");
+  const [region, setRegion] = useState("서울");
   const ordered = rankChoices(item, region);
   const transition = reduce ? { duration: 0 } : spring;
 
@@ -37,7 +37,7 @@ export default function IntroChoice({ Button, Photo, onRequest }) {
         <div className="rb-choice-filters">
           {[
             { label: "품목", values: ["박스", "패키징", "부자재"], current: item, select: setItem },
-            { label: "희망 지역", values: ["수도권", "충청", "지역 무관"], current: region, select: setRegion },
+            { label: "희망 지역", values: ["서울", "경기", "충청"], current: region, select: setRegion },
           ].map((filter) => <div className="rb-choice-filter" role="group" aria-label={`예시 ${filter.label}`} key={filter.label}>
             <span>{filter.label}</span>
             <div className="rb-choice-toggle">

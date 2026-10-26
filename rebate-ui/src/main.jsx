@@ -159,8 +159,6 @@ function App(){
  function openOrderAlert(id){if(modal){notify('입력 중인 창을 닫은 뒤 발주 알림을 확인해주세요.');return;}setRequestedOrder({id,key:Date.now()});navigate('account');}
  const startRequest=()=>navigate('request');
  const beginSignup=context=>{setSignupContext(context);navigate('account');};
- const titles={intro:'서비스 소개',request:'견적 문의',guide:'이용 안내',activity:'기존 견적 내역',account:'마이페이지'};
- useEffect(()=>{document.title='팩트너 | '+titles[page];},[page]);
   useEffect(() => {
     let cancelled=false;
     async function refresh() {

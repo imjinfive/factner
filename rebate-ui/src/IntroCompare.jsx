@@ -3,9 +3,9 @@ import { motion, useScroll, useSpring, useTransform } from "motion/react";
 import "./intro-compare.css";
 
 const samples = [
-  { name: "A업체", category: "단상자", moq: "500개", region: "수도권", image: "/images/compare-beauty.png", alt: "종이 질감이 살아 있는 뷰티 단상자 패키징 예시" },
+  { name: "A업체", category: "단상자", moq: "500개", region: "서울", image: "/images/compare-beauty.png", alt: "종이 질감이 살아 있는 뷰티 단상자 패키징 예시" },
   { name: "B업체", category: "택배 박스", moq: "1,000개", region: "충청", image: "/images/compare-mailer.png", alt: "제품을 안전하게 담는 골판지 택배 패키징 예시" },
-  { name: "C업체", category: "선물 패키징", moq: "300개", region: "수도권", image: "/images/compare-gift.png", alt: "섬세한 마감의 선물용 싸바리 패키징 예시" },
+  { name: "C업체", category: "선물 패키징", moq: "300개", region: "경기", image: "/images/compare-gift.png", alt: "섬세한 마감의 선물용 싸바리 패키징 예시" },
 ];
 
 function Sample({ sample, index, progress, still }) {
