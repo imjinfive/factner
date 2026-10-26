@@ -50,17 +50,12 @@ function expectUpdated(result) {if(!result[0].meta.changes)fail(409,'다른 관�
 
 export async function supplierPublicApi(req,env,url) {
   if(req.method!=='GET')return null;
-  if(url.pathname==='/api/suppliers') {
-    const rows=(await stmt(env,"SELECT * FROM suppliers WHERE state='published' ORDER BY created_at DESC,id").all()).results;
-    const photos=(await stmt(env,`SELECT i.${photoColumns.split(',').join(',i.')} FROM supplier_images i JOIN suppliers s ON s.id=i.supplier_id WHERE s.state='published' ORDER BY i.created_at,i.id`).all()).results;
-    return json({suppliers:rows.map(row=>publicView(row,photos.filter(p=>p.supplier_id===row.id))),source:'real'});
-  }
-  const match=url.pathname.match(new RegExp(`^/api/supplier-images/(${uuid})$`));
-  if(match)return imageResponse(env,match[1],false);
+  // Candidate previews are anonymous; the former catalog must not expose real suppliers or photos.
+  if(url.pathname==='/api/suppliers'||url.pathname.startsWith('/api/supplier-images/'))fail(404,'공개 업체 조회는 제공하지 않습니다.');
   return null;
 }
-async function imageResponse(env,id,admin) {
-  const row=await stmt(env,`SELECT i.data,i.mime FROM supplier_images i JOIN suppliers s ON s.id=i.supplier_id WHERE i.id=?${admin?'':" AND s.state='published'"}`,id).first();
+async function imageResponse(env,id) {
+  const row=await stmt(env,'SELECT data,mime FROM supplier_images WHERE id=?',id).first();
   if(!row)fail(404,'사진을 찾을 수 없습니다.');
   const bytes=row.data instanceof ArrayBuffer?row.data:new Uint8Array(row.data);
   return new Response(bytes,{headers:{'Content-Type':row.mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
@@ -85,7 +80,7 @@ export async function supplierAdminApi(req,env,url,user) {
   if(!user)fail(401,'로그인이 필요합니다.');
   if(user.role!=='owner')fail(403,'대표 관리자만 업체 정보를 관리할 수 있습니다.');
   const imageMatch=url.pathname.match(new RegExp(`^/api/admin/supplier-images/(${uuid})$`));
-  if(imageMatch&&req.method==='GET')return imageResponse(env,imageMatch[1],true);
+  if(imageMatch&&req.method==='GET')return imageResponse(env,imageMatch[1]);
   if(url.pathname==='/api/admin/suppliers') {
     if(req.method==='GET') {
       const rows=(await stmt(env,'SELECT * FROM suppliers ORDER BY updated_at DESC,id').all()).results;

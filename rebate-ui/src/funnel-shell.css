@@ -1,0 +1,23 @@
+[hidden] { display: none !important; }
+.funnel-header .nav-link { font-size: 17px; }
+.funnel-header .member-login-link { white-space: nowrap; font-size: 16px; }
+.funnel-header .header-cta { font-size: 16px; }
+.revised-guide { max-width: 920px; }
+.revised-guide .page-heading p { color: var(--muted); margin-top: 18px; font-size: 20px; }
+.funnel-guide-steps { list-style: none; padding: 0; display: grid; gap: 36px; margin: 48px 0; }
+.funnel-guide-steps li { display: flex; gap: 24px; align-items: flex-start; }
+.funnel-guide-steps li > span { background: var(--mint); color: var(--green-dark); border-radius: 50%; min-width: 42px; height: 42px; display: grid; place-items: center; font-weight: 750; }
+.funnel-guide-steps h2 { font-size: 24px; margin: 1px 0 8px; }
+.funnel-guide-steps p { color: var(--muted); font-size: 18px; }
+.signup-context { margin-top: 32px; padding: 24px 28px; background: var(--mint); border-radius: 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; max-width: 1000px; }
+.signup-context strong { font-size: 21px; }
+.signup-context p { color: var(--muted); margin-top: 4px; }
+.signup-context button { display: inline-flex; gap: 8px; align-items: center; font-weight: 650; white-space: nowrap; }
+@media(max-width:800px) { .funnel-header .header-inner { gap: 22px; } .funnel-header .header-actions { gap: 16px; } }
+@media(max-width:600px) {
+ .funnel-header .header-inner { gap: 0; }
+ .funnel-header .nav-link { font-size: 16px; }
+ .signup-context { padding: 20px; align-items: flex-start; flex-direction: column; }
+ .funnel-guide-steps li { gap: 16px; }
+ .revised-guide .page-heading h1 { font-size: 34px; }
+}

@@ -16,6 +16,8 @@
 .rb-opening-title, .rb-opening-after { position: absolute; bottom: 10%; left: 8%; right: 7%; color: #fff; }
 .rb-opening h1 { font-size: clamp(52px, 7.3vw, 104px); max-width: 1100px; text-shadow: 0 2px 30px #10231b30; }
 .rb-opening h1 span { color: #baf1cf; }
+.rb-opening .rb-opening-cta { margin-top: 28px; min-height: 52px; padding: 14px 22px; background: #fff; color: #12613e; font-size: 17px; }
+.rb-opening .rb-opening-cta:hover { background: #e9f8ef; }
 .rb-opening-after { font-size: clamp(42px, 6vw, 84px); font-weight: 740; line-height: 1.2; letter-spacing: -.05em; }
 .rb-onsite { height: 250svh; background: var(--soft); }
 .rb-onsite .rb-stage { isolation: isolate; background: #152b21; }

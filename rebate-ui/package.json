@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 5178 --strictPort",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4178 --strictPort",
-    "test": "node --test src/model.test.js"
+    "test": "node --test src/*.test.js"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

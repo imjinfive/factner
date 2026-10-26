@@ -21,7 +21,7 @@ function client(env,admin=true,user=owner){return async(path,data,method=data?'P
   const req=new Request(url,{method,headers:{'content-type':'application/json',...headers},body:data===undefined?undefined:data instanceof Uint8Array?data:JSON.stringify(data)});
   try{const response=await (admin?supplierAdminApi(req,env,url,user):supplierPublicApi(req,env,url));return {status:response?.status??404,response,data:response?.headers.get('content-type')?.includes('json')?await response.json():null};}catch(error){if(!error.status)throw error;return {status:error.status,error:error.message};}
 };}
-test('supplier publishing, verified evidence, draft image isolation, optimistic edits and archive',async()=>{
+test('supplier evidence stays private through publication, edits and archive while owner access works',async()=>{
   const env={DB:database()},admin=client(env),publicApi=client(env,false);
   assert.equal((await client(env,true,null)('suppliers')).status,401);
   assert.equal((await client(env,true,{...owner,role:'staff'})('suppliers',valid())).status,403);
@@ -29,26 +29,33 @@ test('supplier publishing, verified evidence, draft image isolation, optimistic 
   const created=await admin('suppliers',valid());assert.equal(created.status,201);let supplier=created.data.supplier;
   const save=async patch=>{const result=await admin(`suppliers/${supplier.id}`,{...supplier,...patch},'PATCH');if(result.data)supplier=result.data.supplier;return result;};
   const photo=async kind=>{const result=await admin(`suppliers/${supplier.id}/images?version=${supplier.version}&actual=true&caption=${encodeURIComponent('실제 테스트 사진')}&kind=${kind}`,png,'POST',{'content-type':'image/png'});if(result.status===201)supplier=(await admin(`suppliers/${supplier.id}`)).data.supplier;return result;};
-  assert.deepEqual((await publicApi('suppliers')).data.suppliers,[]);
+  assert.equal((await publicApi('suppliers')).status,404);
   assert.equal((await save({visit:true,visitedAt:'2026-01-01',verifiedBy:'담당자'})).status,400);
   const first=await photo('workshop');assert.equal(first.status,201);
   assert.equal((await publicApi(`supplier-images/${first.data.id}`)).status,404);
+  assert.equal((await client(env,true,null)(`supplier-images/${first.data.id}`)).status,401);
+  assert.equal((await client(env,true,{...owner,role:'staff'})(`supplier-images/${first.data.id}`)).status,403);
   const privateImage=await admin(`supplier-images/${first.data.id}`);assert.equal(privateImage.status,200);assert.deepEqual(new Uint8Array(await privateImage.response.arrayBuffer()),png);
   assert.equal((await save({state:'published',actualConfirmed:false})).status,400);
   assert.equal((await save({state:'published'})).status,200);
-  let publicSupplier=(await publicApi('suppliers')).data.suppliers[0];
-  assert.equal(publicSupplier.name,supplier.name);assert.equal(publicSupplier.rating,null);assert.equal(publicSupplier.reviews,0);assert.equal(publicSupplier.visit,false);
-  assert.equal(Object.hasOwn(publicSupplier,'internalNote'),false);assert.equal(Object.hasOwn(publicSupplier,'verifiedBy'),false);assert.equal(Object.hasOwn(publicSupplier,'version'),false);
-  assert.equal((await publicApi(`supplier-images/${first.data.id}`)).status,200);
+  assert.equal((await publicApi('suppliers')).status,404);
+  assert.equal((await publicApi(`supplier-images/${first.data.id}`)).status,404);
+  const storedSupplier=(await admin(`suppliers/${supplier.id}`)).data.supplier;
+  assert.equal(storedSupplier.name,valid().name);assert.equal(storedSupplier.internalNote,valid().internalNote);
+  assert.equal(storedSupplier.rating,null);assert.equal(storedSupplier.reviews,0);assert.equal(storedSupplier.visit,false);
+  assert.equal((await admin(`supplier-images/${first.data.id}`)).status,200);
   assert.equal((await admin(`suppliers/${supplier.id}`,{...supplier,version:supplier.version-1},'PATCH')).status,409);
   assert.equal((await admin(`suppliers/${supplier.id}/images/${first.data.id}`,{action:'remove',version:supplier.version})).status,400);
   await photo('sample');await photo('delivery');
   assert.equal((await save({visit:true,visitedAt:'2026-01-01',verifiedBy:'실제 확인자'})).status,200);
-  publicSupplier=(await publicApi('suppliers')).data.suppliers[0];assert.equal(publicSupplier.visit,true);assert.equal(publicSupplier.visitedAt,'2026-01-01');
+  const verifiedSupplier=(await admin(`suppliers/${supplier.id}`)).data.supplier;assert.equal(verifiedSupplier.visit,true);assert.equal(verifiedSupplier.visitedAt,'2026-01-01');
+  assert.equal((await publicApi('suppliers')).status,404);
+  assert.equal((await publicApi(`supplier-images/${first.data.id}`)).status,404);
   const workshop=supplier.photos.find(p=>p.kind==='workshop');
   assert.equal((await admin(`suppliers/${supplier.id}/images/${workshop.id}`,{kind:'case',caption:'변경',version:supplier.version},'PATCH')).status,400);
   assert.equal((await save({state:'archived'})).status,200);
-  assert.deepEqual((await publicApi('suppliers')).data.suppliers,[]);assert.equal((await publicApi(`supplier-images/${first.data.id}`)).status,404);
+  assert.equal((await publicApi('suppliers')).status,404);assert.equal((await publicApi(`supplier-images/${first.data.id}`)).status,404);
+  assert.equal((await admin(`supplier-images/${first.data.id}`)).status,200);
   assert.equal((await photo('case')).status,409);
   assert.equal((await save({state:'draft',visit:false})).status,200);
   assert.equal((await admin(`suppliers/${supplier.id}/images/${workshop.id}`,{action:'remove',version:supplier.version})).status,200);
@@ -96,12 +103,13 @@ test('new supplier saves selected photos before publication and resumes a partia
   await assert.rejects(()=>saveNewSupplier({api,send,state,payload,photos}),/temporary upload failure/);
   assert.equal(creates,1);assert.equal(photos[0].uploaded,true);assert.equal(photos[1].uploaded,undefined);
   assert.equal((await admin('suppliers')).data.suppliers.length,1);
-  assert.equal((await publicApi('suppliers')).data.suppliers.length,0);
+  assert.equal((await publicApi('suppliers')).status,404);
   failSecond=false;
   const result=await saveNewSupplier({api,send,state,payload,photos});
   assert.equal(creates,1);assert.equal(uploads,4);assert.equal(result.supplier.state,'published');
   assert.deepEqual(result.supplier.photos.map(p=>p.kind).sort(),['delivery','sample','workshop']);
-  assert.equal((await publicApi('suppliers')).data.suppliers[0].visit,true);
+  assert.equal((await publicApi('suppliers')).status,404);
+  assert.equal((await admin(`suppliers/${result.supplier.id}`)).data.supplier.visit,true);
   assert.equal(env.DB.raw.prepare('SELECT count(*) AS n FROM supplier_images').get().n,3);
 });
 test('new supplier can be saved without photos as a private draft',async()=>{

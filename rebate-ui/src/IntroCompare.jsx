@@ -1,17 +1,15 @@
 import { useRef } from "react";
 import { motion, useScroll, useSpring, useTransform } from "motion/react";
-import { Star } from "@phosphor-icons/react";
-import { suppliers } from "./model.js";
 import "./intro-compare.css";
 
 const samples = [
-  { supplier: suppliers[0], image: "/images/compare-beauty.png", alt: "종이 질감이 살아 있는 뷰티 단상자 패키징" },
-  { supplier: suppliers[1], image: "/images/compare-mailer.png", alt: "제품을 안전하게 담는 골판지 택배 패키징" },
-  { supplier: suppliers[2], image: "/images/compare-gift.png", alt: "섬세한 마감의 선물용 싸바리 패키징" },
+  { name: "A업체", category: "단상자", moq: "500개", region: "수도권", image: "/images/compare-beauty.png", alt: "종이 질감이 살아 있는 뷰티 단상자 패키징 예시" },
+  { name: "B업체", category: "택배 박스", moq: "1,000개", region: "충청", image: "/images/compare-mailer.png", alt: "제품을 안전하게 담는 골판지 택배 패키징 예시" },
+  { name: "C업체", category: "선물 패키징", moq: "300개", region: "수도권", image: "/images/compare-gift.png", alt: "섬세한 마감의 선물용 싸바리 패키징 예시" },
 ];
 
 function Sample({ sample, index, progress, still }) {
-  const { supplier, image, alt } = sample;
+  const { name, category, moq, region, image, alt } = sample;
   const scatter = useTransform(progress, [0.12, 0.65], [1, 0]);
   const x = useTransform(scatter, value => `calc(var(--compare-x) * ${value})`);
   const y = useTransform(scatter, value => `calc(var(--compare-y) * ${value})`);
@@ -27,12 +25,12 @@ function Sample({ sample, index, progress, still }) {
       <img src={image} alt={alt} loading="lazy" width="1448" height="1086" />
     </motion.div>
     <motion.div className="rb-compare-name" style={still ? {} : { opacity: detailOpacity, y: detailY }}>
-      <h3>{supplier.name}</h3>
-      <p>{supplier.categories[0]}</p>
+      <h3>{name}</h3>
+      <p>{category}</p>
     </motion.div>
     <motion.dl className="rb-compare-facts" style={still ? {} : { opacity: detailOpacity, y: detailY }}>
-      <div><dt>최소 수량</dt><dd>{supplier.moq.toLocaleString()}개</dd></div>
-      <div><dt>브랜드 리뷰</dt><dd><Star weight="fill" aria-hidden="true" />{supplier.rating}<span>({supplier.reviews})</span></dd></div>
+      <div><dt>최소 수량</dt><dd>{moq}</dd></div>
+      <div><dt>지역</dt><dd>{region}</dd></div>
     </motion.dl>
   </motion.article>;
 }
@@ -56,14 +54,14 @@ export default function IntroCompare({ still }) {
           여기저기 찾던<br />패키징 업체.
         </motion.p>}
         <motion.h2 id="intro-compare-title" style={still ? {} : { opacity: afterOpacity, y: afterY }}>
-          이젠 한곳에서,<br /><span>한눈에.</span>
+          맞는 후보만,<br /><span>한눈에.</span>
         </motion.h2>
       </div>
       <div className="rb-compare-board">
-        {samples.map((sample, index) => <Sample key={sample.supplier.id}
+        {samples.map((sample, index) => <Sample key={sample.name}
           sample={sample} index={index} progress={progress} still={still} />)}
         <motion.div className="rb-compare-rule" aria-hidden="true" style={still ? {} : { scaleX: lineScale }} />
-        <motion.p className="rb-compare-example" style={still ? {} : { opacity: noteOpacity }}>업체 비교 예시</motion.p>
+        <motion.p className="rb-compare-example" style={still ? {} : { opacity: noteOpacity }}>테스트 업체 · 이미지 예시</motion.p>
       </div>
     </div>
   </section>;

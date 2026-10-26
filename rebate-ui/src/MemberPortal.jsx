@@ -38,8 +38,8 @@ function Upload({files,onChange,kind,label,max=5,remote=false,onBusy}){
  }}/></label>{error&&<p className="member-error" role="alert">{error}</p>}
  <div className="member-files">{files.map((file,i)=><div className="member-file" key={file.id||`${file.name}-${i}`}><Preview file={file}/><span>{file.name}</span><button type="button" aria-label={`${file.name} 제거`} onClick={()=>onChange(files.filter((_,index)=>index!==i))}><X size={18}/></button></div>)}</div></div>;
 }
-function Auth({onMember,Button}){
- const [mode,setMode]=useState('login'),[step,setStep]=useState(0),[role,setRole]=useState(''),[legal,setLegal]=useState(''),[config,setConfig]=useState(null),[configError,setConfigError]=useState('');
+function Auth({onMember,Button,signupContext}){
+ const [mode,setMode]=useState(signupContext?'signup':'login'),[step,setStep]=useState(signupContext?.role?1:0),[role,setRole]=useState(signupContext?.role||''),[legal,setLegal]=useState(''),[config,setConfig]=useState(null),[configError,setConfigError]=useState('');
  const [cert,setCert]=useState([]),[photos,setPhotos]=useState([]),[token,setToken]=useState(''),[attempt,setAttempt]=useState(0),[done,setDone]=useState(false),[certBusy,setCertBusy]=useState(false),[photosBusy,setPhotosBusy]=useState(false);
  useEffect(()=>{let active=true;api('member/config').then(data=>{if(active)setConfig(data);}).catch(e=>{if(active)setConfigError(e.message);});return()=>{active=false;};},[]);
  if(done)return <section className="member-auth member-card member-complete"><div className="member-symbol"><Clock size={38}/></div><h1>가입 신청을 받았어요</h1><p>자료를 확인한 뒤 가입을 승인해드려요.<br/>로그인에서 심사 상태를 확인할 수 있어요.</p><Button onClick={()=>{setDone(false);setMode('login');setStep(0);}}>로그인으로 돌아가기</Button></section>;
@@ -116,7 +116,7 @@ function OrderDetail({data,member,onUpdate,onRepeat,onSeen,Button}){
  {isBrand&&<div className="member-bottom-actions"><Button tone="secondary" onClick={()=>onRepeat(o)}><ArrowsClockwise size={20}/> 지난 사양으로 다시 요청</Button>{['requested','matched','assigned','quoted'].includes(o.status)&&<details><summary>요청 취소</summary><Form onSave={values=>action('cancel',values)}><Field label="취소 사유" name="message" maxLength={1000} required/><Button tone="secondary" type="submit">요청 취소하기</Button></Form></details>}</div>}
  </div>;
 }
-export default function MemberPortal({member,onMember,authLoading,Button,Modal,onLegacy,requestedOrder,onOrderOpened,onAttentionChange}){
+export default function MemberPortal({signupContext,member,onMember,authLoading,Button,Modal,onLegacy,requestedOrder,onOrderOpened,onAttentionChange}){
  const [tab,setTab]=useState('packagings'),[packagings,setPackagings]=useState([]),[orders,setOrders]=useState([]),[total,setTotal]=useState(0),[page,setPage]=useState(1),[status,setStatus]=useState('');
  const [partners,setPartners]=useState([]),[loadedMember,setLoadedMember]=useState(null);
  const [loading,setLoading]=useState(false),[error,setError]=useState(''),[editor,setEditor]=useState(null),[detail,setDetail]=useState(null),[detailId,setDetailId]=useState(null),[detailError,setDetailError]=useState('');
@@ -134,7 +134,7 @@ export default function MemberPortal({member,onMember,authLoading,Button,Modal,o
  },[member?.id,requestedOrder]);
  useEffect(()=>{if(!detailId)return;let alive=true;setDetail(null);setDetailError('');api(`orders/${detailId}`).then(data=>{if(alive)setDetail(data);}).catch(e=>{if(alive)setDetailError(e.message);});return()=>{alive=false;};},[detailId,detailReload]);
  if(authLoading)return <section className="member-shell"><p role="status">계정을 확인하고 있어요.</p></section>;
- if(!member)return <Auth onMember={onMember} Button={Button}/>;
+ if(!member)return <Auth key={signupContext?JSON.stringify(signupContext):'login'} onMember={onMember} Button={Button} signupContext={signupContext}/>;
  const ready=loadedMember===member.id,currentPartners=ready?partners:[],currentPackagings=ready?packagings:[],currentOrders=ready?orders:[],activePartners=currentPartners.filter(p=>p.status==='active');
  const repeat=o=>{setDetailId(null);setDetail(null);setEditor({kind:'request',data:o,sourceId:o.id,previousPrice:o.approved_snapshot?.proposal?.totalPrice||o.proposal?.totalPrice});};
  return <section className="member-shell"><p className="member-pilot">테스트 운영 · 실제 개인정보와 거래 자료는 입력하지 마세요.</p><header className="member-heading"><div><span className="member-eyebrow">{member.role==='brand'?'BRAND WORKSPACE':'PARTNER WORKSPACE'}</span><h1>{member.name}<span>님의 마이페이지</span></h1></div><Button tone="ghost" onClick={async()=>{try{await send('member/logout',{});onMember(null);}catch(e){setError(e.message);}}}><SignOut size={20}/> 로그아웃</Button></header>

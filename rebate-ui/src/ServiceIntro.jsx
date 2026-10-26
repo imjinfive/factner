@@ -10,7 +10,7 @@ function useScene(ref) {
   return useSpring(scrollYProgress, { stiffness: 180, damping: 35, mass: 0.3 });
 }
 
-function Opening({ still }) {
+function Opening({ Button, onRequest, still }) {
   const ref = useRef(null);
   const progress = useScene(ref);
   const scale = useTransform(progress, [0, 1], [1, 1.19]);
@@ -34,6 +34,9 @@ function Opening({ still }) {
               animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
               브랜드의 가치는<br /><span>패키징부터.</span>
             </motion.h1>
+            <Button className="rb-opening-cta" tone="white" onClick={onRequest}>
+              맞는 파트너 찾기 <ArrowRight size={20} aria-hidden="true" />
+            </Button>
           </motion.div>
           {!still && <motion.p className="rb-opening-after" style={{ opacity: afterOpacity, y: afterY }}>
             그 시작을,<br />팩트너와 함께.
@@ -72,8 +75,8 @@ function OnSite({ still }) {
           style={still ? {} : { scale: photoScale, y: photoY }} />
         <div className="rb-onsite-shade" />
         <div className="rb-onsite-copy">
-          <h2 id="intro-check-title">리뷰로 한 번.<br />현장에서 또 한 번.</h2>
-          <p>직접 방문해 검증한<br className="rb-mobile-break" /> 신뢰 업체를 연결합니다.</p>
+          <h2 id="intro-check-title">가격만으로는<br />알 수 없는 차이.</h2>
+          <p>작업 현장부터 납품 품질까지.<br />확인한 자료로 선택을 돕습니다.</p>
         </div>
         {!still && <>
           <motion.div className="rb-review-note" style={{ x: reviewX, rotate: reviewRotate, opacity: reviewOpacity }}>
@@ -93,7 +96,7 @@ function OnSite({ still }) {
   );
 }
 
-function Ending({ Button, onExplore, onRequest, still }) {
+function Ending({ Button, onRequest, still }) {
   const ref = useRef(null);
   const progress = useScene(ref);
   const photoScale = useTransform(progress, [0, 0.85], [1.2, 1]);
@@ -109,15 +112,14 @@ function Ending({ Button, onExplore, onRequest, still }) {
         <h2 id="intro-ending-title">상자를 여는 순간,<br /><span>브랜드를 만납니다.</span></h2>
         <p>그 첫 만남이 특별하도록.<br />팩트너가 함께합니다.</p>
         <div className="rb-ending-actions">
-          <Button className="rb-story-button" onClick={onExplore}>업체 찾기 <ArrowRight size={20} /></Button>
-          <Button className="rb-story-button" tone="outline" onClick={onRequest}>견적 요청하기</Button>
+          <Button className="rb-story-button" onClick={onRequest}>맞는 파트너 찾기 <ArrowRight size={20} aria-hidden="true" /></Button>
         </div>
       </motion.div>
       </div>
   </section>;
 }
 
-export default function ServiceIntro({ Button, Photo, onExplore, onRequest, onSupplier }) {
+export default function ServiceIntro({ Button, Photo, onRequest }) {
   const reduce = useReducedMotion();
   const [shortScreen, setShortScreen] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-height: 560px)").matches);
   useEffect(() => {
@@ -128,10 +130,10 @@ export default function ServiceIntro({ Button, Photo, onExplore, onRequest, onSu
   }, []);
   const still = reduce || shortScreen;
   return <div className={`rb-story ${still ? "rb-story-static" : ""}`}>
-    <Opening still={still} />
+    <Opening Button={Button} onRequest={onRequest} still={still} />
     <IntroCompare still={still} />
     <OnSite still={still} />
-    <IntroChoice Button={Button} Photo={Photo} onExplore={onExplore} onRequest={onRequest} onSupplier={onSupplier} />
-    <Ending Button={Button} onExplore={onExplore} onRequest={onRequest} still={still} />
+    <IntroChoice Button={Button} Photo={Photo} onRequest={onRequest} />
+    <Ending Button={Button} onRequest={onRequest} still={still} />
   </div>;
 }
