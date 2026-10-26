@@ -123,14 +123,14 @@ function Guide({onRequest}) {
   <ol className="funnel-guide-steps">{[
    ['조건 입력','브랜드인지 제작 업체인지 선택하고, 품목과 지역을 알려주세요.'],
    ['후보 비교','상호 대신 제작 조건을 보고, 마음에 드는 후보를 선택하세요.'],
-   ['가입 또는 상담','직접 가입을 신청하거나, 담당자와 먼저 상담할 수 있어요.'],
-   ['조건 확인 후 연결','수량·사양·납기와 이용료를 확인한 뒤 매칭을 진행합니다.']
+   ['가입 신청','선택한 후보를 확인하고 가입 정보를 입력해요.'],
+   ['승인 후 이용 시작','운영팀이 신청 자료를 확인하고 승인하면 발주 서비스를 이용할 수 있어요.']
   ].map(([title,copy],i)=><li key={title}><span>{i+1}</span><div><h2>{title}</h2><p>{copy}</p></div></li>)}</ol>
   <Button onClick={onRequest}>맞는 파트너 찾기 <ArrowRight size={20}/></Button>
   <h2 className="faq-title">궁금한 점</h2><div className="faq">{[
    ['아직 규격이나 수량을 몰라도 되나요?','처음에는 필요한 품목과 희망 지역만 선택하세요. 자세한 제작 조건은 담당자와 정하면 됩니다.'],
-   ['가입하면 바로 계약되나요?','가입 심사와 실제 제작 가능 여부 확인이 먼저입니다. 양측이 조건을 확인하고 합의한 뒤 계약을 진행합니다.'],
-   ['정기 구독이 필요한가요?','정기 구독은 없습니다. 매칭 서비스 이용료와 제공 범위는 확정 후 안내합니다. 지금 화면에서는 결제되지 않습니다.'],
+   ['신청하면 바로 이용할 수 있나요?','가입 신청은 심사 대기로 접수됩니다. 운영팀이 확인하고 승인한 뒤 로그인과 발주 서비스를 이용할 수 있어요.'],
+   ['가입비는 얼마인가요?','가입비는 아직 미정이며 운영팀이 별도로 안내합니다. 정기 구독은 없고, 사이트에서 결제를 진행하지는 않아요.'],
    ['화면의 후보가 실제 업체인가요?','현재 추천 결과는 이용 흐름을 검토하기 위한 테스트 자료입니다. 실제 업체나 진행 중인 발주를 뜻하지 않습니다.']
   ].map(([q,a])=><details key={q}><summary>{q}<Plus size={19}/></summary><p>{a}</p></details>)}</div>
  </section>;
@@ -205,7 +205,7 @@ function App(){
     {page==='intro'&&<ServiceIntro Button={Button} Photo={Photo} onRequest={startRequest}/>}
     {page==='guide'&&<Guide onRequest={startRequest}/>}
     {page==='account'&&<>
-     {signupContext&&<aside className="signup-context shell"><div><strong>{signupContext.candidate?.label||'선택한 후보'} 매칭 상담</strong><p>{[MATCH_CATEGORIES.find(item=>item.value===signupContext.category)?.label,MATCH_REGIONS.find(item=>item.value===signupContext.region)?.label].filter(Boolean).join(' · ')} · 테스트 후보</p></div><button onClick={startRequest}>후보로 돌아가기 <ArrowRight size={18}/></button></aside>}
+     {!member&&signupContext&&<aside className="signup-context shell"><div><strong>{signupContext.candidate?.label||'선택한 후보'} 가입 신청</strong><p>{[MATCH_CATEGORIES.find(item=>item.value===signupContext.category)?.label,MATCH_REGIONS.find(item=>item.value===signupContext.region)?.label].filter(Boolean).join(' · ')} · 테스트 후보</p></div><button onClick={startRequest}>후보로 돌아가기 <ArrowRight size={18}/></button></aside>}
      <MemberPortal member={member} onMember={setMember} authLoading={authLoading} Button={Button} Modal={Modal} signupContext={signupContext} onLegacy={()=>navigate('activity')} requestedOrder={requestedOrder} onOrderOpened={()=>setRequestedOrder(null)} onAttentionChange={()=>setAttentionRefresh(v=>v+1)}/>
     </>}
     {page==='activity'&&<section className="shell inner-page"><div className="page-heading"><h1>기존 견적 내역</h1><p>이 브라우저에서 접수한 견적을 확인할 수 있어요.</p></div>
