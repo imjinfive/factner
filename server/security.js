@@ -1,4 +1,9 @@
+import {fail} from './http.js';
 const enc = new TextEncoder();
+export function memberPassword(value) {
+  if (typeof value !== 'string' || value.length < 8 || value.length > 128) fail(400,'비밀번호는 8~128자로 입력해주세요.');
+  return value;
+}
 export function randomToken() {
   return Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
 }

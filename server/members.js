@@ -1,5 +1,6 @@
 import {body,fail,json,now,stmt,text,rate} from './http.js';
-import {digest,passwordHash,verifyPassword,randomToken} from './security.js';
+import {digest,passwordHash,verifyPassword,randomToken,memberPassword} from './security.js';
+import {memberRecoveryApi,memberRecoveryAdminApi} from './member-recovery.js';
 import {owner} from './auth.js';
 import {verifyQuoteSubmission} from './spam.js';
 
@@ -19,7 +20,7 @@ export function requireRole(user,role){if(user.role!==role)fail(403,'이 계정�
 function loginInput(input){
  const email=text(input.email,254,true).toLowerCase(),password=input.password;
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'이메일을 확인해주세요.');
- if(typeof password!=='string'||password.length<12||password.length>128)fail(400,'비밀번호는 12~128자로 입력해주세요.');
+ memberPassword(password);
  return {email,password};
 }
 export function fileInput(input,allowed){
@@ -87,6 +88,7 @@ export async function memberApi(req,env,url){
   const token=sessionToken(req);if(token)await stmt(env,'DELETE FROM member_sessions WHERE token_hash=?',await digest(token)).run();
   return json({ok:true},200,{'Set-Cookie':cookie(req,'',0)});
  }
+ const recovery=await memberRecoveryApi(req,env,path);if(recovery)return recovery;
  const user=await memberIdentity(req,env);
  if(path==='/api/member/me'&&req.method==='GET')return json({member:user});
  if(path==='/api/member/password'&&req.method==='POST'){
@@ -111,6 +113,7 @@ export async function memberApi(req,env,url){
 }
 export async function memberAdminApi(req,env,url,user){
  const path=url.pathname;if(!path.startsWith('/api/admin/members'))return null;owner(user);
+ const recovery=await memberRecoveryAdminApi(req,env,path,user);if(recovery)return recovery;
  if(path==='/api/admin/members'&&req.method==='GET'){
   const query=text(url.searchParams.get('q')||'',100),q=`%${query.replace(/[\\%_]/g,'\\$&')}%`,status=url.searchParams.get('status')||'',role=url.searchParams.get('role')||'',legalType=url.searchParams.get('legalType')||'';
   if(!['','pending','approved','rejected','suspended'].includes(status)||!['','brand','supplier'].includes(role)||!['','individual','sole','corporate'].includes(legalType))fail(400,'회원 검색 조건을 확인해주세요.');
