@@ -3,13 +3,13 @@ import { motion, useScroll, useSpring, useTransform } from "motion/react";
 import "./intro-compare.css";
 
 const samples = [
-  { name: "A업체", category: "단상자", moq: "500개", region: "서울", image: "/images/compare-beauty.png", alt: "종이 질감이 살아 있는 뷰티 단상자 패키징 예시" },
-  { name: "B업체", category: "택배 박스", moq: "1,000개", region: "충청", image: "/images/compare-mailer.png", alt: "제품을 안전하게 담는 골판지 택배 패키징 예시" },
-  { name: "C업체", category: "선물 패키징", moq: "300개", region: "경기", image: "/images/compare-gift.png", alt: "섬세한 마감의 선물용 싸바리 패키징 예시" },
+  { name: "제품 패키징", category: "제품에 맞는 단상자", material: "소재·두께", finish: "인쇄·코팅", image: "/images/compare-beauty.png", alt: "종이 질감이 살아 있는 뷰티 단상자 패키징 예시" },
+  { name: "택배 박스", category: "제품을 보호하는 배송 포장", material: "규격·골판지", finish: "인쇄·접합", image: "/images/compare-mailer.png", alt: "제품을 안전하게 담는 골판지 택배 패키징 예시" },
+  { name: "선물 패키징", category: "브랜드를 담는 선물 포장", material: "형태·지류", finish: "박·후가공", image: "/images/compare-gift.png", alt: "섬세한 마감의 선물용 싸바리 패키징 예시" },
 ];
 
 function Sample({ sample, index, progress, still }) {
-  const { name, category, moq, region, image, alt } = sample;
+  const { name, category, material, finish, image, alt } = sample;
   const scatter = useTransform(progress, [0.12, 0.65], [1, 0]);
   const x = useTransform(scatter, value => `calc(var(--compare-x) * ${value})`);
   const y = useTransform(scatter, value => `calc(var(--compare-y) * ${value})`);
@@ -29,8 +29,8 @@ function Sample({ sample, index, progress, still }) {
       <p>{category}</p>
     </motion.div>
     <motion.dl className="rb-compare-facts" style={still ? {} : { opacity: detailOpacity, y: detailY }}>
-      <div><dt>최소 수량</dt><dd>{moq}</dd></div>
-      <div><dt>지역</dt><dd>{region}</dd></div>
+      <div><dt>기본 사양</dt><dd>{material}</dd></div>
+      <div><dt>제작 조건</dt><dd>{finish}</dd></div>
     </motion.dl>
   </motion.article>;
 }
@@ -51,17 +51,17 @@ export default function IntroCompare({ still }) {
     <div className="rb-compare-stage">
       <div className="rb-compare-heading">
         {!still && <motion.p aria-hidden="true" style={{ opacity: beforeOpacity, y: beforeY }}>
-          여기저기 찾던<br />패키징 업체.
+          우리 제품에 필요한<br />패키징 조건.
         </motion.p>}
         <motion.h2 id="intro-compare-title" style={still ? {} : { opacity: afterOpacity, y: afterY }}>
-          맞는 후보만,<br /><span>한눈에.</span>
+          필요한 사양을,<br /><span>한곳에.</span>
         </motion.h2>
       </div>
       <div className="rb-compare-board">
         {samples.map((sample, index) => <Sample key={sample.name}
           sample={sample} index={index} progress={progress} still={still} />)}
         <motion.div className="rb-compare-rule" aria-hidden="true" style={still ? {} : { scaleX: lineScale }} />
-        <motion.p className="rb-compare-example" style={still ? {} : { opacity: noteOpacity }}>테스트 업체 · 이미지 예시</motion.p>
+        <motion.p className="rb-compare-example" style={still ? {} : { opacity: noteOpacity }}>패키징 연출 이미지 · 운영팀과 실제 사양을 정리해요</motion.p>
       </div>
     </div>
   </section>;

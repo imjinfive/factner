@@ -5,6 +5,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import worker from './worker.js';
 import {orderAttention} from './orders.js';
 import {randomToken,passwordHash} from './security.js';
+import {legacyOrder,approvedPackaging} from './workflow-fixtures.js';
 
 function database(){
  const raw=new DatabaseSync(':memory:'),dir=new URL('../migrations/',import.meta.url);
@@ -14,6 +15,7 @@ function database(){
 function client(env){
  let cookie='';const host=env.APP_KIND==='admin'?'https://admin.example.test':'https://example.test';
  return async(path,data,method=data?'POST':'GET')=>{
+  if(method==='PATCH'&&/^(admin\/)?orders\//.test(path)&&data.action!=='seen'&&data.confirmed===undefined)data={...data,confirmed:true};
   const response=await worker.fetch(new Request(`${host}/api/${path}`,{method,headers:{Origin:host,'Content-Type':'application/json',Cookie:cookie,'CF-Connecting-IP':'attention-test'},body:data?JSON.stringify(data):undefined}),env);
   if(response.headers.has('Set-Cookie'))cookie=response.headers.get('Set-Cookie').split(';')[0];
   return {status:response.status,data:await response.json()};
@@ -35,7 +37,7 @@ const orderInput=()=>({id:crypto.randomUUID(),spec:{name:'테스트 단상자',s
 
 async function direct(f){
  await f.admin('admin/partners',{brandId:f.brand.id,supplierId:f.supplier.id});
- const input={...orderInput(),supplierId:f.supplier.id,sharingConsent:true};
+ const base=orderInput(),input={...base,...await approvedPackaging(f.admin,f.brand.id,base.spec),supplierId:f.supplier.id,sharingConsent:true};
  assert.equal((await f.brand.api('orders',input)).status,201);return input.id;
 }
 async function get(f,id){return (await f.supplier.api(`orders/${id}`)).data.order;}
@@ -70,7 +72,7 @@ test('attention persists without reads and both delivery paths enforce supplier 
  assert.ok(summary.items[0].response_due_at);assert.equal('address' in summary.items[0],false);assert.equal('files' in summary.items[0],false);assert.equal('supplier_id' in summary.items[0],false);
  assert.equal((await get(f,id)).unread,true);assert.equal((await f.admin(`admin/orders/${id}`)).data.order.unread,true);assert.equal((await f.supplier.api('orders/attention')).data.unread,1);
  assert.equal((await f.otherSupplier.api(`orders/${id}`,{action:'seen',responseRequestedAt:summary.items[0].response_requested_at},'PATCH')).status,404);
- const manual=orderInput();await f.brand.api('orders',manual);await f.admin(`admin/orders/${manual.id}`,{action:'assign',version:1,supplierId:f.supplier.id},'PATCH');
+ const manual=orderInput();legacyOrder(f.DB,f.brand.id,manual);await f.admin(`admin/orders/${manual.id}`,{action:'assign',version:1,supplierId:f.supplier.id},'PATCH');
  assert.equal((await f.supplier.api('orders/attention')).data.pending,1);
  assert.equal((await f.brand.api(`orders/${manual.id}`,{action:'share',version:2,consent:true},'PATCH')).status,200);
  const delivered=await get(f,manual.id);assert.equal(delivered.response_requested_at,delivered.shared_at);assert.equal(delivered.unread,true);

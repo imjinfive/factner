@@ -11,5 +11,5 @@ test('reordering never silently substitutes a different supplier when the previo
  const partners=[{supplier_id:'new-supplier',status:'active',available:true}];
  assert.equal(initialSupplier(partners),'new-supplier');assert.equal(initialSupplier(partners,'old-supplier'),'');
  assert.equal(initialSupplier([...partners,{supplier_id:'another',status:'active',available:true}]),'');
- assert.equal(initialSupplier([{supplier_id:'inactive',status:'active',available:false}]),'new');
+ assert.equal(initialSupplier([{supplier_id:'inactive',status:'active',available:false}]),'');
 });

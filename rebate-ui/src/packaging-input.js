@@ -14,5 +14,5 @@ export function joinAddress({postcode,address,detail}){
 export function initialSupplier(partners,previousId){
  const active=partners.filter(p=>p.status==='active'&&p.available);
  if(previousId)return active.some(p=>p.supplier_id===previousId)?previousId:'';
- return active.length===1?active[0].supplier_id:active.length?'':'new';
+ return active.length===1?active[0].supplier_id:'';
 }

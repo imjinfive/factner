@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import worker from './worker.js';
 import {randomToken} from './security.js';
+import {legacyOrder} from './workflow-fixtures.js';
 
 function database(){
  const raw=new DatabaseSync(':memory:'),dir=new URL('../migrations/',import.meta.url);
@@ -13,6 +14,7 @@ function database(){
 function client(env){
  let cookie='';const host=env.APP_KIND==='admin'?'https://admin.example.test':'https://example.test';
  return async(path,data,method=data?'POST':'GET',headers={})=>{
+  if(method==='PATCH'&&/^(admin\/)?orders\//.test(path)&&data.action!=='seen'&&data.confirmed===undefined)data={...data,confirmed:true};
   const response=await worker.fetch(new Request(`${host}/api/${path}`,{method,headers:{Origin:host,'Content-Type':'application/json',Cookie:cookie,'CF-Connecting-IP':'test-ip',...headers},body:data?JSON.stringify(data):undefined}),env);
   if(response.headers.has('Set-Cookie'))cookie=response.headers.get('Set-Cookie').split(';')[0];
   const json=response.headers.get('Content-Type')?.includes('application/json');return {status:response.status,data:json?await response.json():new Uint8Array(await response.arrayBuffer()),headers:response.headers};
@@ -60,16 +62,16 @@ test('signup requires business documents, consent, private review and explicit a
  const stranger=client({...common,APP_KIND:'main'});assert.equal((await stranger(`admin/members/${m.id}`)).status,404);
 });
 
-test('full order workflow isolates accounts, shares only after consent, preserves approved snapshots and supports repeat requests',async()=>{
+test('historical order workflow preserves consent, snapshots and permits repeats through approved packaging and active partners',async()=>{
  const {admin,brand,supplier,other,DB}=await fixture();
  const brandId=await approve(admin,brand,'brand@test.test'),supplierId=await approve(admin,supplier,'supplier@test.test','supplier');await approve(admin,other,'other@test.test');
  const uploaded=await brand('member/files',{...png,kind:'design'});assert.equal(uploaded.status,201);const file=uploaded.data.file;
  assert.equal((await other(`member/files/${file.id}`)).status,404);
- const saved=await brand('packagings',{spec:spec([file]),favorite:true});assert.equal(saved.status,201);
+ const saved=await admin(`admin/members/${brandId}/packagings`,{spec:spec([file]),favorite:true,confirmed:true});assert.equal(saved.status,201);
  assert.equal((await supplier('packagings',{spec:spec([])})).status,403);
  assert.equal((await other('packagings',{spec:spec([file])})).status,400);
  assert.equal((await brand('packagings',{spec:spec([null])})).status,400);
- const input=request(spec([file]));assert.equal((await brand('orders',input)).status,201);assert.equal((await brand('orders',input)).status,200);
+ const input=request(spec([file]));assert.equal(legacyOrder(DB,brandId,input).status,201);assert.equal((await brand('orders',input)).status,200);
  assert.equal((await brand('orders')).data.total,1);assert.equal((await other('orders')).data.total,0);
  assert.equal((await other(`orders/${input.id}`)).status,404);
  assert.equal((await admin(`admin/orders/${input.id}`,{action:'assign',supplierId,version:1},'PATCH')).status,200);
@@ -86,7 +88,7 @@ test('full order workflow isolates accounts, shares only after consent, preserve
  assert.equal((await brand(`orders/${input.id}`,{action:'approve',consent:true,version:o.version},'PATCH')).status,200);
  const snapshot=(await brand(`orders/${input.id}`)).data.order.approved_snapshot;
  assert.equal(snapshot.proposal.totalPrice,650000);assert.equal(snapshot.spec.files[0].id,file.id);assert.equal(snapshot.approvedBy,brandId);
- assert.equal((await brand(`packagings/${saved.data.id}`,{spec:{...spec([]),name:'새 로고 패키징'},version:1},'PATCH')).status,200);
+ assert.equal((await brand(`packagings/${saved.data.id}`,{spec:{...spec([]),name:'새 로고 패키징'},version:1,confirmed:true},'PATCH')).status,200);
  assert.deepEqual((await brand(`orders/${input.id}`)).data.order.approved_snapshot,snapshot);
  assert.equal((await other(`packagings/${saved.data.id}`,{favorite:false,version:2},'PATCH')).status,404);
  o=(await supplier(`orders/${input.id}`)).data.order;
@@ -97,15 +99,16 @@ test('full order workflow isolates accounts, shares only after consent, preserve
  assert.equal((await supplier(`orders/${input.id}`,{action:'ship',version:o.version,carrier:'테스트 택배',tracking:'TEST-1234'},'PATCH')).status,200);
  o=(await brand(`orders/${input.id}`)).data.order;
  assert.equal((await brand(`orders/${input.id}`,{action:'receive',version:o.version},'PATCH')).status,200);
- const repeat={...request(snapshot.spec),sourceId:input.id,quantity:5000};assert.equal((await brand('orders',repeat)).status,201);
- const second=(await brand(`orders/${repeat.id}`)).data.order;assert.equal(second.status,'requested');assert.equal(second.proposal,null);assert.equal(second.approved_snapshot,null);assert.equal(second.supplier_id,null);
+ await admin('admin/partners',{brandId,supplierId});
+ const repeat={...request(snapshot.spec),sourceId:input.id,quantity:5000,packagingId:saved.data.id,packagingVersion:2,supplierId,sharingConsent:true,confirmed:true};assert.equal((await brand('orders',repeat)).status,201);
+ const second=(await brand(`orders/${repeat.id}`)).data.order;assert.equal(second.status,'assigned');assert.equal(second.proposal,null);assert.equal(second.approved_snapshot,null);assert.equal(second.supplier_id,supplierId);
  const final=(await admin(`admin/orders/${input.id}`)).data;assert.equal(final.order.status,'received');assert.equal(final.events.length,8);assert.equal(final.events.filter(e=>e.action==='브랜드 최종 승인').length,1);
  assert.equal(DB.raw.prepare('SELECT count(*) n FROM order_files').get().n,2);
 });
 
 test('quote revision logs old terms, supplier cannot approve, and suspension immediately revokes sessions',async()=>{
- const {admin,brand,supplier}=await fixture();await approve(admin,brand,'brand@test.test');const sid=await approve(admin,supplier,'supplier@test.test','supplier');
- const input=request(spec([]));await brand('orders',input);await admin(`admin/orders/${input.id}`,{action:'assign',supplierId:sid,version:1},'PATCH');await brand(`orders/${input.id}`,{action:'share',version:2,consent:true},'PATCH');
+ const {admin,brand,supplier,DB}=await fixture();const brandId=await approve(admin,brand,'brand@test.test');const sid=await approve(admin,supplier,'supplier@test.test','supplier');
+ const input=request(spec([]));legacyOrder(DB,brandId,input);await admin(`admin/orders/${input.id}`,{action:'assign',supplierId:sid,version:1},'PATCH');await brand(`orders/${input.id}`,{action:'share',version:2,consent:true},'PATCH');
  assert.equal((await supplier(`orders/${input.id}`,{action:'quote',totalPrice:-1,deliveryDate:'2030-02-31',terms:'조건',version:3},'PATCH')).status,400);
  await supplier(`orders/${input.id}`,{action:'quote',totalPrice:100000,deliveryDate:'2030-05-01',terms:'첫 견적',version:3},'PATCH');
  assert.equal((await supplier(`orders/${input.id}`,{action:'approve',version:4,consent:true},'PATCH')).status,409);
@@ -126,7 +129,7 @@ test('password changes invalidate all member sessions without affecting admin se
 
 test('owner edits contact details with audit and optimistic locking while preserving login and approved history',async()=>{
  const {admin,brand,DB}=await fixture();const id=await approve(admin,brand,'profile@test.test');
- const input=request(spec([]));await brand('orders',input);
+ const input=request(spec([]));legacyOrder(DB,id,input);
  const before=DB.raw.prepare('SELECT * FROM orders WHERE id=?').get(input.id);
  const edit={action:'profile',version:2,name:'변경 브랜드',contact:'새 담당자',phone:'010-1234-5678'};
  assert.equal((await admin(`admin/members/${id}`,edit,'PATCH')).status,200);
@@ -184,10 +187,10 @@ test('member order summaries and filters preserve ownership and history across s
  const bid=await approve(admin,brand,'managed-brand@test.test'),sid=await approve(admin,supplier,'managed-supplier@test.test','supplier'),oid=await approve(admin,other,'other-brand@test.test');
  const states=['producing','received','cancelled'],ids=[];
  for(const status of states){
-  const input=request(spec([]));assert.equal((await brand('orders',input)).status,201);ids.push(input.id);
+  const input=request(spec([]));assert.equal(legacyOrder(DB,bid,input).status,201);ids.push(input.id);
   DB.raw.prepare('UPDATE orders SET supplier_id=?,status=?,approved_snapshot=? WHERE id=?').run(sid,status,JSON.stringify({spec:input.spec,quantity:input.quantity,proposal:{totalPrice:650000}}),input.id);
  }
- const unrelated=request(spec([]));assert.equal((await other('orders',unrelated)).status,201);
+ const unrelated=request(spec([]));assert.equal(legacyOrder(DB,oid,unrelated).status,201);
  for(const id of [bid,sid]){
   const detail=await admin(`admin/members/${id}`);assert.deepEqual(detail.data.orderCounts,{total:3,active:1,received:1,cancelled:1});
   const list=await admin(`admin/orders?memberId=${id}`);assert.equal(list.status,200);assert.equal(list.data.total,3);assert.deepEqual(new Set(list.data.orders.map(o=>o.id)),new Set(ids));

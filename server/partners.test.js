@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import worker from './worker.js';
 import {randomToken,passwordHash} from './security.js';
+import {legacyOrder,approvedPackaging} from './workflow-fixtures.js';
 
 function database(){
  const raw=new DatabaseSync(':memory:'),dir=new URL('../migrations/',import.meta.url);
@@ -13,6 +14,7 @@ function database(){
 function client(env){
  let cookie='';const host=env.APP_KIND==='admin'?'https://admin.example.test':'https://example.test';
  return async(path,data,method=data?'POST':'GET')=>{
+  if(method==='PATCH'&&/^(admin\/)?orders\//.test(path)&&data.action!=='seen'&&data.confirmed===undefined)data={...data,confirmed:true};
   const response=await worker.fetch(new Request(`${host}/api/${path}`,{method,headers:{Origin:host,'Content-Type':'application/json',Cookie:cookie,'CF-Connecting-IP':'partner-test'},body:data?JSON.stringify(data):undefined}),env);
   if(response.headers.has('Set-Cookie'))cookie=response.headers.get('Set-Cookie').split(';')[0];
   return {status:response.status,data:await response.json()};
@@ -77,7 +79,7 @@ test('partner management validates roles, approvals, owner access, uniqueness an
 test('matched brand orders arrive with supplier and admin, preserve consent and remain visible after cancellation',async()=>{
  const {admin,brand,supplier,otherBrand,otherSupplier,DB}=await fixture();
  const match=(await admin('admin/partners',{brandId:brand.id,supplierId:supplier.id})).data;
- const input={...orderInput(),supplierId:supplier.id};
+ const base=orderInput(),input={...base,...await approvedPackaging(admin,brand.id,base.spec),supplierId:supplier.id};
  assert.equal((await brand.api('orders',{...input,supplierId:0,sharingConsent:true})).status,400);
  assert.equal((await brand.api('orders',input)).status,400);
  assert.equal((await otherBrand.api('orders',{...input,id:crypto.randomUUID(),sharingConsent:true})).status,409);
@@ -87,7 +89,7 @@ test('matched brand orders arrive with supplier and admin, preserve consent and 
  assert.equal((await admin(`admin/orders?memberId=${brand.id}`)).data.total,1);
  assert.equal((await otherSupplier.api(`orders/${input.id}`)).status,404);
  const detail=(await supplier.api(`orders/${input.id}`)).data;assert.equal(detail.events[0].details.sharing.consent,true);assert.equal(detail.events[0].details.sharing.partnerId,match.id);
- const manual=orderInput();await brand.api('orders',manual);assert.equal((await supplier.api('orders')).data.total,1);
+ const manual=orderInput();legacyOrder(DB,brand.id,manual);assert.equal((await supplier.api('orders')).data.total,1);
  assert.equal((await admin(`admin/partners/${match.id}`,{status:'ended',version:1,note:'테스트 종료'},'PATCH')).status,200);
  assert.equal((await brand.api('orders',{...input,id:crypto.randomUUID(),sharingConsent:true})).status,409);
  assert.equal((await supplier.api(`orders/${input.id}`)).status,200);
@@ -110,8 +112,8 @@ test('matching and direct dispatch recheck eligibility inside the write transact
  assert.equal(DB.raw.prepare('SELECT count(*) AS n FROM member_partners').get().n,0);assert.equal(DB.raw.prepare('SELECT count(*) AS n FROM member_partner_events').get().n,0);
  DB.raw.prepare("UPDATE members SET status='approved' WHERE id=?").run(supplier.id);
  const match=(await admin('admin/partners',{brandId:brand.id,supplierId:supplier.id})).data;
+ const base=orderInput(),input={...base,...await approvedPackaging(admin,brand.id,base.spec),supplierId:supplier.id,sharingConsent:true};
  DB.beforeBatch=()=>DB.raw.prepare("UPDATE member_partners SET status='ended' WHERE id=?").run(match.id);
- const input={...orderInput(),supplierId:supplier.id,sharingConsent:true};
  assert.equal((await brand.api('orders',input)).status,409);
  assert.equal(DB.raw.prepare('SELECT count(*) AS n FROM orders').get().n,0);assert.equal(DB.raw.prepare('SELECT count(*) AS n FROM order_events').get().n,0);
 });

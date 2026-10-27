@@ -1,3 +1,4 @@
+import {reviewBeforeSave} from './review.js';
 const states={requested:'매칭 대기',matched:'업체 연결 확인',assigned:'업체 확인 중',quoted:'최종 승인 대기',approved:'발주 확정',producing:'제작 중',shipped:'출고',received:'입고 완료',cancelled:'취소'};
 export async function ordersView({api,send,shell,esc,submit,notice,memberId,memberName,onBack,initialAttention='',isActive=()=>true,setDirty=()=>{}}){
  let page=1,status='',attention=initialAttention,screen=null,sequence=0,detailId=null,busy=false,edited=false;
@@ -36,7 +37,7 @@ export async function ordersView({api,send,shell,esc,submit,notice,memberId,memb
   if(!screen)return;
   screen.querySelector('#order-back').onclick=()=>{if(!edited||confirm('저장하지 않은 내용이 있습니다. 이동할까요?'))list().catch(showError);};
   screen.querySelectorAll('form').forEach(form=>form.oninput=()=>markDirty(true));
-  for(const action of ['assign','message','cancel']){const form=document.querySelector(`#order-${action}`);if(form)form.onsubmit=e=>submit(e,async data=>{await send(`admin/orders/${id}`,{...data,action,version:o.version},'PATCH');markDirty(false);notice('발주 기록을 저장했어요.');await detail(id);});}
+  for(const action of ['assign','message','cancel']){const form=document.querySelector(`#order-${action}`);if(form)form.onsubmit=e=>submit(e,async data=>{const rows=[['브랜드',o.brand_name],['패키징',o.spec.name],['규격',o.spec.size],['소재',o.spec.material],['인쇄',o.spec.printing],['후가공',o.spec.finish],['수량',`${money(o.quantity)}개`],['희망 납기',o.requested_date],['배송지',o.address],['제작 업체',action==='assign'?suppliers.find(s=>s.id===data.supplierId)?.name:o.supplier_name||'매칭 전'],...(terms?[['총 견적',`${money(terms.totalPrice)}원 (부가세·배송비 포함)`],['납품일',terms.deliveryDate],['견적 조건',terms.terms]]:[]),['변경 내용',data.message||'제작 업체 연결 제안']];if(!await reviewBeforeSave({title:action==='cancel'?'발주 취소 전 확인':'발주 조건과 입력 내용 확인',rows,action:action==='cancel'?'확인 후 취소':'확인 후 저장'}))return;await send(`admin/orders/${id}`,{...data,action,version:o.version,confirmed:true},'PATCH');markDirty(false);notice('발주 기록을 저장했어요.');await detail(id);});}
  }
  await list();
  const refresh=()=>{if(!active()){clearInterval(timer);window.removeEventListener('focus',refresh);return;}if(document.visibilityState==='visible')list(true).catch(showError);};

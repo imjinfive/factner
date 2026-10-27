@@ -1,3 +1,4 @@
+import {reviewBeforeSave} from './review.js';
 const statusLabel={active:'거래 연결 중',ended:'매칭 종료'};
 const date=value=>new Date(value).toLocaleString('ko-KR');
 
@@ -46,7 +47,7 @@ export async function partnersView(context){
   document.querySelector('#partner-filter').onsubmit=e=>{e.preventDefault();const values=new FormData(e.currentTarget);status=values.get('status');q=values.get('q');page=1;back();};
   document.querySelector('#partner-prev').onclick=()=>{page--;back();};document.querySelector('#partner-next').onclick=()=>{page++;back();};
   document.querySelectorAll('[data-partner]').forEach(button=>button.onclick=()=>detail(button.dataset.partner).catch(showError));
-  document.querySelector('#partner-create').onsubmit=e=>submit(e,async values=>{const brand=pickers.brand.selected,supplier=pickers.supplier.selected;if(!brand||!supplier)throw new Error('브랜드와 제작 업체를 선택해주세요.');const result=await send('admin/partners',{brandId:brand.id,supplierId:supplier.id,note:values.note});notice('양측 마이페이지에 거래 업체를 연결했어요.');await detail(result.id);});
+  document.querySelector('#partner-create').onsubmit=e=>submit(e,async values=>{const brand=pickers.brand.selected,supplier=pickers.supplier.selected;if(!brand||!supplier)throw new Error('브랜드와 제작 업체를 선택해주세요.');if(!await reviewBeforeSave({title:'거래 연결 전 양측 확인',rows:[['브랜드',brand.name],['제작 업체',supplier.name],['운영 메모',values.note]],action:'확인 후 거래 연결',message:'연결 후 브랜드가 이 제작 업체로 발주할 수 있습니다. 양측과 협의한 거래인지 확인해주세요.'}))return;const result=await send('admin/partners',{brandId:brand.id,supplierId:supplier.id,note:values.note,confirmed:true});notice('양측 마이페이지에 거래 업체를 연결했어요.');await detail(result.id);});
   syncSelection();await Promise.all([picker('brand'),picker('supplier')]);
  }
  async function detail(id){
@@ -58,7 +59,7 @@ export async function partnersView(context){
     <section class="panel wide"><h2>매칭 기록</h2><ul class="timeline">${(p.events||[]).map(event=>`<li><strong>${esc(event.action)}</strong><p class="pre">${esc(event.note)||'별도 메모 없음'}</p><small>${esc(event.actor)} · ${date(event.created_at)}</small></li>`).join('')}</ul></section>
    </div>`);
   document.querySelector('#partner-back').onclick=back;
-  document.querySelector('#partner-status').onsubmit=e=>submit(e,async values=>{await send(`admin/partners/${p.id}`,{status:next,version:p.version,note:values.note},'PATCH');notice('매칭 상태를 변경했어요.');await detail(id);});
+  document.querySelector('#partner-status').onsubmit=e=>submit(e,async values=>{if(!await reviewBeforeSave({title:'거래 상태 변경 확인',rows:[['브랜드',p.brand_name],['제작 업체',p.supplier_name],['변경 상태',statusLabel[next]],['사유',values.note]]}))return;await send(`admin/partners/${p.id}`,{status:next,version:p.version,note:values.note,confirmed:true},'PATCH');notice('매칭 상태를 변경했어요.');await detail(id);});
  }
  await list();
 }
