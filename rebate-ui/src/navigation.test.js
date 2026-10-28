@@ -25,6 +25,19 @@ test('matching browser history restores the form, selected candidates and review
   assert.deepEqual(restored[2].selected,restored[1].selected);
 });
 
+test('starting a new matching search clears choices while retaining the signed-in role', () => {
+  for (const member of [null, {id:'brand-1',role:'brand'}, {id:'supplier-1',role:'supplier'}]) {
+    const initial = matchingFromHistory(null, member);
+    assert.deepEqual(initial, {
+      memberId: member?.id || null,
+      stage: 'form',
+      depth: 0,
+      form: {role: member?.role || '', category: '', region: 'all', capacity: '30000'},
+      selected: [],
+    });
+  }
+});
+
 test('matching role comes from the current account and old account selections cannot leak', () => {
   const state = {matching:{memberId:'brand-1',stage:'review',form:{role:'brand',category:'supplies',capacity:'5000'},selected:['supplier-1']}};
   const result = matchingFromHistory(state,{id:'supplier-2',role:'supplier'});

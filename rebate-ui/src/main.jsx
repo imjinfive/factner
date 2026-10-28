@@ -2,14 +2,14 @@ import React, {useEffect,useRef,useState} from "react";
 import {createRoot} from "react-dom/client";
 import {AnimatePresence,MotionConfig,motion,useReducedMotion} from "motion/react";
 import * as Dialog from "@radix-ui/react-dialog";
-import {ArrowRight,ArrowUpRight,CheckCircle,X,Package,ClipboardText,CaretRight,Plus,Moon,Sun,Tray} from "@phosphor-icons/react";
+import {ArrowRight,CheckCircle,X,Package,ClipboardText,CaretRight,Plus,Moon,Sun,Tray} from "@phosphor-icons/react";
 import {readSaved} from "./model";
 import {api,quoteStatuses} from "./api";
 import ServiceIntro from "./ServiceIntro";
 import MemberPortal from "./MemberPortal";
 import MatchingFlow from "./MatchingFlow";
 import {MATCH_CATEGORIES} from "./matching-preview.js";
-import {pageFromHistory} from "./navigation.js";
+import {pageFromHistory,matchingFromHistory} from "./navigation.js";
 import OrderAlerts,{OrderAlertContext,OrderAlertNotice} from "./OrderAlerts";
 import "./styles.css";
 import "./funnel-shell.css";
@@ -157,7 +157,7 @@ function App(){
  function navigate(next,entry={}){const state={...history.state,factnerPage:next,...(next==='request'?{matching:{...history.state?.matching,stage:'form',depth:0,selected:[]}}:{}),...entry};if(history.state?.factnerPage!==next)history.pushState(state,'','/');else if(Object.keys(entry).length){history.replaceState(state,'','/');window.dispatchEvent(new PopStateEvent('popstate',{state}));}if(next==='request')setFlowVisited(true);setPage(next);window.scrollTo({top:0,behavior:'instant'});}
  function openModal(value){if(!document.activeElement?.closest('.modal')){document.querySelector('[data-return-focus]')?.removeAttribute('data-return-focus');document.activeElement?.setAttribute('data-return-focus','');}setModal(value);}
  function openOrderAlert(id){if(modal){notify('입력 중인 창을 닫은 뒤 발주 알림을 확인해주세요.');return;}setRequestedOrder({id,key:Date.now()});navigate('account');}
- const startRequest=()=>navigate('request');
+ const startRequest=()=>navigate('request',{matching:matchingFromHistory(null,member)});
  const openAccount=()=>{setSignupContext(null);navigate('account',member?{}:{memberAuth:{mode:'login',step:0,role:'',legal:'',depth:0}});};
  const beginSignup=context=>{setSignupContext(context);navigate('account',{memberAuth:{mode:'signup',step:context?.role?1:0,role:context?.role||'',legal:'',depth:0}});};
   useEffect(() => {
@@ -195,8 +195,8 @@ function App(){
   <a href="#main" className="skip-link" onClick={e=>{e.preventDefault();document.getElementById('main')?.focus();}}>본문 바로가기</a>
   <header className="site-header funnel-header"><div className="header-inner">
    <button className="logo" aria-label="팩트너 홈" onClick={()=>navigate('intro')}><Package size={28} weight="fill"/><span>factner<span className="logo-dot">.</span></span></button>
-   <nav aria-label="주 메뉴">{navItems.map(([key,label])=><button key={key} onClick={()=>navigate(key)} className={'nav-link '+(page===key?'active':'')} aria-current={page===key?'page':undefined}>{label}{page===key&&<motion.span className="nav-indicator" layoutId="nav-indicator"/>}</button>)}</nav>
-   <div className="header-actions"><button className="member-login-link" onClick={openAccount}>{member?'마이페이지':'로그인'}</button><Button className="header-cta" onClick={startRequest}>파트너 찾기 <ArrowUpRight size={17}/></Button></div>
+   <nav aria-label="주 메뉴">{navItems.map(([key,label])=><button key={key} onClick={()=>key==='request'?startRequest():navigate(key)} className={'nav-link '+(page===key?'active':'')} aria-current={page===key?'page':undefined}>{label}{page===key&&<motion.span className="nav-indicator" layoutId="nav-indicator"/>}</button>)}</nav>
+   <div className="header-actions"><button className="member-login-link" onClick={openAccount}>{member?'마이페이지':'로그인'}</button></div>
   </div></header>
   <main id="main" tabIndex={-1}>
    {flowVisited&&<div hidden={page!=='request'}><MatchingFlow Button={Button} onSignup={beginSignup} onAccount={openAccount} member={member} authLoading={authLoading} active={page==='request'}/></div>}
@@ -204,7 +204,7 @@ function App(){
     {page==='intro'&&<ServiceIntro Button={Button} Photo={Photo} onRequest={startRequest}/>}
     {page==='guide'&&<Guide onRequest={startRequest}/>}
     {page==='account'&&<>
-     {!member&&signupContext&&<aside className="signup-context shell"><div><strong>{signupContext.role==='supplier'?'패키징 제작 업체':'브랜드'} 가입 신청</strong><p>{MATCH_CATEGORIES.find(item=>item.value===signupContext.category)?.label} · 가입 승인 후 실제 파트너를 확인할 수 있어요.</p></div><button onClick={startRequest}>조건으로 돌아가기 <ArrowRight size={18}/></button></aside>}
+     {!member&&signupContext&&<aside className="signup-context shell"><div><strong>{signupContext.role==='supplier'?'패키징 제작 업체':'브랜드'} 가입 신청</strong><p>{MATCH_CATEGORIES.find(item=>item.value===signupContext.category)?.label} · 가입 승인 후 실제 파트너를 확인할 수 있어요.</p></div><button onClick={()=>navigate('request')}>조건으로 돌아가기 <ArrowRight size={18}/></button></aside>}
      <MemberPortal member={member} onMember={setMember} authLoading={authLoading} Button={Button} Modal={Modal} signupContext={signupContext} onFindPartner={startRequest} onLegacy={()=>navigate('activity')} requestedOrder={requestedOrder} onOrderOpened={()=>setRequestedOrder(null)} onAttentionChange={()=>setAttentionRefresh(v=>v+1)}/>
     </>}
     {page==='activity'&&<section className="shell inner-page"><div className="page-heading"><h1>기존 견적 내역</h1><p>이 브라우저에서 접수한 견적을 확인할 수 있어요.</p></div>

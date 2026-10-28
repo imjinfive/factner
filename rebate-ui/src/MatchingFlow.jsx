@@ -114,7 +114,7 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
 
   return <section className="match-shell" aria-labelledby="matching-title">
     <div className="match-topline"><span>파트너 찾기</span>{member && <span>{isBrand ? '제작 업체 찾기' : '브랜드 찾기'}</span>}</div>
-    {showingCandidates && <button type="button" className="match-back" onClick={changeConditions}><ArrowLeft size={23} weight="bold" />조건 바꾸기<span>이전 단계로</span></button>}
+    {showingCandidates && <button type="button" className="match-back" onClick={changeConditions}><ArrowLeft size={23} weight="bold" />이전 단계로</button>}
     <header className="match-heading"><h1 ref={heading} id="matching-title" tabIndex={-1}>{title}</h1>
       {stage === 'form' && <p>{member ? '품목을 선택하면 운영팀이 등록한 파트너 정보를 볼 수 있어요. 지역 제한은 없어요.' : '가입 신청 후 운영팀 검증과 승인이 완료되면 실제 후보를 확인할 수 있어요.'}</p>}
       {showingCandidates && <p>원하는 후보를 여러 곳 선택하세요. 운영팀이 조건을 확인하고 연결을 진행해요.</p>}
