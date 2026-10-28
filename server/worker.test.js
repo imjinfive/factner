@@ -17,7 +17,7 @@ function database() {
     raw:db,
   };
 }
-const valid = ()=>({id:crypto.randomUUID(),receiptToken:randomToken(),brand:'테스트 브랜드',category:'단상자',quantity:500,description:'가상 제품 패키징',contactName:'테스트',email:'qa@example.com',consent:true,consentVersion:'draft-2026-10-20',termsConsent:true,website:'',testOnly:true});
+const valid = ()=>({id:crypto.randomUUID(),receiptToken:randomToken(),brand:'테스트 브랜드',category:'단상자',quantity:500,description:'가상 제품 패키징',contactName:'테스트',email:'qa@example.com',consent:true,consentVersion:'draft-2026-10-28',termsConsent:true,website:'',testOnly:true});
 function client(env) {
   let cookie='';const ip=crypto.randomUUID();
   return async(path,data,method=data?'POST':'GET',headers={})=>{

@@ -3,6 +3,7 @@ import {digest,passwordHash,verifyPassword,randomToken,memberPassword} from './s
 import {memberRecoveryApi,memberRecoveryAdminApi} from './member-recovery.js';
 import {owner} from './auth.js';
 import {verifyQuoteSubmission} from './spam.js';
+import {memberSupport,memberWorkspaceApi} from './member-support.js';
 
 const consentVersion='member-pilot-2026-10-21';
 const fields='id,email,role,legal_type,name,contact,phone,business_number,status,review_note,created_at,updated_at,version';
@@ -69,7 +70,7 @@ export async function memberApi(req,env,url){
    stmt(env,`INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,consent_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,id,email,await passwordHash(password),input.role,input.legalType,name,contact,phone,input.legalType==='individual'?'':number,consentVersion,date,date),
    ...files.map(f=>fileStatement(env,id,f)),
   ]);}catch(error){if(String(error.message).includes('UNIQUE'))fail(409,'이미 접수된 이메일입니다.');throw error;}
-  return json({status:'pending'},201);
+  return json({status:'pending',support:await memberSupport(env,id)},201);
  }
  if(path==='/api/member/login'&&req.method==='POST'){
   await rate(env,`member-login:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,30,900);
@@ -78,7 +79,7 @@ export async function memberApi(req,env,url){
   const row=await stmt(env,'SELECT * FROM members WHERE email=?',email).first();
   const valid=await verifyPassword(password,row?.password_hash||`${'0'.repeat(64)}:${'0'.repeat(64)}`);
   if(!row||!valid)fail(401,'이메일 또는 비밀번호를 확인해주세요.');
-  if(row.status!=='approved')return json({error:labels[row.status],status:row.status,note:row.review_note},403);
+  if(row.status!=='approved')return json({error:labels[row.status],status:row.status,note:row.review_note,support:await memberSupport(env,row.id)},403);
   const token=randomToken();
   await stmt(env,'INSERT INTO member_sessions VALUES(?,?,?,?)',await digest(token),row.id,Date.now()+8*3600000,row.version).run();
   delete row.password_hash;delete row.consent_version;
@@ -90,6 +91,7 @@ export async function memberApi(req,env,url){
  }
  const recovery=await memberRecoveryApi(req,env,path);if(recovery)return recovery;
  const user=await memberIdentity(req,env);
+ const workspace=await memberWorkspaceApi(req,env,url,user);if(workspace)return workspace;
  if(path==='/api/member/me'&&req.method==='GET')return json({member:user});
  if(path==='/api/member/password'&&req.method==='POST'){
   await rate(env,`member-password:${user.id}`,10,3600);

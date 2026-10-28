@@ -10,6 +10,14 @@ async function eligible(env,brandId,supplierId){
  const row=await stmt(env,"SELECT b.id FROM members b JOIN members s ON s.id=? WHERE b.id=? AND b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved'",supplierId,brandId).first();
  if(!row)fail(400,'이용 중인 브랜드와 제작 업체만 연결할 수 있습니다.');
 }
+function completeMatchingRequests(env,brandId,supplierId,actor,eventId,time){
+ const note='운영팀이 거래를 연결했습니다.',prefix=crypto.randomUUID();
+ // A partner audit event guards completion inside the same transaction.
+ return [
+  stmt(env,`INSERT INTO matching_request_events(id,request_id,actor,status,note,created_at) SELECT ? || ':' || id,id,?,'completed',?,? FROM matching_requests WHERE status IN ('pending','reviewing') AND ((requester_id=? AND target_id=?) OR (requester_id=? AND target_id=?)) AND EXISTS(SELECT 1 FROM member_partner_events WHERE id=?)`,prefix,actor,note,time,brandId,supplierId,supplierId,brandId,eventId),
+  stmt(env,`UPDATE matching_requests SET status='completed',note=?,version=version+1,updated_at=? WHERE EXISTS(SELECT 1 FROM matching_request_events WHERE id=? || ':' || matching_requests.id)`,note,time,prefix),
+ ];
+}
 
 export async function partnerApi(req,env,url,adminUser){
  const admin=!!adminUser,base=admin?'/api/admin/partners':'/api/partners',path=url.pathname;
@@ -36,10 +44,12 @@ export async function partnerApi(req,env,url,adminUser){
  }
  if(admin&&path===base&&req.method==='POST'){
   const input=await body(req),note=text(input.note,1000);await eligible(env,input.brandId,input.supplierId);
-  const id=crypto.randomUUID(),time=now();
+  const id=crypto.randomUUID(),time=now(),eventId=crypto.randomUUID();
   const result=await env.DB.batch([
    stmt(env,`INSERT OR IGNORE INTO member_partners(id,brand_id,supplier_id,created_at,updated_at) SELECT ?,b.id,s.id,?,? FROM members b JOIN members s ON s.id=? WHERE b.id=? AND b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved'`,id,time,time,input.supplierId,input.brandId),
-   stmt(env,'INSERT INTO member_partner_events SELECT ?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),id,user.display_name,'매칭 등록',note,time),
+   stmt(env,'INSERT INTO member_partner_events SELECT ?,?,?,?,?,? WHERE changes()=1',eventId,id,user.display_name,'매칭 등록',note,time),
+   stmt(env,`INSERT INTO member_partner_events SELECT ?,p.id,?,'매칭 연결 확인',?,? FROM member_partners p JOIN members b ON b.id=p.brand_id JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND b.status='approved' AND s.status='approved' AND NOT EXISTS(SELECT 1 FROM member_partner_events WHERE id=?) AND EXISTS(SELECT 1 FROM matching_requests WHERE status IN ('pending','reviewing') AND ((requester_id=p.brand_id AND target_id=p.supplier_id) OR (requester_id=p.supplier_id AND target_id=p.brand_id)))`,eventId,user.display_name,note,time,input.brandId,input.supplierId,eventId),
+   ...completeMatchingRequests(env,input.brandId,input.supplierId,user.display_name,eventId,time),
   ]);
   if(result[0].meta.changes)return json({id},201);
   const existing=await stmt(env,'SELECT id,status FROM member_partners WHERE brand_id=? AND supplier_id=?',input.brandId,input.supplierId).first();
@@ -55,9 +65,10 @@ export async function partnerApi(req,env,url,adminUser){
   if(row.version!==input.version)fail(409,'매칭 내용이 변경되었습니다. 새로고침해주세요.');
   if(row.status===input.status)return json({ok:true});
   if(input.status==='active')await eligible(env,row.brand_id,row.supplier_id);
-  const time=now(),result=await env.DB.batch([
+  const time=now(),eventId=crypto.randomUUID(),result=await env.DB.batch([
    stmt(env,`UPDATE member_partners SET status=?,version=version+1,updated_at=? WHERE id=? AND version=? AND (?='ended' OR EXISTS(SELECT 1 FROM members b JOIN members s ON s.id=member_partners.supplier_id WHERE b.id=member_partners.brand_id AND b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved'))`,input.status,time,row.id,input.version,input.status),
-   stmt(env,'INSERT INTO member_partner_events SELECT ?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),row.id,user.display_name,input.status==='active'?'매칭 재개':'매칭 종료',note,time),
+   stmt(env,'INSERT INTO member_partner_events SELECT ?,?,?,?,?,? WHERE changes()=1',eventId,row.id,user.display_name,input.status==='active'?'매칭 재개':'매칭 종료',note,time),
+   ...(input.status==='active'?completeMatchingRequests(env,row.brand_id,row.supplier_id,user.display_name,eventId,time):[]),
   ]);
   if(!result[0].meta.changes)fail(409,'매칭 또는 회원 상태가 변경되었습니다. 새로고침해주세요.');
   return json({ok:true});

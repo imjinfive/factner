@@ -48,7 +48,7 @@ test('company profiles are account-linked, owner managed, anonymous and absent u
  await f.admin(`admin/members/${f.brand.id}/company`,{...profile,quantity:2000},'PUT');
  const result=(await f.brand.api('matching/candidates?category=box&role=supplier&region=seoul')).data.candidates;
  assert.equal(result.length,1);assert.equal(result[0].id,f.supplier.id);assert.equal(result[0].label,'A업체');assert.equal(result[0].demo,false);
- assert.doesNotMatch(JSON.stringify(result),/PRIVATE|private-contact|010-1234|@example/);assert.equal(result[0].region,'지역 무관');
+ assert.doesNotMatch(JSON.stringify(result),/PRIVATE|private-contact|010-1234|@example/);assert.equal('region' in result[0],false);
  assert.equal((await f.supplier.api('matching/candidates?category=box&capacity=1000')).data.candidates.length,0);
  const brandCandidate=(await f.supplier.api('matching/candidates?category=box&capacity=3000')).data.candidates[0];assert.equal(brandCandidate.label,'A브랜드');assert.equal(brandCandidate.schedule,profile.delivery);assert.equal(result[0].schedule,profile.productionPeriod);assert.equal(result[0].version,1);
  assert.equal((await f.brand.api('matching/candidates?category=unknown')).status,400);

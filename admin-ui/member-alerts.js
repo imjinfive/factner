@@ -5,9 +5,9 @@ export function createMemberAlerts({api,onUpdate}) {
   const current=generation,controller=new AbortController();request=controller;const timeout=setTimeout(()=>controller.abort(),12000);
   try {
    const options={signal:controller.signal};
-   const [recovery,matching,packaging]=await Promise.all([api('admin/members/recovery',options),api('admin/matching/requests?status=pending',options),api('admin/packaging-reviews?status=pending',options)]);
+   const [recovery,matching,packaging,service]=await Promise.all([api('admin/members/recovery',options),api('admin/matching/requests?status=active',options),api('admin/packaging-reviews?status=pending',options),api('admin/member-requests?status=active',options)]);
    if(!active||generation!==current)return;
-   data={recovery:recovery.requests.length,matching:matching.requests.length,packaging:packaging.reviews.length};error='';onUpdate({data,error});
+   data={recovery:recovery.requests.length,matching:matching.requests.length,packaging:packaging.reviews.length,service:service.requests.length};error='';onUpdate({data,error});
   }catch{if(active&&generation===current){error='회원 요청 알림을 갱신하지 못했습니다. 새로고침해 확인해주세요.';onUpdate({data,error});}}
   finally{clearTimeout(timeout);if(generation===current)request=null;}
  }

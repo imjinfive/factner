@@ -9,7 +9,8 @@ export function matchingFromHistory(state, member) {
   const role = member?.role || saved.form?.role;
   const category = saved.form?.category;
   const capacity = saved.form?.capacity;
-  const stage = sameMember && member && ['results', 'review', 'submitted'].includes(saved.stage) && ['box', 'packaging', 'supplies'].includes(category) ? saved.stage : 'form';
+  const allowedStages = member ? ['results', 'review', 'submitted'] : ['results'];
+  const stage = sameMember && allowedStages.includes(saved.stage) && ['brand', 'supplier'].includes(role) && ['box', 'packaging', 'supplies'].includes(category) ? saved.stage : 'form';
   return {
     memberId: member?.id || null,
     stage,
@@ -20,6 +21,6 @@ export function matchingFromHistory(state, member) {
       region: 'all',
       capacity: ['5000', '30000', '100000', 'over'].includes(capacity) ? capacity : '30000',
     },
-    selected: sameMember && Array.isArray(saved.selected) ? [...new Set(saved.selected.filter(id => typeof id === 'string'))] : [],
+    selected: sameMember && member && Array.isArray(saved.selected) ? [...new Set(saved.selected.filter(id => typeof id === 'string'))] : [],
   };
 }

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowLeft, ArrowRight, Package, Factory, Storefront, Gift, Stack, MapPin, Check, CheckCircle } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowRight, Package, Factory, Storefront, Gift, Stack, Check, CheckCircle } from '@phosphor-icons/react';
 import { api } from './api';
-import { MATCH_CATEGORIES, MATCH_CAPACITIES } from './matching-preview.js';
+import { MATCH_CATEGORIES, MATCH_CAPACITIES, previewCandidates } from './matching-preview.js';
 import { matchingFromHistory } from './navigation.js';
 import ReviewConfirm from './ReviewConfirm';
 import './matching-flow.css';
@@ -19,13 +19,16 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
   const [submitError, setSubmitError] = useState('');
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [helpReview, setHelpReview] = useState(false), [helpMessage, setHelpMessage] = useState(''), [helpSent, setHelpSent] = useState(false);
+  const [support, setSupport] = useState(null);
   const heading = useRef(null);
   const { stage, form } = flow;
   const isBrand = form.role === 'brand';
   const category = MATCH_CATEGORIES.find(item => item.value === form.category)?.label;
   const capacity = MATCH_CAPACITIES.find(item => item.value === form.capacity)?.label;
   const showingCandidates = stage === 'results' || stage === 'review';
-  const selectedCandidates = candidates.filter(item => flow.selected.includes(item.id));
+  const visibleCandidates = member ? candidates : previewCandidates(form.role, form.category);
+  const selectedCandidates = visibleCandidates.filter(item => flow.selected.includes(item.id));
 
   useEffect(() => {
     if (!active || authLoading) return;
@@ -51,7 +54,8 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
   }, [stage, active]);
 
   useEffect(() => {
-    if (!active || authLoading || !member || !showingCandidates) return;
+    if (!member) { setCandidates([]); setLoading(false); setError(''); return; }
+    if (!active || authLoading || !showingCandidates) return;
     const controller = new AbortController();
     setLoading(true);
     setError('');
@@ -65,21 +69,26 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
     return () => controller.abort();
   }, [active, authLoading, member?.id, member?.role, showingCandidates, form.category, form.capacity, retry]);
 
+  useEffect(() => {
+    if (!member) { setSupport(null); return; }
+    let alive = true;
+    api('member/workspace').then(data => { if (alive) setSupport(data.support); }).catch(() => {});
+    return () => { alive = false; };
+  }, [member?.id]);
+
   function save(next, push = false) {
     const current = { ...next, memberId: member?.id || null, form: { ...next.form, role: member?.role || next.form.role } };
     history[push ? 'pushState' : 'replaceState']({ ...history.state, factnerPage: 'request', matching: current }, '', location.href);
     setFlow(current);
     setSubmitError('');
+    setHelpSent(false);
+    setHelpReview(false);
   }
   function update(key, value) {
     save({ ...flow, form: { ...form, [key]: value }, selected: [] });
   }
   function find(event) {
     event.preventDefault();
-    if (!member) {
-      onSignup({ role: form.role, category: form.category, region: 'all' });
-      return;
-    }
     save({ ...flow, stage: 'results', depth: 1, selected: [] }, true);
   }
   function changeConditions() {
@@ -108,7 +117,7 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
     }
   }
   const title = stage === 'form'
-    ? member ? isBrand ? '우리 브랜드에 맞는 제작 업체 찾기' : '함께할 브랜드 찾기' : '가입 후 맞는 파트너를 찾아보세요'
+    ? member ? isBrand ? '우리 브랜드에 맞는 제작 업체 찾기' : '함께할 브랜드 찾기' : '우리에게 맞는 파트너는 어떤 모습일까요?'
     : stage === 'submitted' ? '운영팀에 연결 요청을 보냈어요'
     : `이런 ${isBrand ? '제작 업체' : '브랜드'}를 만나보세요`;
 
@@ -116,8 +125,8 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
     <div className="match-topline"><span>파트너 찾기</span>{member && <span>{isBrand ? '제작 업체 찾기' : '브랜드 찾기'}</span>}</div>
     {showingCandidates && <button type="button" className="match-back" onClick={changeConditions}><ArrowLeft size={23} weight="bold" />이전 단계로</button>}
     <header className="match-heading"><h1 ref={heading} id="matching-title" tabIndex={-1}>{title}</h1>
-      {stage === 'form' && <p>{member ? '품목을 선택하면 운영팀이 등록한 파트너 정보를 볼 수 있어요. 지역 제한은 없어요.' : '가입 신청 후 운영팀 검증과 승인이 완료되면 실제 후보를 확인할 수 있어요.'}</p>}
-      {showingCandidates && <p>원하는 후보를 여러 곳 선택하세요. 운영팀이 조건을 확인하고 연결을 진행해요.</p>}
+      {stage === 'form' && <p>{member ? '품목을 선택하면 운영팀이 등록한 파트너 정보를 볼 수 있어요.' : '간단한 조건을 고르고 파트너 미리보기를 확인해보세요.'}</p>}
+      {showingCandidates && <p>{member ? '원하는 후보를 여러 곳 선택하세요. 운영팀이 조건을 확인하고 연결을 진행해요.' : '아래는 서비스 이해를 위한 가상 예시예요. 가입 승인 후 실제 후보를 확인하고 연결을 요청할 수 있어요.'}</p>}
     </header>
 
     {stage === 'form' && <form className="match-form" onSubmit={find}>
@@ -134,30 +143,36 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
         </label>; })}</div></fieldset>
         {!isBrand && <label className="match-field match-capacity"><span>월 제작 가능 수량</span><select value={form.capacity} onChange={event => update('capacity', event.target.value)}>{MATCH_CAPACITIES.map(item => <option value={item.value} key={item.value}>{item.label}</option>)}</select></label>}
       </motion.div>}
-      <div className="match-form-bottom"><p>{member ? '등록된 실제 자료로 후보를 안내해요.' : '이미 가입하셨다면 로그인해주세요.'}</p><div className="match-actions">{!member && <Button tone="secondary" onClick={onAccount}>로그인</Button>}<Button type="submit" disabled={authLoading || !form.role || !form.category}>{member ? '후보 확인하기' : '가입 신청하기'} <ArrowRight size={21} /></Button></div></div>
+      <div className="match-form-bottom"><p>{member ? '등록된 실제 자료로 후보를 안내해요.' : '이미 가입하셨다면 로그인해주세요.'}</p><div className="match-actions">{!member && <Button tone="secondary" onClick={onAccount}>로그인</Button>}<Button type="submit" disabled={authLoading || !form.role || !form.category}>{member ? '후보 확인하기' : '파트너 미리보기'} <ArrowRight size={21} /></Button></div></div>
     </form>}
 
     {showingCandidates && <>
-      <div className="match-filter-summary"><span><Package size={19} />{category}</span><span><MapPin size={19} />지역 무관</span>{!isBrand && <span>월 {capacity}</span>}</div>
+      <div className="match-filter-summary"><span><Package size={19} />{category}</span>{!isBrand && <span>월 {capacity}</span>}</div>
       {loading && <p className="match-empty" role="status">등록된 파트너를 확인하고 있어요.</p>}
       {error && <div className="match-empty" role="alert"><p>{error}</p><Button onClick={() => setRetry(value => value + 1)}>다시 불러오기</Button></div>}
-      {!loading && !error && !candidates.length && <div className="match-empty"><Package size={40} /><h2>등록된 후보가 아직 없어요</h2><p>운영팀이 업체 정보를 확인하고 등록하면 이곳에서 선택할 수 있어요.</p></div>}
-      {!loading && !error && <div className="match-results">{candidates.map((candidate, index) => {
+      {!loading && !error && !visibleCandidates.length && <div className="match-empty"><Package size={40} /><h2>등록된 후보가 아직 없어요</h2><p>조건을 남겨주시면 운영팀이 확인하고 등록된 연락처로 안내해드려요.</p>{helpSent ? <p role="status">조건 전달 요청이 접수됐어요. 마이페이지에서 처리 상황을 확인할 수 있어요.</p> : <form className="match-help-form" onSubmit={event => {event.preventDefault();setSubmitError('');setHelpReview(true);}}><label>추가로 알려주실 조건<textarea value={helpMessage} maxLength={3000} onChange={event=>setHelpMessage(event.target.value)} placeholder="수량, 필요한 사양, 희망 일정 등을 적어주세요."/></label><Button type="submit">운영팀에 조건 전달하기</Button></form>}</div>}
+      {!loading && !error && <div className="match-results">{visibleCandidates.map((candidate, index) => {
         const selected = flow.selected.includes(candidate.id);
-        return <motion.button type="button" className={`match-candidate ${selected ? 'is-selected' : ''}`} key={candidate.id} aria-pressed={selected} onClick={() => toggle(candidate.id)} initial={reduced ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: reduced ? 0 : Math.min(index, 5) * .04 }}>
+        return <motion.button type="button" className={`match-candidate ${selected ? 'is-selected' : ''} ${!member ? 'is-preview' : ''}`} key={candidate.id} aria-pressed={member ? selected : undefined} onClick={() => member ? toggle(candidate.id) : onSignup({role:form.role,category:form.category,region:'all'})} initial={reduced ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring, delay: reduced ? 0 : Math.min(index, 5) * .04 }}>
           <span className="match-symbol">{isBrand ? <Factory size={28} /> : <Storefront size={28} />}</span>
           <div className="match-candidate-description"><h2>{candidate.label}</h2><p className="match-candidate-title">{candidate.title}</p>{candidate.note && <p className="match-candidate-note">{candidate.note}</p>}</div>
           <dl><div><dt>{isBrand ? '최소 제작' : '예상 발주'}</dt><dd>{candidate.quantity || '운영팀 확인 중'}</dd></div><div><dt>{isBrand ? '생산 희망 기간' : '납품 방식'}</dt><dd>{candidate.schedule || '운영팀 확인 중'}</dd></div></dl>
-          <span className="match-select-label"><span className="match-check"><Check size={17} weight="bold" /></span>{selected ? '선택됨' : '선택'}</span>
+          <span className="match-select-label">{member && <span className="match-check"><Check size={17} weight="bold" /></span>}{!member ? '가입하고 실제 후보 보기' : selected ? '선택됨' : '선택'}</span>
         </motion.button>;
       })}</div>}
-      {!!candidates.length && !loading && !error && <div className="match-result-bottom"><div><p aria-live="polite">{selectedCandidates.length ? `${selectedCandidates.length}곳을 선택했어요` : '원하는 후보를 모두 선택해주세요'}</p><p className="match-signup-note">요청 후 운영팀 확인을 거쳐 거래가 연결돼요.</p></div><Button disabled={!selectedCandidates.length || busy} onClick={() => save({ ...flow, stage: 'review', depth: 2 }, true)}>선택한 {selectedCandidates.length}곳 연결 요청 <ArrowRight size={21} /></Button></div>}
+      {!!visibleCandidates.length && member && !loading && !error && <div className="match-result-bottom"><div><p aria-live="polite">{selectedCandidates.length ? `${selectedCandidates.length}곳을 선택했어요` : '원하는 후보를 모두 선택해주세요'}</p><p className="match-signup-note">요청 후 운영팀 확인을 거쳐 거래가 연결돼요.</p></div><Button disabled={!selectedCandidates.length || busy} onClick={() => save({ ...flow, stage: 'review', depth: 2 }, true)}>선택한 {selectedCandidates.length}곳 연결 요청 <ArrowRight size={21} /></Button></div>}
     </>}
 
-    {stage === 'submitted' && <div className="match-empty match-success"><CheckCircle size={52} weight="duotone" /><p>선택한 {flow.selected.length}곳의 연결 요청이 접수됐어요.<br />운영팀에서 확인하고 안내해드릴게요.</p><Button onClick={onAccount}>마이페이지에서 확인 <ArrowRight size={21} /></Button></div>}
+    {!member && showingCandidates && <div className="match-result-bottom"><div><strong>우리 조건에 맞는 실제 파트너를 찾고 싶다면</strong><p className="match-signup-note">가입 신청 → 운영팀 승인 → 실제 후보 확인</p></div><Button onClick={()=>onSignup({role:form.role,category:form.category,region:'all'})}>가입하고 더 알아보기 <ArrowRight size={21}/></Button></div>}
+
+    {stage === 'submitted' && <div className="match-empty match-success"><CheckCircle size={52} weight="duotone" /><p>선택한 {flow.selected.length}곳의 연결 요청이 접수됐어요.<br />운영팀에서 확인하고 안내해드릴게요.{support?.matchingEta&&<><br/>예상 처리 시간: {support.matchingEta}</>}</p><Button onClick={onAccount}>마이페이지에서 확인 <ArrowRight size={21} /></Button></div>}
+
+    <ReviewConfirm open={active && showingCandidates && helpReview} onCancel={()=>setHelpReview(false)} title="운영팀에 전달할 조건을 확인해주세요" confirmLabel="확인하고 조건 전달" busy={busy} error={submitError} onConfirm={async()=>{
+      if(busy)return;setBusy(true);setSubmitError('');try{await api('member/requests',{method:'POST',body:JSON.stringify({kind:'matching',message:helpMessage.trim()||`${category} 파트너를 찾고 있어요. 운영팀의 확인과 안내를 요청합니다.`,details:{category:form.category,...(!isBrand?{capacity:form.capacity}:{})},confirmed:true})});setHelpSent(true);setHelpReview(false);}catch(problem){setSubmitError(problem.message);}finally{setBusy(false);}
+    }}><dl className="match-review"><div><dt>찾는 파트너</dt><dd>{isBrand?'제작 업체':'브랜드'}</dd></div><div><dt>품목</dt><dd>{category}</dd></div>{!isBrand&&<div><dt>월 제작 가능 수량</dt><dd>{capacity}</dd></div>}<div><dt>추가 조건</dt><dd>{helpMessage||'선택한 조건으로 운영팀의 확인과 안내를 요청합니다.'}</dd></div></dl><p>운영팀이 요청을 확인한 뒤 등록된 연락처로 안내합니다.{support?.matchingEta&&` 예상 처리 시간: ${support.matchingEta}`}</p></ReviewConfirm>
 
     <ReviewConfirm open={active && stage === 'review' && !loading && !error && !!selectedCandidates.length} onCancel={() => history.back()} onConfirm={submit} busy={busy} error={submitError} title="연결 요청 내용을 다시 확인해주세요" confirmLabel="확인하고 연결 요청">
-      <dl className="match-review"><div><dt>찾는 파트너</dt><dd>{isBrand ? '패키징 제작 업체' : '브랜드'}</dd></div><div><dt>품목</dt><dd>{category}</dd></div><div><dt>지역</dt><dd>지역 무관</dd></div>{!isBrand && <div><dt>월 제작 가능 수량</dt><dd>{capacity}</dd></div>}<div><dt>선택한 후보</dt><dd>{selectedCandidates.map(item => item.label).join(', ')} · {selectedCandidates.length}곳</dd></div></dl>
+      <dl className="match-review"><div><dt>찾는 파트너</dt><dd>{isBrand ? '패키징 제작 업체' : '브랜드'}</dd></div><div><dt>품목</dt><dd>{category}</dd></div>{!isBrand && <div><dt>월 제작 가능 수량</dt><dd>{capacity}</dd></div>}<div><dt>선택한 후보</dt><dd>{selectedCandidates.map(item => item.label).join(', ')} · {selectedCandidates.length}곳</dd></div></dl>
       <p>운영팀이 아래 후보와 조건을 확인해요. 요청만으로 거래가 시작되거나 비용이 청구되지는 않아요.</p>
       {selectedCandidates.map(candidate => <div className="match-review-candidate" key={candidate.id}><strong>{candidate.label} · {candidate.title}</strong><dl className="match-review"><div><dt>{isBrand ? '최소 제작' : '예상 발주'}</dt><dd>{candidate.quantity || '운영팀 확인 중'}</dd></div><div><dt>{isBrand ? '생산 희망 기간' : '납품 방식'}</dt><dd>{candidate.schedule || '운영팀 확인 중'}</dd></div></dl>{candidate.note && <p>{candidate.note}</p>}</div>)}
       {submitError && <Button tone="secondary" onClick={() => { history.back(); setRetry(value => value + 1); }}>최신 후보 정보 다시 확인</Button>}

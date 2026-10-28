@@ -3,7 +3,7 @@ export async function api(path, options = {}) {
   const response = await fetch(`/api/${path}`, { ...options, headers:{'Content-Type':'application/json',...options.headers} });
   let result;
   try { result = await response.json(); } catch { throw new Error('서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.'); }
-  if (!response.ok) throw Object.assign(new Error(result.error || '요청을 처리하지 못했습니다.'), {status:response.status,note:result.note});
+  if (!response.ok) throw Object.assign(new Error(result.error || '요청을 처리하지 못했습니다.'), {status:response.status,note:result.note,support:result.support});
   return result;
 }
 export function makeReceipt() {

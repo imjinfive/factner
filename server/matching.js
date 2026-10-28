@@ -15,7 +15,7 @@ function profileInput(input){
 }
 const candidate=(row,index,category)=>{
  const p=JSON.parse(row.profile),label=`${index<26?String.fromCharCode(65+index):index+1}${row.role==='supplier'?'업체':'브랜드'}`;
- return {id:row.member_id,version:row.version,label,title:p.summary,category:categories[category],region:'지역 무관',quantity:p.quantity?`${row.role==='supplier'?'최소 ':'월 '}${p.quantity.toLocaleString('ko-KR')}개`:'수량 협의',schedule:row.role==='supplier'?p.productionPeriod||'일정 협의':p.delivery||'납품 방식 협의',note:p.note||'',demo:false};
+ return {id:row.member_id,version:row.version,label,title:p.summary,category:categories[category],quantity:p.quantity?`${row.role==='supplier'?'최소 ':'월 '}${p.quantity.toLocaleString('ko-KR')}개`:'수량 협의',schedule:row.role==='supplier'?p.productionPeriod||'일정 협의':p.delivery||'납품 방식 협의',note:p.note||'',demo:false};
 };
 async function candidates(env,user,category,capacity){
  const rows=await stmt(env,`SELECT c.member_id,c.profile,c.version,m.role FROM member_companies c JOIN members m ON m.id=c.member_id WHERE c.listed=1 AND m.status='approved' AND m.role<>? AND EXISTS(SELECT 1 FROM json_each(c.profile,'$.categories') WHERE value=?) ORDER BY c.created_at,c.member_id`,user.role,category).all();
@@ -64,8 +64,8 @@ export async function matchingApi(req,env,url,adminUser){
  if(path===base&&req.method==='GET'){
   const memberId=admin?url.searchParams.get('memberId'):user.id,status=url.searchParams.get('status')||'';
   if(memberId!==null&&!uuid(memberId))fail(400,'회원을 확인해주세요.');
-  if(!['','pending','reviewing','completed','rejected'].includes(status))fail(400,'요청 상태를 확인해주세요.');
-  const rows=await stmt(env,`${requestSelect} WHERE (? IS NULL OR r.requester_id=? ${admin?'OR r.target_id=?':''}) AND (?='' OR r.status=?) ORDER BY r.created_at DESC,r.id DESC LIMIT 500`,memberId,memberId,...(admin?[memberId]:[]),status,status).all();
+  if(!['','active','pending','reviewing','completed','rejected'].includes(status))fail(400,'요청 상태를 확인해주세요.');
+  const rows=await stmt(env,`${requestSelect} WHERE (? IS NULL OR r.requester_id=? ${admin?'OR r.target_id=?':''}) AND (?='' OR r.status=? OR (?='active' AND r.status IN ('pending','reviewing'))) ORDER BY r.created_at DESC,r.id DESC LIMIT 500`,memberId,memberId,...(admin?[memberId]:[]),status,status,status).all();
   return json({requests:rows.results.map(row=>admin?{...row,snapshot:JSON.parse(row.snapshot)}:{id:row.id,category:row.category,status:row.status,note:row.note,version:row.version,created_at:row.created_at,updated_at:row.updated_at,candidate:JSON.parse(row.snapshot)})});
  }
  if(!admin&&path===base&&req.method==='POST'){
