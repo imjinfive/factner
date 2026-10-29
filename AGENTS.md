@@ -14,4 +14,4 @@
 
 ## 프로젝트 경계
 
-팩트너의 저장소와 폴더 이름은 `rebate`다. kimkimco, kimkimdeck, kimkim_deck과 별개이며 다른 프로젝트의 코드·설정·데이터를 수정하거나 공유하지 않는다.
+팩트너의 GitHub 저장소는 `imjinfive/factner`다. 기존 로컬 폴더와 `rebate-ui/` 경로는 유지한다. kimkimco, kimkimdeck, kimkim_deck과 별개이며 다른 프로젝트의 코드·설정·데이터를 수정하거나 공유하지 않는다.

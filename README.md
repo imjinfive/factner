@@ -1,6 +1,6 @@
 # 팩트너 · factner
 
-브랜드와 박스·패키징·부자재 제작 업체를 연결하는 서비스입니다. 저장소와 로컬 폴더명 `rebate`는 작업 이력을 위해 유지합니다. kimkimco / kimkimdeck / kimkim_deck과 코드·설정·데이터를 공유하지 않는 독립 프로젝트입니다.
+브랜드와 박스·패키징·부자재 제작 업체를 연결하는 서비스입니다. GitHub 저장소는 [imjinfive/factner](https://github.com/imjinfive/factner)입니다. 기존 로컬 폴더와 `rebate-ui/` 경로는 유지합니다. kimkimco / kimkimdeck / kimkim_deck과 코드·설정·데이터를 공유하지 않는 독립 프로젝트입니다.
 
 | 구분 | 주소 / 구성 |
 | --- | --- |
