@@ -75,6 +75,14 @@ test('official signup fails closed, validates reviewed consent, business proof a
   assert.equal((await f.call('bid/register',fields)).status,409);
   const waiting=await f.call('bid/login',fields);assert.equal(waiting.status,403);assert.equal(waiting.data.status,'pending');
   assert.equal(f.raw.prepare('SELECT count(*) n FROM market_sessions').get().n,0);
+  const original=f.env.DB.batch.bind(f.env.DB);
+  f.env.DB.batch=statements=>{
+    f.raw.prepare("UPDATE settings SET value=json_set(value,'$.accepting',0) WHERE key='service'").run();
+    return original(statements);
+  };
+  assert.equal((await f.call('bid/register',{...fields,email:'second@example.test',legalType:'corporate',businessNumber:'9876543210',files:[proof]})).status,409);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,1);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM member_files').get().n,1);
 });
 
 test('approved accounts share real posts across logins; one selected offer reaches the existing admin connection workflow',async t=>{

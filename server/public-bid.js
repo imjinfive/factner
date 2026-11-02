@@ -3,7 +3,7 @@ import {randomToken} from './security.js';
 import {memberApi,memberIdentity,loginMember,registerMember,hasMarketConsent} from './members.js';
 import {service,policy,approvedMarketMember} from './policy.js';
 import {marketApi} from './bid-market.js';
-import {isReviewEmail} from '../scripts/bid-seed.mjs';
+import {isReviewEmail,reviewPassword} from '../scripts/bid-seed.mjs';
 import {designerNotice} from '../shared/partner-roles.js';
 
 // The standalone loopback server can validate its local signup flow without a public CAPTCHA key.
@@ -55,6 +55,7 @@ export async function publicBidApi(req,env,url) {
   if(path==='/login' && req.method==='POST'){
     const input=await body(req);
     if(!isReviewEmail(input.email))return loginMember(req,env,input,{bid:true});
+    if(input.password!==reviewPassword)fail(401,'이메일 또는 비밀번호를 확인해주세요.');
     const key=validRoom(room)?room:randomToken();
     const reply=await reviewRequest(req,env,key,input);
     if(!reply.ok)return reply;
