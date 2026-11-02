@@ -168,7 +168,7 @@ function ContractCard({ contract, post, offer, user, mutate }) {
   const [action, setAction] = useState(null);
   const close = () => setAction(null);
   const { status, payments = [] } = contract;
-  const subject = [post?.title || '입찰 참여계약', offer?.alias].filter(Boolean).join(' · ');
+  const subject = [post?.title || '파트너 참여계약', offer?.alias].filter(Boolean).join(' · ');
   const terms = contract.terms || (contract.version === BID_TERMS.version ? BID_TERMS : null);
   const revealed = status === 'revealed';
   const supplier = ['design', 'packaging', 'both'].includes(user.kind);

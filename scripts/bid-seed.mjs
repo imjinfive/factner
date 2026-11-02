@@ -33,7 +33,7 @@ export function insertReviewFixtures(prepare,at=Date.now()){
       const count=[2,1,0,1,2,0,1,1,0,1][i];
       ids.slice(0,count).forEach((who,j)=>{
         const tiers=[{quantity:q,unitPrice:price+j*10},{quantity:q*2,unitPrice:Math.max(1,Math.round(price*.91)+j*10)}];
-        offer(crypto.randomUUID(),id,'seed-'+who,'입찰사 '+String.fromCharCode(65+j),JSON.stringify(tiers),j?'사양 확정 후 납기를 조율할 수 있습니다.':'제시된 규격과 일정을 기준으로 산출했습니다.',new Date(created+(j+1)*60000).toISOString());
+        offer(crypto.randomUUID(),id,'seed-'+who,'제안사 '+String.fromCharCode(65+j),JSON.stringify(tiers),j?'사양 확정 후 납기를 조율할 수 있습니다.':'제시된 규격과 일정을 기준으로 산출했습니다.',new Date(created+(j+1)*60000).toISOString());
       });
     });
 }

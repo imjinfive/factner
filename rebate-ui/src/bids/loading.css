@@ -1,0 +1,41 @@
+.bx-bootstrap { min-height:100svh; background:var(--bg,#fcfdfc); color:var(--text,#202b26); }
+.bx-bootstrap .nav-link { display:inline-flex; align-items:center; }
+.bl-brand-icon {
+  width:28px; height:28px; flex:none; background:currentColor;
+  mask:url('/factner.svg') center / contain no-repeat;
+}
+.bx-account,.bx-account-placeholder { min-width:52px; justify-content:flex-end; }
+.bx-account-placeholder { display:block; min-height:32px; }
+.bl-boot-intro,.bl-boot-work,.bl-boot-access { display:none; }
+[data-bid-start="intro"] .bl-boot-intro { display:block; }
+[data-bid-start="intro"] .bl-intro-image {
+  background:url('/images/service-village.png') 50% 54% / cover no-repeat;
+}
+.bl-boot-intro .rb-opening-cta { text-decoration:none; }
+/* The first heading is already visible in HTML; avoid replaying its entrance on mount. */
+[data-bid-start="intro"] #intro-title { opacity:1!important; transform:none!important; }
+.bl-loading {
+  width:min(1240px,calc(100% - 64px)); min-height:calc(100svh - 80px);
+  margin-inline:auto; padding:28px 0 84px;
+}
+[data-bid-start="board"] .bl-boot-work,[data-bid-start="other"] .bl-boot-work,
+[data-bid-start="account"] .bl-boot-access { display:block; }
+[data-bid-start="other"] .bl-boot-work .bl-cover { display:none; }
+.bl-access { max-width:640px; padding:60px 24px 0; }
+.bl-access-title { margin:0 auto 32px; width:min(70%,310px); height:72px; background:var(--soft); border-radius:14px; }
+.bl-access-card { height:325px; border:1px solid var(--line); background:var(--surface); border-radius:20px; }
+.bl-cover { height:clamp(190px,17vw,250px); border-radius:28px; background:var(--hero,#eef5ee); }
+.bl-rows {
+  margin-top:26px; height:230px; border-top:1px solid var(--line,#e8ece9);
+  background:repeating-linear-gradient(0deg,transparent,transparent 56px,var(--line,#e8ece9) 56px,var(--line,#e8ece9) 57px);
+}
+@media (max-width:600px) {
+  .bl-brand-icon { width:25px; height:25px; }
+  [data-bid-start="intro"] .bl-intro-image { background-position:54% 50%; }
+  .bl-loading { width:calc(100% - 32px); min-height:calc(100svh - 112px); padding-top:18px; }
+  .bl-access { padding:36px 2px 0; }
+}
+@media (prefers-reduced-motion:reduce), (max-height:560px) {
+  .bl-boot-intro .rb-scene { height:auto; }
+  .bl-boot-intro .rb-stage { position:relative; top:auto; height:650px; max-height:90svh; min-height:350px; }
+}

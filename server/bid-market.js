@@ -50,7 +50,7 @@ async function getState(env, user) {
   }
   return {
     posts: posts.results.map(p => ({ id:p.id, category:p.category, title:p.title, quantity:p.quantity, unitPrice:p.unit_price, size:p.size, description:p.description, deadline:p.deadline, createdAt:p.created_at, status:p.awarded?'awarded':'open', offerCount:p.offer_count, isMine:p.brand_id===id })),
-    offers: offers.results.map(o => ({ id:o.id, postId:o.post_id, alias:o.alias, tiers:JSON.parse(o.tiers), note:o.note, isMine:o.supplier_id===id })),
+    offers: offers.results.map(o => ({ id:o.id, postId:o.post_id, alias:o.alias.replace(/^입찰사 /, '제안사 '), tiers:JSON.parse(o.tiers), note:o.note, isMine:o.supplier_id===id })),
     contracts: contracts.results.map(c => ({
       id:c.id, postId:c.post_id, offerId:c.offer_id, status:contractStatus(c),
       quantity:c.quantity, unitPrice:c.unit_price, brandSignedAt:c.brand_signed_at, supplierSignedAt:c.supplier_signed_at,
@@ -72,14 +72,14 @@ async function createPost(env, user, input) {
   const { quantity, unitPrice } = quoteTier(input);
   const deadline = text(input.deadline, 10, true);
   const date = new Date(deadline + 'T00:00:00Z');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || !Number.isFinite(date.valueOf()) || date.toISOString().slice(0,10)!==deadline || deadline<today()) fail(400, '오늘 이후의 올바른 입찰 마감일을 선택해주세요.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline) || !Number.isFinite(date.valueOf()) || date.toISOString().slice(0,10)!==deadline || deadline<today()) fail(400, '오늘 이후의 올바른 제안 마감일을 선택해주세요.');
   const id = crypto.randomUUID();
   await stmt(env, 'INSERT INTO market_posts(id,brand_id,category,title,quantity,unit_price,size,description,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id,user.id,input.category,title,quantity,unitPrice,size,description,deadline,now()).run();
   return json({ id }, 201);
 }
 
 async function submitOffer(env, user, postId, input) {
-  if (!supplierKind(user.kind)) fail(403, '업체만 입찰할 수 있습니다.');
+  if (!supplierKind(user.kind)) fail(403, '제작·디자인 파트너만 제안을 보낼 수 있습니다.');
   const post = await stmt(env, 'SELECT category,deadline FROM market_posts WHERE id=?', postId).first();
   if (!post || !canOffer(user, post.category)) fail(404, '참여할 수 있는 공고가 아닙니다.');
   if (!Array.isArray(input.tiers) || !input.tiers.length || input.tiers.length>8) fail(400, '수량별 단가를 1~8개 입력해주세요.');
@@ -87,15 +87,15 @@ async function submitOffer(env, user, postId, input) {
   if (new Set(tiers.map(t=>t.quantity)).size!==tiers.length) fail(400, '같은 수량은 한 번만 입력해주세요.');
   const note = anonymousText(input.note, 1200, user);
   const id = crypto.randomUUID();
-  const result = await stmt(env, "INSERT OR IGNORE INTO market_offers(id,post_id,supplier_id,alias,tiers,note,created_at) SELECT ?,p.id,?,(SELECT '입찰사 ' || CASE WHEN count(*)<26 THEN char(65+count(*)) ELSE CAST(count(*)+1 AS TEXT) END FROM market_offers WHERE post_id=p.id),?,?,? FROM market_posts p WHERE p.id=? AND p.deadline>=? AND NOT EXISTS(SELECT 1 FROM market_contracts c WHERE c.post_id=p.id)", id,user.id,JSON.stringify(tiers),note,now(),postId,today()).run();
-  if (!result.meta.changes) fail(409, '이미 입찰했거나 마감·선정된 공고입니다.');
+  const result = await stmt(env, "INSERT OR IGNORE INTO market_offers(id,post_id,supplier_id,alias,tiers,note,created_at) SELECT ?,p.id,?,(SELECT '제안사 ' || CASE WHEN count(*)<26 THEN char(65+count(*)) ELSE CAST(count(*)+1 AS TEXT) END FROM market_offers WHERE post_id=p.id),?,?,? FROM market_posts p WHERE p.id=? AND p.deadline>=? AND NOT EXISTS(SELECT 1 FROM market_contracts c WHERE c.post_id=p.id)", id,user.id,JSON.stringify(tiers),note,now(),postId,today()).run();
+  if (!result.meta.changes) fail(409, '이미 제안을 보냈거나 마감·선정된 공고입니다.');
   return json({ id }, 201);
 }
 
 async function selectOffer(env, user, offerId, input) {
   if (user.kind!=='brand') fail(403, '공고를 등록한 브랜드만 선택할 수 있습니다.');
   const offer = await stmt(env, 'SELECT o.* FROM market_offers o JOIN market_posts p ON p.id=o.post_id WHERE o.id=? AND p.brand_id=?', offerId,user.id).first();
-  if (!offer) fail(404, '선택 가능한 입찰을 찾을 수 없습니다.');
+  if (!offer) fail(404, '선택할 수 있는 제안을 찾지 못했습니다.');
   const tier = JSON.parse(offer.tiers).find(t=>t.quantity===input.quantity);
   if (!tier) fail(400, '제안된 수량 구간을 선택해주세요.');
   if (input.version === BID_TERMS.version) {
@@ -109,7 +109,7 @@ async function selectOffer(env, user, offerId, input) {
   if (!existing) fail(409, '현재 계약 조항과 버전을 확인해주세요.');
   const signed = signature(input, existing.version);
   if (existing.offer_id!==offerId || existing.quantity!==tier.quantity || existing.unit_price!==tier.unitPrice || existing.brand_signature!==signed) {
-    fail(409, '다른 조건이나 서명으로 이미 입찰을 선택했습니다.');
+    fail(409, '다른 조건이나 서명으로 이미 제안을 선택했습니다.');
   }
   return json({ id:existing.id, status:contractStatus(existing) });
 }
@@ -151,7 +151,7 @@ async function recordPayment(env, user, contract, input) {
 export async function marketApi(req, env, url, user) {
   const path = url.pathname;
   if (req.method==='GET' && path==='/api/bid/state') return json(await getState(env, user));
-  if (req.method!=='POST') fail(404, '없는 입찰 기능입니다.');
+  if (req.method!=='POST') fail(404, '요청한 기능을 찾지 못했습니다.');
   if (!user) fail(401, '로그인이 필요합니다.');
   const input = await body(req);
   if (path==='/api/bid/posts') return createPost(env,user,input);
@@ -160,7 +160,7 @@ export async function marketApi(req, env, url, user) {
   const select = path.match(/^\/api\/bid\/offers\/([\w-]+)\/select$/);
   if (select) return selectOffer(env,user,select[1],input);
   const action = path.match(/^\/api\/bid\/contracts\/([\w-]+)\/(sign|reveal|pay)$/);
-  if (!action) fail(404, '없는 입찰 기능입니다.');
+  if (!action) fail(404, '요청한 기능을 찾지 못했습니다.');
   const contract = await contractFor(env,user,action[1]);
   if (action[2]==='sign') return signContract(env,user,contract,input);
   if (action[2]==='reveal') return revealContract(env,user,contract,input);

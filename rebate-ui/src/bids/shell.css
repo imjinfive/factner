@@ -2,43 +2,14 @@
 .bx-shell > main { flex:1; min-width:0; }
 .bx-shell .footer-right a { font-size:14px; text-decoration:none; }
 .bx-shell .header-actions { gap:16px; }
-.bx-shell .bx-try { min-height:40px; padding:8px 15px; }
-.bx-user,.bx-link { display:inline-flex; align-items:center; justify-content:center; gap:7px; }
-.bx-overlay { position:fixed; inset:0; z-index:40; background:rgb(15 28 22 / .48); }
-.bx-dialog { position:fixed; z-index:41; top:50%; left:50%; transform:translate(-50%,-50%); width:min(480px,calc(100% - 32px)); max-height:90dvh; overflow:auto; padding:32px; border-radius:28px; border:1px solid var(--line); background:var(--surface); color:var(--text); box-shadow:var(--shadow); }
-.bx-dialog-title,.bx-authgate h1 { margin:15px 0 8px; font-size:clamp(26px,4vw,34px); font-weight:760; line-height:1.23; letter-spacing:-.045em; }
-.bx-close,.bx-dialog-icon { display:grid; place-items:center; }
-.bx-close { position:absolute; top:16px; right:16px; width:40px; height:40px; border-radius:50%; background:var(--soft); color:var(--muted); }
-.bx-dialog-icon { width:50px; height:50px; border-radius:16px; background:var(--mint); color:var(--green); }
-.bx-sub { margin:0 0 22px; color:var(--muted); }
-.bx-room-strip { background:var(--mint); color:var(--muted); font-size:14px; }
-.bx-room-strip > div { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; padding-block:8px; }
-.bx-room-strip strong { color:var(--green-dark); font-weight:700; }
-.bx-room-note { margin:0 0 18px; padding:12px 15px; border-radius:12px; background:var(--soft); color:var(--muted); font-size:14px; }
-.bx-tabs { display:flex; gap:20px; margin-bottom:20px; border-bottom:1px solid var(--line); }
-.bx-tabs button { padding:9px 0; color:var(--muted); font-weight:650; border-bottom:2px solid transparent; }
-.bx-tabs button[aria-pressed=true] { color:var(--text); border-color:var(--green); }
-.bx-kinds { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:20px; }
-.bx-kinds button { display:flex; align-items:center; gap:9px; padding:12px; min-height:48px; border:1.5px solid var(--line); border-radius:14px; background:var(--surface); color:var(--text); font-size:15px; font-weight:650; }
-.bx-kinds button svg { color:var(--green); }
-.bx-kinds button[aria-pressed=true] { border-color:var(--green); background:var(--mint); }
-.bx-form { display:grid; gap:16px; }
-.bx-form label { display:grid; gap:7px; font-size:15px; color:var(--text); font-weight:650; }
-.bx-form input,.bx-form select { width:100%; min-height:48px; padding:10px 13px; font:inherit; color:var(--text); background:var(--surface); border:1px solid var(--line); border-radius:12px; }
-.bx-primary { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:12px 20px; border-radius:12px; background:var(--green); color:white; font-size:16px; font-weight:700; }
-.bx-primary:hover { background:var(--green-dark); }
-[data-theme="dark"] .bx-primary { color:#113c25; }
-.bx-link { margin:10px auto 0; padding:7px; color:var(--green-dark); font-size:14px; font-weight:650; }
-.bx-alert,.bx-loading,.bx-authgate { width:min(920px,calc(100% - 40px)); margin:48px auto; }
-.bx-alert,.bx-error { color:var(--error); }
+.bx-user { display:inline-flex; align-items:center; gap:7px; }
+.bx-alert,.bx-authgate { width:min(920px,calc(100% - 40px)); margin:48px auto; }
+.bx-alert { color:var(--error); }
 .bx-alert button { margin-left:8px; text-decoration:underline; }
 .bx-authgate { padding:56px 0 80px; }
+.bx-authgate h1 { margin:15px 0 8px; font-size:clamp(26px,4vw,34px); font-weight:760; line-height:1.23; letter-spacing:-.045em; }
 .bx-authgate>svg { color:var(--green); }
 .bx-authgate p { margin:12px 0 24px; color:var(--muted); }
 @media(max-width:600px){
-  .bx-room-strip { font-size:13px; }
   .bx-shell .header-actions { gap:10px; align-items:center; }
-  .bx-shell .bx-try { font-size:13px; min-height:33px; padding:6px 10px; }
-  .bx-dialog { padding:23px 20px; border-radius:22px; }
-  .bx-kinds button { padding:10px; font-size:14px; }
 }

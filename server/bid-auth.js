@@ -36,7 +36,7 @@ async function issue(env,user,admin=false) {
 export async function bidApi(req,env,url) {
   if(!url.pathname.startsWith('/api/bid/'))return null;
   const hosted=isIsolatedReview(env), preview=hosted || isLocalPreview(env,url);
-  if(!preview)fail(503,'현재 입찰 서비스는 분리된 시안에서만 열려 있습니다.');
+  if(!preview)fail(503,'현재 파트너 찾기는 체험 공간에서만 이용할 수 있습니다.');
   const path=url.pathname.slice('/api/bid'.length);
   const user=await current(req,env,preview);
   if(path==='/session' && req.method==='GET'){

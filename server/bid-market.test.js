@@ -69,7 +69,9 @@ test('bid board restricts participation by category and excludes identities and 
   assert.equal(publicBoard.posts.find(p=>p.id===id).offerCount,2);
   assert.deepEqual(publicBoard.offers,[]);
   const brandBoard=(await f.api(f.brand,'state')).data;
-  assert.deepEqual(brandBoard.offers.map(o=>o.alias).sort(),['입찰사 A','입찰사 B']);
+  assert.deepEqual(brandBoard.offers.map(o=>o.alias).sort(),['제안사 A','제안사 B']);
+  f.sql.prepare("UPDATE market_offers SET alias='입찰사 A' WHERE post_id=? AND alias='제안사 A'").run(id);
+  assert.deepEqual((await f.api(f.brand,'state')).data.offers.map(o=>o.alias).sort(),['제안사 A','제안사 B']);
   assert.deepEqual(brandBoard.offers[0].tiers.map(x=>x.quantity),[500,1000]);
   assert.equal((await f.api(f.otherBrand,'state')).data.offers.length,0);
   assert.equal((await f.api(f.box,'state')).data.offers.length,1);

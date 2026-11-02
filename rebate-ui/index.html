@@ -5,15 +5,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="theme-color" content="#13885b" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (() => {
+        let theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        try {
+          const saved = localStorage.getItem('factner-bid-theme');
+          if (saved === 'light' || saved === 'dark') theme = saved;
+        } catch {}
+        document.documentElement.dataset.theme = theme;
+        const view = location.hash.slice(1).split('/')[0] || 'intro';
+        let start = 'other';
+        if (!/^\/ops\/?$/.test(location.pathname)) {
+          if (view === 'intro') start = 'intro';
+          else if (view === 'feed' || view === 'mine') start = 'board';
+          else if (['login','signup','account','demo'].includes(view)) start = 'account';
+        }
+        document.documentElement.dataset.bidStart = start;
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/bids/loading.css" />
     <link rel="icon" href="/factner.svg" type="image/svg+xml" />
     <meta
       name="description"
-      content="디자인과 패키징 제작 공고를 확인하고, 조건에 맞는 수량별 입찰을 제안하세요."
+      content="브랜드와 디자인·패키징 제작업체가 수량, 가격, 제작 조건을 비교하고 함께 일할 파트너를 찾는 곳입니다."
     />
-    <title>팩트너 · 입찰 전광판</title>
+    <title>팩트너 · 파트너 찾기</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="bx-bootstrap" role="status" aria-label="팩트너 화면을 불러오는 중">
+        <header class="site-header funnel-header" aria-hidden="true">
+          <div class="header-inner">
+            <span class="logo"><i class="bl-brand-icon"></i><span>factner.</span></span>
+            <nav><span class="nav-link">서비스 소개</span><span class="nav-link">파트너 찾기</span><span class="nav-link">서비스 맛보기</span></nav>
+            <span class="header-actions bx-account-placeholder"></span>
+          </div>
+        </header>
+        <div class="rb-story bl-boot-intro">
+          <div class="rb-scene rb-opening"><div class="rb-stage"><div class="rb-opening-frame">
+            <div class="rb-opening-image bl-intro-image"></div><div class="rb-opening-shade"></div>
+            <div class="rb-opening-title">
+              <h1>브랜드의 가치는<br /><span>패키징부터.</span></h1>
+              <a class="button white rb-opening-cta" href="#feed">파트너 찾기
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h16m-7-7 7 7-7 7" /></svg>
+              </a>
+            </div>
+          </div></div></div>
+        </div>
+        <div class="bl-loading bl-access bl-boot-access" aria-hidden="true"><div class="bl-access-title"></div><div class="bl-access-card"></div></div>
+        <div class="bl-loading bl-boot-work" aria-hidden="true"><div class="bl-cover"></div><div class="bl-rows"></div></div>
+      </div>
+    </div>
     <script type="module" src="/src/bids/entry.jsx"></script>
   </body>
 </html>
