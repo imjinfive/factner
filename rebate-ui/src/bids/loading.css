@@ -2,19 +2,16 @@
 .bx-bootstrap .nav-link { display:inline-flex; align-items:center; }
 .bl-brand-icon {
   width:28px; height:28px; flex:none; background:currentColor;
-  mask:url('/factner.svg') center / contain no-repeat;
+  mask:url('../../public/factner.svg?inline') center / contain no-repeat;
 }
 .bx-account,.bx-account-placeholder { min-width:52px; justify-content:flex-end; }
-.bx-account-placeholder { display:block; min-height:32px; }
+.bx-account-placeholder { display:block; min-height:calc(1.6em + 20px); }
 .bl-boot-intro,.bl-boot-work,.bl-boot-access,.bl-boot-discovery { display:none; }
 [data-bid-start="discovery"] .bl-boot-discovery { display:block; }
 [data-bid-start="intro"] .bl-boot-intro { display:block; }
-[data-bid-start="intro"] .bl-intro-image {
-  background:url('/images/service-village.png') 50% 54% / cover no-repeat;
-}
+.bx-bootstrap .nav-indicator { display:none; }
+[data-bid-start="intro"] .bl-intro-indicator,[data-bid-start="discovery"] .bl-feed-indicator { display:block; }
 .bl-boot-intro .rb-opening-cta { text-decoration:none; }
-/* The first heading is already visible in HTML; avoid replaying its entrance on mount. */
-[data-bid-start="intro"] #intro-title { opacity:1!important; transform:none!important; }
 .bl-loading {
   width:min(1240px,calc(100% - 64px)); min-height:calc(100svh - 80px);
   margin-inline:auto; padding:28px 0 84px;
@@ -40,13 +37,15 @@
 }
 @media (max-width:600px) {
   .bl-brand-icon { width:25px; height:25px; }
-  [data-bid-start="intro"] .bl-intro-image { background-position:54% 50%; }
   .bl-loading { width:calc(100% - 32px); min-height:calc(100svh - 112px); padding-top:18px; }
   .bl-access { padding:36px 2px 0; }
 }
 @media (prefers-reduced-motion:reduce), (max-height:560px) {
   .bl-boot-intro .rb-scene { height:auto; }
-  .bl-boot-intro .rb-stage { position:relative; top:auto; height:650px; max-height:90svh; min-height:350px; }
+  .bl-boot-intro .rb-opening .rb-stage { position:relative; top:auto; height:650px; max-height:90svh; min-height:350px; }
+}
+@media (max-width:600px) and (prefers-reduced-motion:reduce),(max-width:600px) and (max-height:560px) {
+  .bl-boot-intro .rb-opening .rb-stage { height:520px; }
 }
 @media (max-width:640px) {
   .bl-discovery { width:calc(100% - 40px); padding:23px 0 64px; }

@@ -54,7 +54,7 @@ const env={DB:database(live),APP_KIND:'main',[localMemberPreview]:true,BID_ROOMS
 const port=Number(process.env.BID_PREVIEW_PORT||4180);
 const dist=resolve(root,'rebate-ui/dist');
 if(!existsSync(resolve(dist,'index.html')))throw new Error('Build the frontend before starting the preview.');
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2','.jpg':'image/jpeg'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.ico':'image/x-icon','.woff2':'font/woff2','.jpg':'image/jpeg'};
 const watchers=new Set();
 const heartbeat=setInterval(()=>{for(const response of watchers)response.write(': keepalive\n\n');},20000);
 heartbeat.unref();

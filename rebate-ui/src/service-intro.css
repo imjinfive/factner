@@ -11,7 +11,12 @@
 .rb-opening { height: 180svh; padding: 16px 16px 0; }
 .rb-opening .rb-stage { height: calc(100svh - var(--rb-header) - 16px); border-radius: 28px; }
 .rb-opening-frame { height: 100%; position: relative; overflow: hidden; background: #687266; }
-.rb-opening-image { position: absolute; width: 100%; height: 110%; inset: 0; object-fit: cover; object-position: 50% 54%; }
+.rb-opening-image {
+  position: absolute; width: 100%; height: 110%; inset: 0;
+  /* Both layers use the same crop so the town is already visible on the first paint. */
+  background-image: url('./assets/service-village.webp'), url('./assets/service-village-preview.webp?inline');
+  background-size: cover; background-position: 50% 54%; background-repeat: no-repeat;
+}
 .rb-opening-shade { position: absolute; inset: 0; background: linear-gradient(180deg, #15251b08 10%, #10221822 40%, #071a13c9 100%); }
 .rb-opening-title, .rb-opening-after { position: absolute; bottom: 10%; left: 8%; right: 7%; color: #fff; }
 .rb-opening h1 { font-size: clamp(52px, 7.3vw, 104px); max-width: 1100px; text-shadow: 0 2px 30px #10231b30; }
@@ -68,7 +73,7 @@
   .rb-story { --rb-header: 112px; }
   .rb-opening { height: 165svh; padding: 10px 10px 0; }
   .rb-opening .rb-stage { height: calc(100svh - 122px); border-radius: 20px; }
-  .rb-opening-image { object-position: 54% 50%; }
+  .rb-opening-image { background-position: 54% 50%; }
   .rb-opening-title, .rb-opening-after { bottom: 11%; left: 7%; right: 4%; }
   .rb-opening h1 { font-size: clamp(37px, 9vw, 54px); }
   .rb-opening-after { font-size: clamp(35px, 8.7vw, 50px); }

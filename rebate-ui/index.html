@@ -6,6 +6,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <meta name="theme-color" content="#13885b" />
     <meta name="color-scheme" content="light dark" />
+    <link id="opening-photo" rel="preload" as="image" href="/src/assets/service-village.webp" fetchpriority="high" media="not all" />
     <script>
       (() => {
         let theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -38,6 +39,7 @@
           else if (['login','signup','account','demo','find-id','recover-password','reset-password'].includes(view)) start = 'account';
         }
         document.documentElement.dataset.bidStart = start;
+        if (start === 'intro') document.getElementById('opening-photo').media = 'all';
         // The hero link is usable while the application bundle is in flight.
         document.addEventListener('click', event => {
           if (!event.target.closest?.('[data-boot-feed]') || event.button !== 0 ||
@@ -63,13 +65,13 @@
         <header class="site-header funnel-header" aria-hidden="true">
           <div class="header-inner">
             <span class="logo"><i class="bl-brand-icon"></i><span>factner.</span></span>
-            <nav><span class="nav-link">서비스 소개</span><span class="nav-link">파트너 찾기</span></nav>
+            <nav><span class="nav-link">서비스 소개<i class="nav-indicator bl-intro-indicator"></i></span><span class="nav-link">파트너 찾기<i class="nav-indicator bl-feed-indicator"></i></span></nav>
             <span class="header-actions bx-account-placeholder"></span>
           </div>
         </header>
         <div class="rb-story bl-boot-intro">
           <div class="rb-scene rb-opening"><div class="rb-stage"><div class="rb-opening-frame">
-            <div class="rb-opening-image bl-intro-image"></div><div class="rb-opening-shade"></div>
+            <div class="rb-opening-image"></div><div class="rb-opening-shade"></div>
             <div class="rb-opening-title">
               <h1>브랜드의 가치는<br /><span>패키징부터.</span></h1>
               <a class="button white rb-opening-cta" href="/" data-boot-feed>파트너 찾기

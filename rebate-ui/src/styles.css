@@ -1,6 +1,13 @@
 /* Toss-inspired spacing and touch feedback; independent brand and components.
    Radius scale: controls 12px, cards 20px, hero/dialog 28px. Layers: header 10, bar 20, modal 40, toast 50. */
 @font-face {
+  font-family: "Factner Opening";
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: block;
+  src: url('./assets/factner-opening.woff2?inline') format('woff2');
+}
+@font-face {
   font-family: "Pretendard";
   font-style: normal;
   font-weight: 45 920;
@@ -9,7 +16,7 @@
 }
 :root {
   font-family:
-    "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    "Factner Opening", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   color: #202b26;
   background: #fcfdfc;
   font-synthesis: none;

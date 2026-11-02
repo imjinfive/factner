@@ -24,16 +24,14 @@ function Opening({ Button, onRequest, still }) {
     <section ref={ref} className="rb-scene rb-opening" id="intro-start" aria-labelledby="intro-title">
       <div className="rb-stage">
         <div className="rb-opening-frame">
-          <motion.img className="rb-opening-image" src="/images/service-village.png"
-            width="1536" height="1024" fetchPriority="high"
-            alt="브랜드와 패키징 공방이 만나는 미니어처 마을"
+          <motion.div className="rb-opening-image" role="img"
+            aria-label="브랜드와 패키징 공방이 만나는 미니어처 마을"
             style={still ? {} : { scale, y: imageY }} />
           <div className="rb-opening-shade" />
           <motion.div className="rb-opening-title" style={still ? {} : { y: titleY, opacity: titleOpacity }}>
-            <motion.h1 id="intro-title" initial={still ? false : { opacity: 0, y: 28 }}
-              animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
+            <h1 id="intro-title">
               브랜드의 가치는<br /><span>패키징부터.</span>
-            </motion.h1>
+            </h1>
             <Button className="rb-opening-cta" tone="white" onClick={onRequest}>
               파트너 찾기 <ArrowRight size={20} aria-hidden="true" />
             </Button>
