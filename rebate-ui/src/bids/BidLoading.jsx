@@ -10,9 +10,16 @@ export function saveBidTheme(theme) {
 }
 
 export function BidLoading({view}) {
+  if (view === 'discovery') {
+    return <section className="bl-discovery" role="status" aria-label="파트너 찾기를 불러오는 중">
+      <div className="bl-discovery-title" aria-hidden="true" /><div className="bl-discovery-line" aria-hidden="true" />
+      <div className="bl-discovery-options" aria-hidden="true"><i /><i /><i /></div>
+    </section>;
+  }
   if (['login','signup','account','demo'].includes(view)) {
     return <section className="bl-loading bl-access" role="status" aria-label="계정 화면을 불러오는 중">
-      <div className="bl-access-title" aria-hidden="true" /><div className="bl-access-card" aria-hidden="true" />
+      <div className="bl-access-title" aria-hidden="true" />
+      <div className="bl-access-card" aria-hidden="true">{view==='login' && <div className="bl-login-roles"><i /><i /><i /></div>}</div>
     </section>;
   }
   const board = view === 'feed' || view === 'mine';

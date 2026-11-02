@@ -1,6 +1,7 @@
 import { body, fail, json, rate, stmt, text } from './http.js';
 import { digest, memberPassword, passwordHash, randomToken, verifyPassword } from './security.js';
 import { marketApi } from './bid-market.js';
+import { designerNotice, isPackagingPartner } from '../shared/partner-roles.js';
 
 const kinds = new Set(['brand', 'design', 'packaging', 'both']);
 const lifetime = 8 * 3600 * 1000;
@@ -22,9 +23,10 @@ async function current(req, env, preview) {
     return {id:'preview-ops', kind:'admin', name:'팩트너 운영팀', email:'', hash};
   }
   const user = await stmt(env, 'SELECT a.id,a.email,a.name,a.kind FROM market_accounts a JOIN market_sessions s ON s.account_id=a.id WHERE s.token_hash=? AND s.expires_at>?',hash,Date.now()).first();
-  return user ? {...user, hash} : null;
+  return user && user.kind!=='design' ? {...user, hash} : null;
 }
 async function issue(env,user,admin=false) {
+  if(user.kind==='design')fail(403,designerNotice);
   const token=randomToken(), hash=await digest(token), until=Date.now()+lifetime;
   if(admin) env.previewAdminSessions.set(hash,until);
   else await env.DB.batch([
@@ -63,6 +65,8 @@ export async function bidApi(req,env,url) {
     if(path==='/register'){
       const name=text(data.name,60,true), kind=data.kind;
       if(!kinds.has(kind))fail(400,'회원 유형을 선택해 주세요.');
+      if(kind==='design')fail(403,designerNotice);
+      if(kind==='both')fail(400,'패키징 제작업체 유형으로 가입해주세요.');
       const id=crypto.randomUUID();
       const result=await stmt(env,'INSERT INTO market_accounts(id,email,name,kind,password_hash) VALUES(?,?,?,?,?) ON CONFLICT(email) DO NOTHING',id,email,name,kind,await passwordHash(pw)).run();
       if(!result.meta.changes)fail(409,'이미 사용 중인 이메일입니다.');
@@ -70,6 +74,9 @@ export async function bidApi(req,env,url) {
     }
     const row=await stmt(env,'SELECT * FROM market_accounts WHERE email=?',email).first();
     if(!await verifyPassword(pw,row?.password_hash||'0'.repeat(64)+':'+'0'.repeat(64))||!row)fail(401,'이메일 또는 비밀번호를 확인해 주세요.');
+    if(row.kind==='design'||data.role==='design')fail(403,designerNotice);
+    const loginRole=isPackagingPartner(row.kind)?'packaging':row.kind;
+    if(data.role!==undefined && data.role!==loginRole)fail(403,'선택한 회원 유형과 계정이 일치하지 않습니다.');
     return issue(env,row);
   }
   return marketApi(req,env,url,user ? asUser(user):null);

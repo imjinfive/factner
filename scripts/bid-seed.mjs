@@ -6,6 +6,11 @@ const people=[
   ['package1','패키지업체 1','packaging'],['packagedesign1','패키지디자인업체 1','both'],
   ...Array.from({length:10},(_,i)=>['brand'+(i+1),'브랜드'+(i+1),'brand'])
 ];
+// Only these fictional manufacturers have profiles intended for public discovery.
+export const reviewPartnerCards = {
+  'seed-package1': {alias:'A업체',items:['box','packaging'],title:'박스·단상자 제작업체',description:'배송용 골판지 상자와 제품 단상자의 규격·재질·수량을 상담할 수 있어요.'},
+  'seed-packagedesign1': {alias:'B업체',items:['packaging','box','supplies'],title:'패키지·포장 부자재 제작업체',description:'제품을 담는 패키지와 함께 쓸 슬리브·트레이·포장 부자재를 상담할 수 있어요.'}
+};
 // Every fixture is fictional, with a different job and no customer identity in its public brief.
 const briefs=[
  ['packaging','앰플 단상자 3,000개 제작',3000,480,'42 × 42 × 118 mm','무광 코팅 백판지, 별색 1도. 유리 앰플을 고정할 종이 받침이 필요합니다.',3],

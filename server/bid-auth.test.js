@@ -64,9 +64,9 @@ test('every bid endpoint is closed outside a local demo even with a plausible be
   assert.equal((await call('session',{host:'localhost',environment:env})).data.demo,true);
 });
 
-test('four member kinds can register and sign in while admin grants, duplicates and expired sessions are rejected',async t=>{
+test('active public roles can register and sign in while blocked roles, duplicates and expired sessions are rejected',async t=>{
   const {call,raw}=fixture(t);
-  for(const kind of ['brand','design','packaging','both']){
+  for(const kind of ['brand','packaging']){
     const fields={...registration,kind,email:kind+'@example.test'};
     const created=await call('register',{input:fields});
     assert.equal(created.status,200);
@@ -90,7 +90,9 @@ test('four member kinds can register and sign in while admin grants, duplicates 
     assert.equal((await call('session',{token:created.data.token})).data.user,null);
   }
   assert.equal((await call('register',{input:{...registration,email:'admin@example.test',kind:'admin'}})).status,400);
-  assert.equal(raw.prepare('SELECT COUNT(*) n FROM market_accounts').get().n,4);
+  assert.equal((await call('register',{input:{...registration,kind:'design'}})).status,403);
+  assert.equal((await call('register',{input:{...registration,kind:'both'}})).status,400);
+  assert.equal(raw.prepare('SELECT COUNT(*) n FROM market_accounts').get().n,2);
   assert.equal((await call('demo',{input:{email:'brand@example.test'}})).status,404);
 });
 
@@ -111,12 +113,23 @@ test('review fixtures contain 14 fictional accounts and ten distinct open briefs
   assert.deepEqual(board.offers,[]);
   assert.equal(raw.prepare('SELECT COUNT(DISTINCT brand_id) n FROM market_posts').get().n,10);
   assert.ok(board.posts.some(p=>p.offerCount>1));
-  const seed=selection.accounts.find(x=>x.kind==='design');
-  const passwordLogin=await call('login',{input:{email:seed.email,password:reviewPassword}});
-  assert.equal(passwordLogin.data.user.kind,'design');
+  assert.deepEqual(board.partners.map(p=>p.kind).sort(),['both','packaging']);
+  assert.ok(board.partners.every(p=>p.alias && p.items.length && !('id' in p) && !('email' in p) && !('name' in p)));
+  assert.equal(new Set(board.posts.map(p=>p.brandAlias)).size,10);
+  const designer=selection.accounts.find(x=>x.kind==='design');
+  assert.equal((await call('login',{input:{email:designer.email,password:reviewPassword}})).status,403);
+  assert.equal((await call('demo',{input:{email:designer.email}})).status,403);
+  const oldToken='9'.repeat(64);
+  raw.prepare('INSERT INTO market_sessions VALUES(?,?,?)').run(await digest(oldToken),designer.id,Date.now()+60000);
+  assert.equal((await call('session',{token:oldToken})).data.user,null);
+  assert.equal((await call('posts',{token:oldToken,input:{}})).status,401);
+  const seed=selection.accounts.find(x=>x.kind==='both');
+  const passwordLogin=await call('login',{input:{email:seed.email,password:reviewPassword,role:'packaging'}});
+  assert.equal(passwordLogin.data.user.kind,'both');
+  assert.equal((await call('login',{input:{email:seed.email,password:reviewPassword,role:'brand'}})).status,403);
   const quick=await call('demo',{input:{email:seed.email,kind:'admin'}});
   assert.equal(quick.data.user.id,seed.id);
-  assert.equal(quick.data.user.kind,'design');
+  assert.equal(quick.data.user.kind,'both');
   const admin=await call('demo',{input:{role:'admin'}});
   assert.equal(admin.data.user.kind,'admin');
   assert.ok(env.previewAdminSessions.has(await digest(admin.data.token)));

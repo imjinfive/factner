@@ -168,7 +168,8 @@ function ContractCard({ contract, post, offer, user, mutate }) {
   const [action, setAction] = useState(null);
   const close = () => setAction(null);
   const { status, payments = [] } = contract;
-  const subject = [post?.title || '파트너 참여계약', offer?.alias].filter(Boolean).join(' · ');
+  const subject = [post?.title || contract.title || '파트너 참여계약', offer?.alias].filter(Boolean).join(' · ');
+  const designPaused = contract.category==='design';
   const terms = contract.terms || (contract.version === BID_TERMS.version ? BID_TERMS : null);
   const revealed = status === 'revealed';
   const supplier = ['design', 'packaging', 'both'].includes(user.kind);
@@ -196,15 +197,16 @@ function ContractCard({ contract, post, offer, user, mutate }) {
     <details className="fd-contract-copy"><summary>계약 내용과 문서 버전</summary><p>서명 버전 {contract.version}</p>
       {terms ? <Terms terms={terms}/> : <p>계약 내용을 불러올 수 없습니다. 운영자에게 확인해주세요.</p>}
     </details>
-    {supplier && status === 'awaiting_supplier' && <button className="button primary" disabled={!terms} onClick={() => setAction('sign')}>1차 계약 확인·서명</button>}
-    {user.kind === 'admin' && status === 'signed' && bothSigned && <button className="button primary" onClick={() => setAction('reveal')}>서명 검토·소개 승인</button>}
+    {designPaused && <p className="fd-note">디자이너 서비스 준비 중 · 기존 계약 기록만 확인할 수 있어요.</p>}
+    {!designPaused && supplier && status === 'awaiting_supplier' && <button className="button primary" disabled={!terms} onClick={() => setAction('sign')}>1차 계약 확인·서명</button>}
+    {!designPaused && user.kind === 'admin' && status === 'signed' && bothSigned && <button className="button primary" onClick={() => setAction('reveal')}>서명 검토·소개 승인</button>}
     {revealed && <section className="fd-payments"><h3>플랫폼 결제</h3>
       {['sample', 'production'].map(kind => {
         const payment = payments.find(item => item.kind === kind);
         const label = kind === 'sample' ? '샘플비' : '본제작 대금';
         return <div className="fd-payment" key={kind}><span>{label}</span>
           {payment ? <strong>{won(payment.amount)} <small>모의 기록 · {day(payment.createdAt)}</small></strong>
-            : user.kind === 'brand' ? <button className="button soft" onClick={() => setAction(kind)}>{label} 모의 결제</button> : <small>브랜드 결제 대기</small>}
+            : designPaused ? <small>준비 중</small> : user.kind === 'brand' ? <button className="button soft" onClick={() => setAction(kind)}>{label} 모의 결제</button> : <small>브랜드 결제 대기</small>}
         </div>;
       })}
       <p className="fd-note">모의 결제 누계 {won(payments.reduce((sum, item) => sum + item.amount, 0))} · 실제 청구 0원</p>

@@ -14,6 +14,9 @@ const tokenKey='factner-bid-review-token';
 const roomStorageKey='factner-bid-review-room';
 const roomFormat=/^[0-9a-f]{64}$/;
 function readToken(){return sessionStorage.getItem(tokenKey)||'';}
+function hasSavedSession(){
+  try { return Boolean(readToken()); } catch { return true; }
+}
 async function reviewRoom(){
   function readOrCreate(){
     const existing=localStorage.getItem(roomStorageKey);
@@ -41,11 +44,12 @@ async function request(path,payload,token=readToken()){
   return result;
 }
 
-const accessViews = ['preview','login','signup','demo','account'];
+const accessViews = ['login','signup','demo','account'];
 const routes = new Set(['intro','feed','mine','new','contracts',...accessViews]);
-const titles={intro:'서비스 소개',feed:'파트너 찾기',mine:'내 활동',new:'공고 등록',contracts:'계약함',preview:'서비스 맛보기',login:'로그인',signup:'회원가입',demo:'계정 체험',account:'내 계정'};
+const titles={intro:'서비스 소개',feed:'파트너 찾기',mine:'내 활동',new:'공고 등록',contracts:'계약함',login:'로그인',signup:'회원가입',demo:'계정 체험',account:'내 계정'};
 function currentRoute(ops) {
   const fragment=location.hash.slice(1), [view,detail]=fragment.split('/');
+  if(view==='preview')return 'feed';
   if(!routes.has(view))return ops?'contracts':'intro';
   return /^[\w-]{1,64}$/.test(detail||'') ? view+'/'+detail : view;
 }
@@ -54,13 +58,17 @@ export default function BidApp(){
   const ops=location.pathname.replace(/\/+$/,'')==='/ops';
   const [route,setRoute]=useState(()=>currentRoute(ops));
   const [view,detail]=route.split('/'), intro=view==='intro', access=accessViews.includes(view);
-  const marketNeeded=(!intro&&!access)||view==='preview'||Boolean(detail&&access);
+  const marketNeeded=(!intro&&!access)||['signup','login'].includes(view)||Boolean(detail&&access);
   const [session,setSession]=useState(null),[state,setState]=useState(null),[error,setError]=useState('');
   const [theme,setTheme]=useState(initialBidTheme),[select,setSelect]=useState(null);
   const seq=useRef(0),channel=useRef(null);
   useEffect(()=>{document.title=titles[view]+' · 팩트너';},[view]);
   useEffect(()=>{
-    const sync=()=>{setSelect(null);setRoute(currentRoute(ops));};
+    const sync=()=>{
+      if(location.hash==='#preview')history.replaceState(history.state,'','#feed');
+      setSelect(null);setRoute(currentRoute(ops));
+    };
+    sync();
     window.addEventListener('popstate',sync);window.addEventListener('hashchange',sync);
     return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('hashchange',sync);};
   },[ops]);
@@ -106,10 +114,10 @@ export default function BidApp(){
     return()=>stream.close();
   },[marketNeeded,access,session?.demo,session?.hosted,refresh]);
 
-  function go(target,{replace=false,scroll=true}={}){
+  function go(target,{replace=false,scroll=true,entry={}}={}){
     if(ops&&!['contracts','demo','login','account'].includes(target.split('/')[0])){location.assign('/#'+target);return;}
     const same=location.hash==='#'+target;
-    if(!same)history[replace?'replaceState':'pushState']({},'','#'+target);
+    if(!same)history[replace?'replaceState':'pushState'](entry,'','#'+target);
     setSelect(null);setRoute(target);
     if(scroll){
       window.scrollTo({top:0,behavior:'instant'});
@@ -120,17 +128,29 @@ export default function BidApp(){
     if(!session?.user && ['mine','new','account'].includes(target.split('/')[0]))target='login';
     // Keep the selected public brief when moving between signup and login.
     if(detail&&['signup','login'].includes(view)&&['signup','login'].includes(target))target+='/'+detail;
+    if(view==='feed'&&!detail&&!session?.user&&target.startsWith('feed/')){
+      const id=target.slice(5);
+      history.replaceState({...history.state,discoveryScrollY:window.scrollY,discoveryReturnId:id},'');
+      go(target,{entry:{fromPartnerDiscovery:true}});
+      return;
+    }
     go(target);
   };
+  function backToBrandRequests(){
+    if(history.state?.fromPartnerDiscovery){history.back();return;}
+    go('feed',{replace:true,entry:{discoveryRole:'supplier'}});
+  }
   const authenticate=async(path,body,context={})=>{
     const data=await request(path,body);++seq.current;
     sessionStorage.setItem(tokenKey,data.token);setState(null);setError('');setSelect(null);setSession(s=>({...s,user:data.user}));
     const postId=['signup','login'].includes(view)?detail||(path==='/register'?context.postId:null):null;
     const category=state?.posts.find(p=>p.id===postId)?.category||(path==='/register'?context.category:null);
     const target=partnerDestination(data.user.kind,{postId,category});
+    const selectedPartner=['/register','/login'].includes(path)&&data.user.kind==='brand' && state?.partners?.find(p=>p.alias===context.candidate);
     if(ops&&data.user.kind!=='admin'){location.assign('/#'+target);return;}
     if(!ops&&data.user.kind==='admin'){location.assign('/ops');return;}
-    go(target,{replace:true});await refresh(true);
+    const entry=selectedPartner?{selectedPartner:{alias:selectedPartner.alias,title:selectedPartner.title}}:{};
+    go(target,{replace:true,entry});await refresh(true);
   };
   const logout=async()=>{
     await request('/logout',{});++seq.current;sessionStorage.removeItem(tokenKey);setState(null);setSelect(null);
@@ -139,9 +159,12 @@ export default function BidApp(){
   const mutate=async(path,data)=>{const result=await request(path,data);channel.current?.postMessage('refresh');await refresh();return result;};
   const user=session?.user;
   const links=ops||user?.kind==='admin'?[['contracts','계약 관리']]:[
-    ['intro','서비스 소개'],['feed','파트너 찾기'],...(user?[['mine',user.kind==='brand'?'내 공고':'내 제안'],['contracts','계약함']]:[['preview','서비스 맛보기']])
+    ['intro','서비스 소개'],['feed','파트너 찾기'],...(user?[['mine',user.kind==='brand'?'내 공고':'내 제안'],['contracts','계약함']]:[])
   ];
   const missing=!session||(marketNeeded&&!state);
+  const discovery = view==='feed'&&!detail&&!user;
+  const accessMode = discovery?'discovery':view;
+  const loadingView = discovery && (session || !hasSavedSession()) ? 'discovery' : view;
   const themeToggle=()=>{const next=theme==='light'?'dark':'light';saveBidTheme(next);setTheme(next);};
   return <MotionConfig reducedMotion="user"><div className="bx-shell">
     <a className="skip-link" href="#bid-work" onClick={e=>{e.preventDefault();document.getElementById('bid-work')?.focus();}}>본문 바로가기</a>
@@ -152,11 +175,11 @@ export default function BidApp(){
     </div></header>
     <main id="bid-work" tabIndex={-1}>
       {error&&<div role="alert" className="bx-alert">{error} <button onClick={()=>refresh(true)}>다시 연결</button></div>}
-      {intro?<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>navigate('feed')}/>:missing?(error?null:<BidLoading view={view}/>):access?
-        <PartnerAccess mode={view} session={session} posts={state?.posts||[]} sourcePost={detail&&(state?.posts||[]).find(p=>p.id===detail)} onNavigate={navigate} onAuth={authenticate} onExit={logout} ops={ops}/>:
+      {intro?<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>navigate('feed')}/>:missing?(error?null:<BidLoading view={loadingView}/>):access||discovery?
+        <PartnerAccess mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} sourcePost={detail&&(state?.posts||[]).find(p=>p.id===detail)} onNavigate={navigate} onAuth={authenticate} onExit={logout} ops={ops}/>:
         view==='contracts'&&(ops?user?.kind!=='admin':!user)?<section className="bx-authgate"><SquaresFour size={35}/><h1>{ops?'계약 운영실':'계약함'}</h1><p>{ops?'양측 서명을 확인하고 거래 당사자를 소개합니다.':'로그인하면 진행 중인 계약을 확인할 수 있어요.'}</p><Button onClick={()=>navigate(ops?'demo':'login')}>{ops?'운영팀 계정으로 입장':'로그인'} <ArrowRight size={16}/></Button></section>:
         view==='contracts'?<DealDesk state={state} user={user} mutate={mutate}/>:
-        <Market key={user?.id||'guest'} state={state} user={user} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onSignup={post=>navigate('signup/'+post.id)} onPreview={()=>navigate('preview')}/>}
+        <Market key={user?.id||'guest'} state={state} user={user} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} selectedPartner={view==='new'?history.state?.selectedPartner:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onSignup={post=>navigate('signup/'+post.id)} onDiscoveryBack={backToBrandRequests}/>}
     </main>
     <footer className="site-footer shell"><div><button className="logo" aria-label="팩트너 홈" onClick={()=>go('intro')}><BrandMark size={24}/></button><small>© {new Date().getFullYear()} factner.</small></div>
       <div className="footer-right"><button onClick={()=>navigate('feed')}>파트너 찾기</button>{session?.demo&&<button onClick={()=>go('demo')}>계정 체험</button>}{session?.demo&&!ops&&<a href="/ops">운영실</a>}{session?.hosted&&<a href="/members/">기존 회원 서비스</a>}

@@ -14,14 +14,23 @@
           if (saved === 'light' || saved === 'dark') theme = saved;
         } catch {}
         document.documentElement.dataset.theme = theme;
-        const view = location.hash.slice(1).split('/')[0] || 'intro';
+        const fragment = location.hash.slice(1);
+        const view = fragment.split('/')[0] || 'intro';
         let start = 'other';
         if (!/^\/ops\/?$/.test(location.pathname)) {
           if (view === 'intro') start = 'intro';
-          else if (view === 'feed' || view === 'mine') start = 'board';
+          else if (view === 'feed' || view === 'mine' || view === 'preview') {
+            start = 'board';
+            if (fragment === 'feed' || fragment === 'preview') {
+              try {
+                if (!sessionStorage.getItem('factner-bid-review-token')) start = 'discovery';
+              } catch {}
+            }
+          }
           else if (['login','signup','account','demo'].includes(view)) start = 'account';
         }
         document.documentElement.dataset.bidStart = start;
+        if (view === 'login') document.documentElement.dataset.bidLogin = '';
       })();
     </script>
     <link rel="stylesheet" href="/src/bids/loading.css" />
@@ -38,7 +47,7 @@
         <header class="site-header funnel-header" aria-hidden="true">
           <div class="header-inner">
             <span class="logo"><i class="bl-brand-icon"></i><span>factner.</span></span>
-            <nav><span class="nav-link">서비스 소개</span><span class="nav-link">파트너 찾기</span><span class="nav-link">서비스 맛보기</span></nav>
+            <nav><span class="nav-link">서비스 소개</span><span class="nav-link">파트너 찾기</span></nav>
             <span class="header-actions bx-account-placeholder"></span>
           </div>
         </header>
@@ -53,7 +62,14 @@
             </div>
           </div></div></div>
         </div>
-        <div class="bl-loading bl-access bl-boot-access" aria-hidden="true"><div class="bl-access-title"></div><div class="bl-access-card"></div></div>
+        <div class="bl-loading bl-access bl-boot-access" aria-hidden="true">
+          <div class="bl-access-title"></div>
+          <div class="bl-access-card"><div class="bl-login-roles"><i></i><i></i><i></i></div></div>
+        </div>
+        <div class="bl-discovery bl-boot-discovery" aria-hidden="true">
+          <div class="bl-discovery-title"></div><div class="bl-discovery-line"></div>
+          <div class="bl-discovery-options"><i></i><i></i><i></i></div>
+        </div>
         <div class="bl-loading bl-boot-work" aria-hidden="true"><div class="bl-cover"></div><div class="bl-rows"></div></div>
       </div>
     </div>

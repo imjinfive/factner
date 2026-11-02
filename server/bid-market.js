@@ -1,10 +1,10 @@
 import { BID_TERMS } from '../shared/bid-terms.js';
+import { designerNotice, isPackagingPartner } from '../shared/partner-roles.js';
+import { reviewPartnerCards } from '../scripts/bid-seed.mjs';
 import { body, fail, json, now, stmt, text } from './http.js';
 
 const categories = ['design', 'packaging'];
-const supplierKind = kind => kind === 'both' || categories.includes(kind);
 const today = () => new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-const canOffer = (user, category) => user.kind === 'both' || user.kind === category;
 
 function integer(value, max, label) {
   if (!Number.isSafeInteger(value) || value < 1 || value > max) fail(400, label + '을 확인해주세요.');
@@ -38,21 +38,32 @@ function contractStatus(row) {
 async function getState(env, user) {
   const admin = user?.kind === 'admin';
   const id = user?.id ?? '';
-  const postsQuery = stmt(env, "SELECT p.*, EXISTS(SELECT 1 FROM market_contracts c WHERE c.post_id=p.id) awarded, (SELECT count(*) FROM market_offers o WHERE o.post_id=p.id) offer_count FROM market_posts p WHERE (? NOT IN ('design','packaging') OR category=?) ORDER BY created_at DESC,id", user?.kind ?? '', user?.kind ?? '');
+  const postsQuery = stmt(env, `WITH brands AS (
+    SELECT id, row_number() OVER (ORDER BY rowid) AS ordinal FROM market_accounts WHERE kind='brand'
+  ) SELECT p.*, b.ordinal, EXISTS(SELECT 1 FROM market_contracts c WHERE c.post_id=p.id) awarded,
+    (SELECT count(*) FROM market_offers o WHERE o.post_id=p.id) offer_count
+    FROM market_posts p JOIN brands b ON b.id=p.brand_id
+    WHERE ?=0 OR p.category='packaging' ORDER BY p.created_at DESC,p.id`, Number(isPackagingPartner(user?.kind)));
   const offersQuery = stmt(env, 'SELECT o.* FROM market_offers o JOIN market_posts p ON p.id=o.post_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY o.created_at,o.id', Number(admin), id, id);
-  const contractsQuery = stmt(env, 'SELECT c.*, b.name brand_name,b.email brand_email,s.name supplier_name,s.email supplier_email FROM market_contracts c JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id JOIN market_accounts b ON b.id=p.brand_id JOIN market_accounts s ON s.id=o.supplier_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY c.brand_signed_at DESC,c.id', Number(admin), id, id);
+  const contractsQuery = stmt(env, 'SELECT c.*, p.category,p.title,b.name brand_name,b.email brand_email,s.name supplier_name,s.email supplier_email FROM market_contracts c JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id JOIN market_accounts b ON b.id=p.brand_id JOIN market_accounts s ON s.id=o.supplier_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY c.brand_signed_at DESC,c.id', Number(admin), id, id);
   const paymentsQuery = stmt(env, 'SELECT m.* FROM market_payments m JOIN market_contracts c ON c.id=m.contract_id JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY m.created_at,m.id', Number(admin), id, id);
-  const [posts, offers, contracts, payments] = await env.DB.batch([postsQuery, offersQuery, contractsQuery, paymentsQuery]);
+  const queries = [postsQuery, offersQuery, contractsQuery, paymentsQuery];
+  if (!user) {
+    const ids = Object.keys(reviewPartnerCards);
+    queries.push(stmt(env, `SELECT id,kind FROM market_accounts WHERE id IN (${ids.map(()=>'?').join(',')}) ORDER BY rowid`, ...ids));
+  }
+  const [posts, offers, contracts, payments, publicAccounts] = await env.DB.batch(queries);
   const paymentGroups = new Map();
   for (const payment of payments.results) {
     if (!paymentGroups.has(payment.contract_id)) paymentGroups.set(payment.contract_id, []);
     paymentGroups.get(payment.contract_id).push(paymentView(payment));
   }
   return {
-    posts: posts.results.map(p => ({ id:p.id, category:p.category, title:p.title, quantity:p.quantity, unitPrice:p.unit_price, size:p.size, description:p.description, deadline:p.deadline, createdAt:p.created_at, status:p.awarded?'awarded':'open', offerCount:p.offer_count, isMine:p.brand_id===id })),
+    partners: (publicAccounts?.results ?? []).filter(a=>isPackagingPartner(a.kind)).map(a=>({...reviewPartnerCards[a.id],kind:a.kind})),
+    posts: posts.results.map(p => ({ id:p.id, brandAlias:'브랜드 '+(p.ordinal<=26?String.fromCharCode(64+p.ordinal):p.ordinal), category:p.category, title:p.title, quantity:p.quantity, unitPrice:p.unit_price, size:p.size, description:p.description, deadline:p.deadline, createdAt:p.created_at, status:p.awarded?'awarded':'open', offerCount:p.offer_count, isMine:p.brand_id===id })),
     offers: offers.results.map(o => ({ id:o.id, postId:o.post_id, alias:o.alias.replace(/^입찰사 /, '제안사 '), tiers:JSON.parse(o.tiers), note:o.note, isMine:o.supplier_id===id })),
     contracts: contracts.results.map(c => ({
-      id:c.id, postId:c.post_id, offerId:c.offer_id, status:contractStatus(c),
+      id:c.id, postId:c.post_id, offerId:c.offer_id, category:c.category, title:c.title, status:contractStatus(c),
       quantity:c.quantity, unitPrice:c.unit_price, brandSignedAt:c.brand_signed_at, supplierSignedAt:c.supplier_signed_at,
       revealedAt:c.revealed_at, version:c.version, terms:JSON.parse(c.terms_json), payments:paymentGroups.get(c.id)??[],
       ...(admin || c.revealed_at ? { parties:{ brand:{ name:c.brand_name,email:c.brand_email }, supplier:{ name:c.supplier_name,email:c.supplier_email } } } : {})
@@ -66,6 +77,7 @@ function paymentView(row) {
 async function createPost(env, user, input) {
   if (user.kind !== 'brand') fail(403, '브랜드만 공고를 등록할 수 있습니다.');
   if (!categories.includes(input.category)) fail(400, '디자인 또는 패키징을 선택해주세요.');
+  if (input.category==='design') fail(403,designerNotice);
   const title = anonymousText(input.title, 100, user, true);
   const size = anonymousText(input.size, 160, user);
   const description = anonymousText(input.description, 2000, user, true);
@@ -79,9 +91,10 @@ async function createPost(env, user, input) {
 }
 
 async function submitOffer(env, user, postId, input) {
-  if (!supplierKind(user.kind)) fail(403, '제작·디자인 파트너만 제안을 보낼 수 있습니다.');
+  if (!isPackagingPartner(user.kind)) fail(403, '패키징 제작업체만 제안을 보낼 수 있습니다.');
   const post = await stmt(env, 'SELECT category,deadline FROM market_posts WHERE id=?', postId).first();
-  if (!post || !canOffer(user, post.category)) fail(404, '참여할 수 있는 공고가 아닙니다.');
+  if (!post) fail(404, '참여할 수 있는 공고가 아닙니다.');
+  if (post.category==='design') fail(403,designerNotice);
   if (!Array.isArray(input.tiers) || !input.tiers.length || input.tiers.length>8) fail(400, '수량별 단가를 1~8개 입력해주세요.');
   const tiers = input.tiers.map(quoteTier).sort((a,b)=>a.quantity-b.quantity);
   if (new Set(tiers.map(t=>t.quantity)).size!==tiers.length) fail(400, '같은 수량은 한 번만 입력해주세요.');
@@ -94,8 +107,9 @@ async function submitOffer(env, user, postId, input) {
 
 async function selectOffer(env, user, offerId, input) {
   if (user.kind!=='brand') fail(403, '공고를 등록한 브랜드만 선택할 수 있습니다.');
-  const offer = await stmt(env, 'SELECT o.* FROM market_offers o JOIN market_posts p ON p.id=o.post_id WHERE o.id=? AND p.brand_id=?', offerId,user.id).first();
+  const offer = await stmt(env, 'SELECT o.*,p.category FROM market_offers o JOIN market_posts p ON p.id=o.post_id WHERE o.id=? AND p.brand_id=?', offerId,user.id).first();
   if (!offer) fail(404, '선택할 수 있는 제안을 찾지 못했습니다.');
+  if (offer.category==='design') fail(403,designerNotice);
   const tier = JSON.parse(offer.tiers).find(t=>t.quantity===input.quantity);
   if (!tier) fail(400, '제안된 수량 구간을 선택해주세요.');
   if (input.version === BID_TERMS.version) {
@@ -115,12 +129,12 @@ async function selectOffer(env, user, offerId, input) {
 }
 
 async function contractFor(env, user, id) {
-  const row = await stmt(env, 'SELECT c.*,p.brand_id,o.supplier_id FROM market_contracts c JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id WHERE c.id=? AND (?=1 OR o.supplier_id=? OR p.brand_id=?)', id,Number(user.kind==='admin'),user.id,user.id).first();
+  const row = await stmt(env, 'SELECT c.*,p.brand_id,p.category,o.supplier_id FROM market_contracts c JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id WHERE c.id=? AND (?=1 OR o.supplier_id=? OR p.brand_id=?)', id,Number(user.kind==='admin'),user.id,user.id).first();
   if (!row) fail(404, '계약을 찾을 수 없습니다.');
   return row;
 }
 async function signContract(env, user, contract, input) {
-  if (user.id!==contract.supplier_id || !supplierKind(user.kind)) fail(403, '선정된 업체만 서명할 수 있습니다.');
+  if (user.id!==contract.supplier_id || !isPackagingPartner(user.kind)) fail(403, '선정된 업체만 서명할 수 있습니다.');
   const signed = signature(input, contract.version);
   const result = await stmt(env, 'UPDATE market_contracts SET supplier_signature=?,supplier_signed_at=? WHERE id=? AND supplier_signed_at IS NULL', signed,now(),contract.id).run();
   if (result.meta.changes) return json({ id:contract.id, status:'signed' });
@@ -149,6 +163,7 @@ async function recordPayment(env, user, contract, input) {
 }
 
 export async function marketApi(req, env, url, user) {
+  if (user?.kind==='design') fail(403, designerNotice);
   const path = url.pathname;
   if (req.method==='GET' && path==='/api/bid/state') return json(await getState(env, user));
   if (req.method!=='POST') fail(404, '요청한 기능을 찾지 못했습니다.');
@@ -162,6 +177,7 @@ export async function marketApi(req, env, url, user) {
   const action = path.match(/^\/api\/bid\/contracts\/([\w-]+)\/(sign|reveal|pay)$/);
   if (!action) fail(404, '요청한 기능을 찾지 못했습니다.');
   const contract = await contractFor(env,user,action[1]);
+  if (contract.category==='design') fail(403,designerNotice);
   if (action[2]==='sign') return signContract(env,user,contract,input);
   if (action[2]==='reveal') return revealContract(env,user,contract,input);
   return recordPayment(env,user,contract,input);

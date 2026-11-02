@@ -6,7 +6,8 @@
 }
 .bx-account,.bx-account-placeholder { min-width:52px; justify-content:flex-end; }
 .bx-account-placeholder { display:block; min-height:32px; }
-.bl-boot-intro,.bl-boot-work,.bl-boot-access { display:none; }
+.bl-boot-intro,.bl-boot-work,.bl-boot-access,.bl-boot-discovery { display:none; }
+[data-bid-start="discovery"] .bl-boot-discovery { display:block; }
 [data-bid-start="intro"] .bl-boot-intro { display:block; }
 [data-bid-start="intro"] .bl-intro-image {
   background:url('/images/service-village.png') 50% 54% / cover no-repeat;
@@ -24,6 +25,16 @@
 .bl-access { max-width:640px; padding:60px 24px 0; }
 .bl-access-title { margin:0 auto 32px; width:min(70%,310px); height:72px; background:var(--soft); border-radius:14px; }
 .bl-access-card { height:325px; border:1px solid var(--line); background:var(--surface); border-radius:20px; }
+.bl-login-roles { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:64px 24px 0; }
+.bl-login-roles i { height:76px; border-radius:12px; background:var(--soft); }
+:root:not([data-bid-login]) .bl-boot-access .bl-login-roles { display:none; }
+.bl-discovery { width:min(1040px,calc(100% - 64px)); margin-inline:auto; padding:64px 0 100px; }
+.bl-discovery::before { display:block; content:""; width:64px; height:27px; margin-bottom:8px; background:var(--soft); border-radius:8px; }
+.bl-discovery-title,.bl-discovery-line { background:var(--soft); border-radius:8px; }
+.bl-discovery-title { width:min(280px,70%); height:clamp(38px,5.12vw,51px); }
+.bl-discovery-line { margin-top:9px; width:min(370px,90%); height:27px; }
+.bl-discovery-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:31px; }
+.bl-discovery-options i { min-height:177px; border:1px solid var(--line); border-radius:20px; background:var(--surface); }
 .bl-cover { height:clamp(190px,17vw,250px); border-radius:28px; background:var(--hero,#eef5ee); }
 .bl-rows {
   margin-top:26px; height:230px; border-top:1px solid var(--line,#e8ece9);
@@ -38,4 +49,13 @@
 @media (prefers-reduced-motion:reduce), (max-height:560px) {
   .bl-boot-intro .rb-scene { height:auto; }
   .bl-boot-intro .rb-stage { position:relative; top:auto; height:650px; max-height:90svh; min-height:350px; }
+}
+@media (max-width:640px) {
+  .bl-discovery { width:calc(100% - 40px); padding:36px 0 64px; }
+  .bl-discovery-options { grid-template-columns:1fr; gap:10px; margin-top:33px; }
+  .bl-discovery-options i { min-height:90px; border-radius:16px; }
+}
+@media (max-width:420px) {
+  .bl-discovery-line { height:54px; background:linear-gradient(var(--soft) 43%,transparent 43% 56%,var(--soft) 56%); }
+  .bl-discovery-options i:last-child { min-height:112px; }
 }

@@ -57,9 +57,9 @@ test('bid board restricts participation by category and excludes identities and 
     assert.equal((await f.api(f.brand,'posts',{...post,...change})).status,400);
   }
   const {id}=(await f.api(f.brand,'posts',post)).data;
-  await f.api(f.otherBrand,'posts',{...post,category:'design'});
-  assert.equal((await f.api(f.design,'state')).data.posts.length,1);
-  assert.equal((await f.api(f.design,'posts/'+id+'/offers',offer)).status,404);
+  assert.equal((await f.api(f.otherBrand,'posts',{...post,category:'design'})).status,403);
+  assert.equal((await f.api(f.design,'state')).status,403);
+  assert.equal((await f.api(f.design,'posts/'+id+'/offers',offer)).status,403);
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',{...offer,tiers:[offer.tiers[0],offer.tiers[0]]})).status,400);
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',{...offer,note:f.box.email})).status,400);
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',offer)).status,201);
@@ -80,6 +80,23 @@ test('bid board restricts participation by category and excludes identities and 
   }
   f.sql.prepare('UPDATE market_posts SET deadline=? WHERE id=?').run('2000-01-01',id);
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',offer)).status,409);
+});
+
+test('a historic design brief stays readable while its offers and contracts cannot advance',async t=>{
+  const f=fixture(t);
+  const postId=(await f.api(f.brand,'posts',post)).data.id;
+  const offerId=(await f.api(f.both,'posts/'+postId+'/offers',offer)).data.id;
+  const contractId=(await f.api(f.brand,'offers/'+offerId+'/select',{...consent,quantity:500})).data.id;
+  f.sql.prepare("UPDATE market_posts SET category='design' WHERE id=?").run(postId);
+  assert.equal((await f.api(null,'state')).data.posts[0].category,'design');
+  assert.equal((await f.api(f.both,'state')).data.posts.length,0);
+  assert.equal((await f.api(f.brand,'state')).data.contracts[0].category,'design');
+  assert.equal((await f.api(f.both,'posts/'+postId+'/offers',offer)).status,403);
+  assert.equal((await f.api(f.brand,'offers/'+offerId+'/select',{...consent,quantity:500})).status,403);
+  for (const [user,action,input] of [[f.both,'sign',consent],[f.admin,'reveal',{accepted:true}],[f.brand,'pay',{kind:'sample',amount:100}]]) {
+    assert.equal((await f.api(user,'contracts/'+contractId+'/'+action,input)).status,403);
+  }
+  assert.equal((await f.api(f.brand,'state')).data.contracts[0].status,'awaiting_supplier');
 });
 
 test('one awarded tier, signatures and an admin decision precede private reveal and simulated payment',async t=>{
