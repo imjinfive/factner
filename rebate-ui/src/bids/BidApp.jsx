@@ -1,62 +1,49 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import { CaretDown, Moon, Sun, ArrowRight, SquaresFour } from '@phosphor-icons/react';
+import { CaretDown, ArrowRight, SquaresFour } from '@phosphor-icons/react';
 import {MotionConfig,motion} from 'motion/react';
 import {BrandMark,Button,Photo} from '../BrandControls';
 import ServiceIntro from '../ServiceIntro';
-import {partnerDestination} from '../partner-destination.js';
+import PolicyDocument,{policyTitles} from '../PolicyDocument';
+import SiteFooter from '../SiteFooter';
 import {normalizeSiteEntry,siteNavigationEvent,writeSiteEntry} from '../site-history.js';
 import Market from './Market';
 import PartnerAccess from './PartnerAccess';
 import {BidLoading,initialBidTheme,saveBidTheme} from './BidLoading';
-import {DealDesk,SelectDialog} from './DealDesk';
+import {Connections,ConnectionDialog,DealDesk,SelectDialog} from './DealDesk';
 import './shell.css';
 
 const tokenKey='factner-bid-review-token';
 const roomStorageKey='factner-bid-review-room';
 const roomFormat=/^[0-9a-f]{64}$/;
-function readToken(){return sessionStorage.getItem(tokenKey)||'';}
-function hasSavedSession(){
-  try { return Boolean(readToken()); } catch { return true; }
-}
-async function reviewRoom(){
-  function readOrCreate(){
-    const existing=localStorage.getItem(roomStorageKey);
-    if(roomFormat.test(existing))return existing;
-    const bytes=crypto.getRandomValues(new Uint8Array(32));
-    const key=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
-    localStorage.setItem(roomStorageKey,key);
-    return key;
-  }
-  try{
-    const existing=localStorage.getItem(roomStorageKey);
-    if(roomFormat.test(existing))return existing;
-    return navigator.locks ? await navigator.locks.request(roomStorageKey,readOrCreate) : readOrCreate();
-  }catch{
-    throw new Error('체험 공간을 열 수 없습니다. 브라우저의 사이트 저장소 사용을 허용해주세요.');
-  }
-}
+function readToken(){try{return sessionStorage.getItem(tokenKey)||'';}catch{return '';}}
+function savedRoom(){try{const room=localStorage.getItem(roomStorageKey);return roomFormat.test(room)?room:'';}catch{return '';}}
+function hasSavedSession(){try{return Boolean(readToken()||sessionStorage.getItem('factner-account-active'));}catch{return false;}}
 async function request(path,payload,token=readToken()){
-  const headers={'X-Factner-Review':await reviewRoom()};if(token)headers.Authorization='Bearer '+token;
+  const headers={};
+  if(token&&path!=='/login'&&path!=='/register')headers.Authorization='Bearer '+token;
+  const room=(path==='/login'||headers.Authorization)?savedRoom():'';
+  if(room)headers['X-Factner-Review']=room;
   if(payload!==undefined)headers['Content-Type']='application/json';
-  const response=await fetch('/api/bid'+path,{method:payload===undefined?'GET':'POST',headers,body:payload===undefined?undefined:JSON.stringify(payload),cache:'no-store',credentials:'omit',redirect:'error'});
+  const response=await fetch('/api/bid'+path,{method:payload===undefined?'GET':'POST',headers,body:payload===undefined?undefined:JSON.stringify(payload),cache:'no-store',credentials:'same-origin',redirect:'error'});
   let result;
   try{result=await response.json();}catch{throw new Error('공고 정보를 불러오지 못했습니다. 다시 시도해 주세요.');}
-  if(!response.ok)throw new Error(result.error||'요청을 처리하지 못했습니다.');
+  if(!response.ok)throw Object.assign(new Error(result.error||'요청을 처리하지 못했습니다.'),{httpStatus:response.status,status:result.status,note:result.note,support:result.support});
   return result;
 }
 
-const accessViews = ['login','signup','demo','account'];
-const titles={intro:'서비스 소개',feed:'파트너 찾기',mine:'내 활동',new:'공고 등록',contracts:'계약함',login:'로그인',signup:'회원가입',demo:'계정 체험',account:'내 계정'};
+const accessViews = ['login','signup','account','find-id','recover-password','reset-password'];
+const titles={intro:'서비스 소개',feed:'파트너 찾기',mine:'내 활동',new:'공고 등록',contracts:'계약함',login:'로그인',signup:'회원가입',account:'내 계정','find-id':'아이디 찾기','recover-password':'비밀번호 찾기','reset-password':'비밀번호 재설정',...policyTitles};
 
 export default function BidApp({surface='market'}){
   const ops=surface==='ops';
   const [route,setRoute]=useState(()=>normalizeSiteEntry().route);
   const [navRevision,setNavRevision]=useState(0);
   const [view,detail]=route.split('/'), intro=view==='intro', access=accessViews.includes(view);
-  const marketNeeded=(!intro&&!access)||['signup','login'].includes(view)||Boolean(detail&&access);
+  const policy=Object.hasOwn(policyTitles,view);
+  const marketNeeded=!intro&&!access&&!policy;
   const [session,setSession]=useState(null),[state,setState]=useState(null),[error,setError]=useState('');
   const [theme,setTheme]=useState(initialBidTheme),[select,setSelect]=useState(null);
-  const seq=useRef(0),channel=useRef(null);
+  const seq=useRef(0),authRevision=useRef(0),channel=useRef(null);
   useEffect(()=>{document.title=titles[view]+' · 팩트너';},[view]);
   useEffect(()=>{
     const sync=()=>{
@@ -71,17 +58,27 @@ export default function BidApp({surface='market'}){
 
   const refresh=useCallback(async(full=false)=>{
     if(!marketNeeded&&!full)return;
-    const num=++seq.current;
+    const num=++seq.current,revision=authRevision.current;
     try{
-      const token=readToken();
-      const [data,me]=await Promise.all([marketNeeded?request('/state',undefined,token):null,full?request('/session',undefined,token):null]);
-      if(token!==readToken())return;
+      let token=readToken();
+      const load=(key,withUser)=>Promise.all([marketNeeded?request('/state',undefined,key):null,withUser?request('/session',undefined,key):null]);
+      let values;
+      try{values=await load(token,full);}catch(e){
+        if(!token||![401,410].includes(e.httpStatus)||token!==readToken()||revision!==authRevision.current)throw e;
+        sessionStorage.removeItem(tokenKey);if(e.httpStatus===410)localStorage.removeItem(roomStorageKey);
+        token='';values=await load(token,true);
+      }
+      const [data,me]=values;
+      if(token!==readToken()||revision!==authRevision.current)return;
       // A newer board poll must not discard the response that establishes the account.
-      if(me)setSession(me);
+      if(me){
+        setSession(me);
+        try{if(me.user)sessionStorage.setItem('factner-account-active','1');else sessionStorage.removeItem('factner-account-active');}catch{}
+      }
       if(num!==seq.current)return;
       if(data)setState(data);
       setError('');
-    }catch(e){if(num===seq.current)setError(e.message);}
+    }catch(e){if(num===seq.current&&revision===authRevision.current)setError(e.message);}
   },[marketNeeded]);
   useEffect(()=>{
     refresh(true);const focus=()=>refresh(true);
@@ -89,21 +86,18 @@ export default function BidApp({surface='market'}){
   },[refresh]);
   useEffect(()=>{
     if(!marketNeeded||!session||access)return;
-    const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh();},2400);
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh();},session.user?5000:30000);
     return()=>clearInterval(timer);
-  },[marketNeeded,Boolean(session),access,refresh]);
+  },[marketNeeded,Boolean(session),Boolean(session?.user),access,refresh]);
   useEffect(()=>{
     if(!marketNeeded||access||!session?.demo)return;
     if(session.hosted){
       if(!window.BroadcastChannel)return;
-      let active=true,localChannel;
-      reviewRoom().then(room=>{
-        if(!active)return;
-        localChannel=new BroadcastChannel('factner-bid-review-'+room);
-        localChannel.onmessage=e=>{if(e.data==='refresh')refresh();};
-        channel.current=localChannel;
-      }).catch(()=>{}); // Timed refresh still works if browser messaging is unavailable.
-      return()=>{active=false;localChannel?.close();if(channel.current===localChannel)channel.current=null;};
+      const room=savedRoom();if(!room)return;
+      const localChannel=new BroadcastChannel('factner-bid-review-'+room);
+      localChannel.onmessage=e=>{if(e.data==='refresh')refresh();};
+      channel.current=localChannel;
+      return()=>{localChannel.close();if(channel.current===localChannel)channel.current=null;};
     }
     const stream=new EventSource('/api/bid/events');
     stream.onmessage=()=>{if(document.visibilityState==='visible')refresh();};
@@ -111,7 +105,7 @@ export default function BidApp({surface='market'}){
   },[marketNeeded,access,session?.demo,session?.hosted,refresh]);
 
   function go(target,{replace=false,scroll=true,entry={},force=false,targetSurface}={}){
-    const destination=targetSurface || (ops&&!['contracts','demo','login','account'].includes(target.split('/')[0])?'market':surface);
+    const destination=targetSurface || (ops&&!['contracts','login','account'].includes(target.split('/')[0])?'market':surface);
     const same=destination===surface && target===route;
     if(!same||force)writeSiteEntry(destination,target,{replace,entry});
     setSelect(null);
@@ -134,8 +128,6 @@ export default function BidApp({surface='market'}){
   }
   const navigate=target=>{
     if(!session?.user && ['mine','new','account'].includes(target.split('/')[0]))target='login';
-    // Keep the selected public brief when moving between signup and login.
-    if(detail&&['signup','login'].includes(view)&&['signup','login'].includes(target))target+='/'+detail;
     if(view==='feed'&&!detail&&!session?.user&&target.startsWith('feed/')){
       const id=target.slice(5);
       history.replaceState({...history.state,discoveryScrollY:window.scrollY,discoveryReturnId:id},'');
@@ -148,22 +140,27 @@ export default function BidApp({surface='market'}){
     if(history.state?.fromPartnerDiscovery){history.back();return;}
     go('feed',{replace:true,entry:{discoveryRole:'supplier'}});
   }
-  const authenticate=async(path,body,context={})=>{
-    const data=await request(path,body);++seq.current;
-    sessionStorage.setItem(tokenKey,data.token);setState(null);setError('');setSelect(null);setSession(s=>({...s,user:data.user}));
-    const postId=['signup','login'].includes(view)?detail||(path==='/register'?context.postId:null):null;
-    const category=state?.posts.find(p=>p.id===postId)?.category||(path==='/register'?context.category:null);
-    const target=partnerDestination(data.user.kind,{postId,category});
-    const selectedPartner=['/register','/login'].includes(path)&&data.user.kind==='brand' && state?.partners?.find(p=>p.alias===context.candidate);
-    const entry=selectedPartner?{selectedPartner:{alias:selectedPartner.alias,title:selectedPartner.title}}:{};
-    go(target,{replace:true,entry,targetSurface:data.user.kind==='admin'?'ops':'market'});await refresh(true);
+  const authenticate=async(path,body)=>{
+    const data=await request(path,body);
+    if(path==='/register')return data;
+    ++seq.current;++authRevision.current;
+    if(data.token){
+      if(!roomFormat.test(data.reviewRoom))throw new Error('로그인 세션을 확인하지 못했습니다.');
+      localStorage.setItem(roomStorageKey,data.reviewRoom);sessionStorage.setItem(tokenKey,data.token);
+    }else{try{sessionStorage.removeItem(tokenKey);}catch{}}
+    setState(null);setError('');setSelect(null);setSession(s=>({...s,user:data.user}));
+    if(data.user.legacyOnly){writeSiteEntry('members','account',{replace:true});return;}
+    const target=data.user.kind==='admin'?'contracts':data.user.kind==='brand'?'new':'feed';
+    go(target,{replace:true,targetSurface:data.user.kind==='admin'?'ops':'market'});
   };
   const logout=async()=>{
-    await request('/logout',{});++seq.current;sessionStorage.removeItem(tokenKey);setState(null);setSelect(null);
-    setSession(s=>({...s,user:null}));go(ops?'demo':'feed',{replace:true});await refresh(true);
+    await request('/logout',{});++seq.current;++authRevision.current;try{sessionStorage.removeItem(tokenKey);sessionStorage.removeItem('factner-account-active');}catch{}
+    setState(null);setSelect(null);
+    setSession(s=>({...s,user:null}));go(ops?'login':'feed',{replace:true});await refresh(true);
   };
   const mutate=async(path,data)=>{const result=await request(path,data);channel.current?.postMessage('refresh');await refresh();return result;};
-  const user=session?.user;
+  const legacyMember=Boolean(session?.user?.legacyOnly);
+  const user=legacyMember?null:session?.user;
   const links=ops||user?.kind==='admin'?[['contracts','계약 관리']]:[
     ['intro','서비스 소개'],['feed','파트너 찾기'],...(user?[['mine',user.kind==='brand'?'내 공고':'내 제안'],['contracts','계약함']]:[])
   ];
@@ -177,20 +174,17 @@ export default function BidApp({surface='market'}){
     <header className="site-header funnel-header"><div className="header-inner">
       <button className="logo" aria-label="팩트너 홈" onClick={()=>openSection('intro')}><BrandMark/></button>
       <nav aria-label="주 메뉴">{links.map(([key,label])=><button key={key} className={'nav-link '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>openSection(key)}>{label}{view===key&&<motion.span className="nav-indicator" layoutId="partner-navigation"/>}</button>)}</nav>
-      <div className="header-actions bx-account">{!session?<span className="bx-account-placeholder" aria-label="계정 확인 중"/>:user?<button className="member-login-link bx-user" onClick={()=>go('account')}><span>{user.name}</span><CaretDown size={15}/></button>:<button className="member-login-link" onClick={()=>navigate('login')}>로그인</button>}</div>
+      <div className="header-actions bx-account">{!session?<span className="bx-account-placeholder" aria-label="계정 확인 중"/>:session.user?<button className="member-login-link bx-user" onClick={()=>legacyMember?openMembers():go('account')}><span>{session.user.name}</span><CaretDown size={15}/></button>:<button className="member-login-link" onClick={()=>navigate('login')}>로그인</button>}</div>
     </div></header>
     <main id="bid-work" tabIndex={-1}>
       {error&&<div role="alert" className="bx-alert">{error} <button onClick={()=>refresh(true)}>다시 연결</button></div>}
-      {intro?<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>navigate('feed')}/>:missing?(error?null:<BidLoading view={loadingView}/>):access||discovery?
-        <PartnerAccess key={navRevision} navigationKey={navRevision} mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} sourcePost={detail&&(state?.posts||[]).find(p=>p.id===detail)} onNavigate={navigate} onMembers={openMembers} onAuth={authenticate} onExit={logout} ops={ops}/>:
-        view==='contracts'&&(ops?user?.kind!=='admin':!user)?<section className="bx-authgate"><SquaresFour size={35}/><h1>{ops?'계약 운영실':'계약함'}</h1><p>{ops?'양측 서명을 확인하고 거래 당사자를 소개합니다.':'로그인하면 진행 중인 계약을 확인할 수 있어요.'}</p><Button onClick={()=>navigate(ops?'demo':'login')}>{ops?'운영팀 계정으로 입장':'로그인'} <ArrowRight size={16}/></Button></section>:
-        view==='contracts'?<DealDesk state={state} user={user} mutate={mutate}/>:
-        <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} selectedPartner={view==='new'?history.state?.selectedPartner:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onSignup={post=>navigate('signup/'+post.id)} onDiscoveryBack={backToBrandRequests}/>}
+      {intro?<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>navigate('feed')}/>:policy?<article className="shell bx-policy"><span className="member-eyebrow">팩트너 이용 안내</span><h1>{titles[view]}</h1><PolicyDocument key={view} kind={view}/></article>:missing?(error?null:<BidLoading view={loadingView}/>):access||discovery?
+        <PartnerAccess key={navRevision} navigationKey={navRevision} mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} onNavigate={navigate} onMembers={openMembers} onAuth={authenticate} onExit={logout}/>:
+        view==='contracts'&&(ops?user?.kind!=='admin':!user)?<section className="bx-authgate"><SquaresFour size={35}/><h1>{ops?'계약 운영실':'계약함'}</h1><p>{ops?'계약 운영은 관리자 전용입니다.':'로그인하면 진행 중인 계약을 확인할 수 있어요.'}</p>{!ops&&<Button onClick={()=>navigate('login')}>로그인 <ArrowRight size={16}/></Button>}</section>:
+        view==='contracts'?(session.demo?<DealDesk state={state} user={user} mutate={mutate}/>:<Connections connections={state.connections} onMembers={openMembers}/>):
+        <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onDiscoveryBack={backToBrandRequests}/>}
     </main>
-    <footer className="site-footer shell"><div><button className="logo" aria-label="팩트너 홈" onClick={()=>go('intro')}><BrandMark size={24}/></button><small>© {new Date().getFullYear()} factner.</small></div>
-      <div className="footer-right"><button onClick={()=>openSection('feed')}>파트너 찾기</button>{session?.demo&&<button onClick={()=>go('demo')}>계정 체험</button>}{session?.demo&&!ops&&<button onClick={()=>go('contracts',{targetSurface:'ops'})}>운영실</button>}{session?.hosted&&<button onClick={openMembers}>기존 회원 서비스</button>}
-        <Button tone="ghost" className="icon-button" aria-label={theme==='light'?'다크 모드로 전환':'라이트 모드로 전환'} onClick={themeToggle}>{theme==='light'?<Moon size={20}/>:<Sun size={20}/>}</Button>
-        <p>{intro?'소개 이미지는 연출입니다.':'체험용 서비스 · 실제 결제는 발생하지 않습니다.'}</p></div></footer>
-    {select&&<SelectDialog {...select} user={user} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>}
+    <SiteFooter onHome={()=>go('intro')} onSection={openSection} active={view} theme={theme} onTheme={themeToggle}/>
+    {select&&(session?.demo?<SelectDialog {...select} user={user} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>:<ConnectionDialog {...select} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>)}
   </div></MotionConfig>;
 }

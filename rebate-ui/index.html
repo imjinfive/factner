@@ -22,7 +22,7 @@
         const fragment = location.hash.slice(1) || (typeof savedRoute === 'string' ? savedRoute : '');
         const view = fragment.split('/')[0] || (surface === 'members' ? 'account' : 'intro');
         function feedStart() {
-          try { return sessionStorage.getItem('factner-bid-review-token') ? 'board' : 'discovery'; }
+          try { return sessionStorage.getItem('factner-bid-review-token') || sessionStorage.getItem('factner-account-active') ? 'board' : 'discovery'; }
           catch { return 'board'; }
         }
         let start = 'other';
@@ -35,10 +35,9 @@
             start = 'board';
             if (fragment === 'feed' || fragment === 'preview') start = feedStart();
           }
-          else if (['login','signup','account','demo'].includes(view)) start = 'account';
+          else if (['login','signup','account','demo','find-id','recover-password','reset-password'].includes(view)) start = 'account';
         }
         document.documentElement.dataset.bidStart = start;
-        if (view === 'login') document.documentElement.dataset.bidLogin = '';
         // The hero link is usable while the application bundle is in flight.
         document.addEventListener('click', event => {
           if (!event.target.closest?.('[data-boot-feed]') || event.button !== 0 ||
@@ -81,7 +80,7 @@
         </div>
         <div class="bl-loading bl-access bl-boot-access" aria-hidden="true">
           <div class="bl-access-title"></div>
-          <div class="bl-access-card"><div class="bl-login-roles"><i></i><i></i><i></i></div></div>
+          <div class="bl-access-card"></div>
         </div>
         <div class="bl-discovery bl-boot-discovery" aria-hidden="true">
           <div class="bl-discovery-title"></div><div class="bl-discovery-line"></div>

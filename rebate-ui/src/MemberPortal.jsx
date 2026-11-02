@@ -1,18 +1,17 @@
 import {useEffect,useRef,useState} from 'react';
-import {Package,Storefront,Factory,UserCircle,Buildings,Briefcase,ArrowRight,ArrowLeft,UploadSimple,FileText,X,Star,Plus,Clock,CheckCircle,Truck,ArrowsClockwise,SignOut,ShieldCheck} from '@phosphor-icons/react';
+import {Package,Storefront,Factory,ArrowRight,ArrowLeft,Star,Plus,Clock,CheckCircle,Truck,ArrowsClockwise,SignOut,ShieldCheck} from '@phosphor-icons/react';
 import {api} from './api';
 import Turnstile from './Turnstile';
 import {PackagingChoice,PostcodeAddress} from './PackagingFields';
 import {initialSupplier} from './packaging-input.js';
 import ReviewConfirm from './ReviewConfirm';
-import {formatInput,formatPhone,formatBusinessNumber} from '../../admin-ui/input-format.js';
-import {prepareUpload} from '../../shared/image-upload.js';
+import {formatInput,formatPhone} from '../../admin-ui/input-format.js';
+import {Field, Preview, Upload, legalTypes, MemberActivityChoices, MemberLegalChoices, MemberLoginFields, MemberRegistrationFields} from './MemberRegistration';
 import {MATCH_CATEGORIES} from './matching-preview.js';
 import {siteNavigationEvent} from './site-history.js';
 import './member-portal.css';
 
 export const orderStates={requested:'매칭 대기',matched:'업체 연결 확인',assigned:'업체 확인 중',quoted:'최종 승인 대기',approved:'발주 확정',producing:'제작 중',shipped:'출고',received:'입고 완료',cancelled:'취소'};
-const legalTypes={individual:'개인',sole:'개인사업자',corporate:'법인사업자'};
 const send=(path,data,method='POST')=>api(path,{method,body:JSON.stringify(data)});
 const money=value=>Number(value).toLocaleString('ko-KR');
 const when=value=>new Date(value).toLocaleString('ko-KR');
@@ -66,24 +65,7 @@ function useAuthHistory(initialRole){
  const go=(next,replace=false)=>{const value={...state,...next,depth:replace?state.depth:state.depth+1};window.history[replace?'replaceState':'pushState']({...window.history.state,factnerPage:'account',memberAuth:value},'');setState(value);};
  return [state,go,()=>state.depth>0?window.history.back():go({step:Math.max(0,state.step-1)},true)];
 }
-function Field({label,children,...props}){return <label className="member-field"><span>{label}</span>{children||<input {...props}/>}</label>;}
-function Preview({file}){
- return file.mime?.startsWith('image/')?<img src={file.data?`data:${file.mime};base64,${file.data}`:`/api/member/files/${file.id}`} alt={file.name}/>:<FileText size={32}/>;
-}
-async function encodeFile(file,kind){
- file=await prepareUpload(file);
- const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});
- return {name:file.name,mime:file.type,kind,data};
-}
-function Upload({files,onChange,kind,label,max=5,remote=false,onBusy}){
- const [error,setError]=useState(''),[busy,setBusy]=useState(false);
- return <div className="member-upload"><label className="member-drop"><UploadSimple size={28}/><span><strong>{busy?'파일을 준비하고 있어요':label}</strong><small>{kind==='workplace'||kind==='sample'?'JPG · PNG · WEBP':'JPG · PNG · WEBP · PDF'} · 큰 사진은 자동 압축{kind!=='workplace'&&kind!=='sample'?' · PDF 원본 유지 (1.5MB 이하)':''}</small></span><input type="file" aria-label={label} multiple={max>1} disabled={busy} accept={kind==='workplace'||kind==='sample'?'.jpg,.jpeg,.png,.webp':'.jpg,.jpeg,.png,.webp,.pdf'} onChange={async e=>{
-  const selected=[...e.target.files];e.target.value='';setError('');if(selected.length+files.length>max){setError(`최대 ${max}개까지 첨부할 수 있어요.`);return;}setBusy(true);onBusy?.(true);const next=[...files];
-  try{for(const file of selected){const encoded=await encodeFile(file,kind);next.push(remote?(await send('member/files',encoded)).file:encoded);onChange([...next]);}}catch(problem){setError(problem.message);}finally{setBusy(false);onBusy?.(false);}
- }}/></label>{error&&<p className="member-error" role="alert">{error}</p>}
- <div className="member-files">{files.map((file,i)=><div className="member-file" key={file.id||`${file.name}-${i}`}><Preview file={file}/><span>{file.name}</span><button type="button" aria-label={`${file.name} 제거`} onClick={()=>onChange(files.filter((_,index)=>index!==i))}><X size={18}/></button></div>)}</div></div>;
-}
-function AccountRecovery({mode,onMode,Button}){
+export function AccountRecovery({mode,onMode,Button}){
  const [emails,setEmails]=useState(null),[message,setMessage]=useState(''),[email,setEmail]=useState('');
  const reset=mode==='reset-password',findId=mode==='find-id';
  return <Form key={mode} review={findId?undefined:data=><ReviewRows rows={[["이메일",data.email],['업체명',data.name],['담당자',data.contact],['연락처',data.phone],['처리 내용',reset?'새 비밀번호로 변경합니다. 비밀번호와 복구 코드는 표시하지 않아요.':'등록된 연락처로 본인 확인 후 복구 코드를 안내받습니다.']]}/>} reviewTitle={reset?'비밀번호 재설정을 확인해주세요':'비밀번호 복구 요청을 확인해주세요'} onSave={async data=>{
@@ -111,16 +93,12 @@ function Auth({onMember,Button,signupContext}){
  if(done)return <section className="member-auth member-card member-complete"><div className="member-symbol"><Clock size={38}/></div><h1>가입 신청을 받았어요</h1><p>아직 가입 대기 상태예요. 팩트너가 자료와 업체 정보를 확인한 뒤 승인해드려요.<br/>승인 후 운영팀과 패키징 정보를 정리하고 거래 업체를 연결해요.</p><SupportCard support={signupSupport||{}} compact/><Button onClick={()=>{setDone(false);go({mode:'login',step:0},true);}}>로그인으로 돌아가기</Button></section>;
  return <section className="member-auth"><div className="member-auth-heading"><span className="member-eyebrow">FACTNER ACCOUNT</span><h1>{mode==='find-id'?'아이디 찾기':mode==='recover-password'?'비밀번호 찾기':mode==='reset-password'?'새 비밀번호 설정':mode==='login'?'다시 만나 반가워요':step===0?'어떤 일을 하고 계신가요?':step===1?'가입 유형을 선택해주세요':'조금만 알려주세요'}</h1>{['login','signup'].includes(mode)&&<p>{mode==='login'?'패키징부터 다음 발주까지, 한곳에서.':'관리자가 확인한 뒤 가입을 승인해드려요.'}</p>}</div>
  <div className="member-card"><div className="member-tabs" role="tablist" aria-label="계정"><button role="tab" aria-selected={mode==='login'} onClick={()=>setMode('login')}>로그인</button><button role="tab" aria-selected={mode==='signup'} onClick={()=>setMode('signup')}>회원가입</button></div>
- {mode==='login'?<Form busyLabel="로그인 중…" onSave={async data=>{const result=await send('member/login',data);onMember(result.member);}}><Field label="이메일" name="email" type="email" autoComplete="username" maxLength={254} required/><Field label="비밀번호" name="password" type="password" autoComplete="current-password" minLength={8} maxLength={128} required/><Button type="submit" className="member-full">로그인 <ArrowRight size={18}/></Button><p className="member-hint">심사 중인 계정은 승인 후 이용할 수 있어요.</p><div className="member-recovery-links"><button type="button" onClick={()=>setMode('find-id')}>아이디 찾기</button><button type="button" onClick={()=>setMode('recover-password')}>비밀번호 찾기</button></div></Form>:mode!=='signup'?<AccountRecovery mode={mode} onMode={setMode} Button={Button}/>:<>
+ {mode==='login'?<Form busyLabel="로그인 중…" onSave={async data=>{const result=await send('member/login',data);onMember(result.member);}}><MemberLoginFields Button={Button} onRecovery={setMode}/></Form>:mode!=='signup'?<AccountRecovery mode={mode} onMode={setMode} Button={Button}/>:<>
  <div className="member-steps" aria-label={`회원가입 ${step+1}단계`}>{['활동 선택','가입 유형','정보 입력'].map((label,i)=><span className={step===i?'current':''} key={label}>{i+1}. {label}</span>)}</div>
- {step===0&&<div className="member-choice-list">{[['brand',Storefront,'브랜드','우리 제품에 맞는 패키징을 찾아요'],['supplier',Factory,'박스·패키징 제작 업체','제작할 수 있는 브랜드를 만나요']].map(([key,Icon,title,copy])=><button className="member-choice" key={key} onClick={()=>go({role:key,step:1})}><span className="member-symbol"><Icon size={32}/></span><span><strong>{title}</strong><small>{copy}</small></span><ArrowRight size={22}/></button>)}</div>}
- {step===1&&<div className="member-choice-list">{[['individual',UserCircle],['sole',Briefcase],['corporate',Buildings]].map(([key,Icon])=><button className="member-choice" key={key} onClick={()=>go({legal:key,step:2})}><span className="member-symbol"><Icon size={30}/></span><strong>{legalTypes[key]}</strong><ArrowRight size={22}/></button>)}</div>}
+ {step===0&&<MemberActivityChoices onChoose={key=>go({role:key,step:1})}/>}
+ {step===1&&<MemberLegalChoices onChoose={key=>go({legal:key,step:2})}/>}
  {step===2&&<Form onDraft={setDraft} reviewTitle="가입 신청 정보를 확인해주세요" review={data=><ReviewRows rows={[["활동",role==='brand'?'브랜드':'제작 업체'],['가입 유형',legalTypes[legal]],['이름',data.name],['담당자',data.contact],['연락처',data.phone],['이메일',data.email],['비밀번호','입력 완료 · 보안을 위해 표시하지 않아요'],['사업자번호',data.businessNumber],['첨부 자료',[...cert,...photos].map(f=>f.name).join('\n')],['신청 후 상태','가입 대기 · 운영팀 검토 후 승인']]}/>} onSave={async data=>{if(certBusy||photosBusy)throw new Error('파일 업로드가 끝날 때까지 기다려주세요.');try{const registration=await send('member/register',{...data,role,legalType:legal,files:[...cert,...photos],consent:data.consent==='on',testOnly:data.testOnly==='on',consentVersion:config?.consentVersion,turnstileToken:token});setSignupSupport(registration.support||{});setDraft({});setCert([]);setPhotos([]);go({mode:'login',step:0},true);setDone(true);}finally{setAttempt(n=>n+1);}}}>
- <p className="member-tag">{role==='brand'?'브랜드':'패키징 제작 업체'} · {legalTypes[legal]}</p>
- <Field label={role==='brand'?'브랜드명':'업체명 / 활동명'} name="name" defaultValue={draft.name||''} maxLength={100} required/><div className="member-form-grid"><Field label="담당자" name="contact" defaultValue={draft.contact||''} maxLength={60} required/><Field label="연락처" name="phone" defaultValue={draft.phone||''} type="tel" inputMode="tel" maxLength={30} onInput={e=>formatInput(e,formatPhone)} required/></div>
- <Field label="이메일" name="email" defaultValue={draft.email||''} type="email" autoComplete="username" maxLength={254} required/><Field label="비밀번호 · 8자 이상" name="password" defaultValue={draft.password||''} type="password" autoComplete="new-password" minLength={8} maxLength={128} required/>
- {legal!=='individual'&&<><Field label="사업자등록번호" name="businessNumber" defaultValue={draft.businessNumber||''} inputMode="numeric" onInput={e=>formatInput(e,formatBusinessNumber)} placeholder="000-00-00000" pattern="[0-9-]{10,12}" maxLength={12} required/><Upload label="사업자등록증 첨부" files={cert} onChange={setCert} onBusy={setCertBusy} kind="certificate" max={1}/></>}
- <Upload label="작업 현장·패키징 사진 첨부" files={photos} onChange={setPhotos} onBusy={setPhotosBusy} kind="workplace" max={4}/>
+ <MemberRegistrationFields role={role} legal={legal} draft={draft} cert={cert} setCert={setCert} onCertBusy={setCertBusy} photos={photos} setPhotos={setPhotos} onPhotosBusy={setPhotosBusy}/>
  <details className="member-disclosure"><summary>가입 심사 자료 수집 안내</summary><p>가입 심사와 계정 운영을 위해 가입 유형, 업체명, 담당자, 연락처, 이메일, 사업자번호와 첨부 자료를 저장합니다. 사업자등록증·현장 사진은 본인과 대표 관리자만 확인합니다. 사업자번호는 직접 심사하며 자동 진위 인증은 제공하지 않습니다.</p><p>현재는 기능 검토용 테스트입니다. 가상 정보·샘플 파일만 사용해주세요. 실제 자료의 보유 기간, 운영자 연락처와 처리방침은 정식 가입 시작 전 확정합니다. 수집에 동의하지 않으면 가입을 신청할 수 없습니다.</p></details>
  <label className="member-check"><input name="consent" type="checkbox" defaultChecked={draft.consent==='on'} required/>가입 심사를 위한 정보 수집에 동의합니다.</label><label className="member-check"><input name="testOnly" type="checkbox" defaultChecked={draft.testOnly==='on'} required/>실제 개인정보 없이 테스트로 신청합니다.</label>
  {configError&&<p role="alert" className="member-error">{configError}</p>}{config?.turnstileSiteKey&&<Turnstile siteKey={config.turnstileSiteKey} onToken={setToken} resetKey={attempt} action="signup"/>}

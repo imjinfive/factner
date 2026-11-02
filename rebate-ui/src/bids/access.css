@@ -1,6 +1,11 @@
 .pa-heading { margin-bottom: 30px; }
 .pa-heading h1 { font-size: clamp(30px,4vw,40px); line-height: 1.28; margin: 8px 0; }
 .pa-heading p, .pa-result-copy > span { color: var(--muted); }
+:root:has(.pa-discovery) { scrollbar-gutter: stable; }
+.pa-discovery .pa-heading { margin-bottom: 22px; }
+.pa-discovery .pa-role-card { align-content: start; gap: 13px; padding: 20px; }
+.pa-discovery .pa-role-copy > strong { line-height: 1.35; }
+.pa-discovery .pa-role-copy > small { line-height: 1.45; }
 .pa-role-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
 .pa-role-card {
   display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start;
@@ -12,60 +17,74 @@
 .pa-role-copy > strong, .pa-role-copy > small { display: block; }
 .pa-role-copy > strong { font-size: 21px; letter-spacing: -.035em; }
 .pa-role-copy > small { font-size: 15px; color: var(--muted); margin-top: 5px; }
-.pa-role-card > svg, .pa-soon { grid-column: 2; grid-row: 1; align-self: center; color: var(--green-dark); }
+.pa-soon { grid-column: 2; grid-row: 1; align-self: center; }
 .pa-role-card:not(:disabled):hover, .pa-role-card[aria-pressed=true] { border-color: var(--green); }
 .pa-role-card[aria-pressed=true] { background: var(--mint); }
 .pa-role-card[aria-pressed=true] .pa-role-icon { background: var(--surface); }
 .pa-role-card.pa-notice-card { background: var(--soft); color: var(--muted); }
 .pa-notice-card .pa-role-icon { color: var(--muted); background: var(--surface); }
 .pa-soon { color: var(--muted); font-size: 12px; font-weight: 650; background: var(--surface); border-radius: 8px; padding: 4px 7px; white-space: nowrap; }
-.pa-results { margin-top: 34px; scroll-margin-top: 125px; }
-.pa-results > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
-.pa-results h2 { font-size: 23px; }
-.pa-results > header > span { font-size: 15px; color: var(--green-dark); font-weight: 650; }
-.pa-filters { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
-.pa-filters > button { border: 1px solid var(--line); border-radius: 22px; background: var(--surface); padding: 7px 14px; font-size: 14px; font-weight: 650; }
-.pa-filters > button[aria-pressed=true] { background: var(--mint); color: var(--green-dark); border-color: var(--green); }
+.pa-results { margin-top: 26px; overflow-anchor: none; }
+.pa-results > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; margin-bottom: 10px; }
+.pa-results > header > div { display: flex; align-items: baseline; gap: 7px; }
+.pa-results h2 { font-size: 22px; line-height: 1.35; }
+.pa-results > header span { font-size: 15px; color: var(--green-dark); font-weight: 650; font-variant-numeric: tabular-nums; }
+.pa-results select { max-width: 44%; min-height: 40px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
 .pa-list { display: grid; gap: 10px; }
 .pa-result {
   display: grid; grid-template-columns: 46px minmax(0,1fr) auto; align-items: center; gap: 16px;
-  width: 100%; padding: 20px 22px; color: var(--text); border: 1px solid var(--line); border-radius: 16px;
+  width: 100%; padding: 17px 20px; color: var(--text); border: 1px solid var(--line); border-radius: 18px;
   background: var(--surface); text-align: left;
 }
 .pa-result:hover { border-color: var(--green); }
 .pa-result-icon { width: 46px; height: 46px; }
 .pa-result-copy > * { display: block; }
+.pa-result-copy { min-width: 0; overflow-wrap: anywhere; }
 .pa-result-copy > strong { margin: 4px 0; font-size: 19px; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
 .pa-result-copy > small { font-size: 14px; font-weight: 650; color: var(--green-dark); }
-.pa-result-copy > span, .pa-result-action { font-size: 15px; }
-.pa-result-action { display: inline-flex; align-items: center; gap: 6px; color: var(--green-dark); font-weight: 650; }
+.pa-example { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; color: var(--muted); background: var(--soft); font-size: 11px; font-weight: 600; vertical-align: middle; }
+.pa-result-copy > span { font-size: 15px; }
+.pa-result-action { color: var(--green-dark); font-size: 14px; font-weight: 650; white-space: nowrap; }
 .pa-empty { padding: 22px 18px; border: 1px dashed var(--line); border-radius: 15px; text-align: center; color: var(--muted); }
 .pa-empty .button { margin-top: 12px; }
 .pa-notice { width: min(480px,calc(100% - 32px)); }
 .pa-notice .modal-heading h2 { margin-top: 6px; }
 .pa-notice footer { display: flex; justify-content: flex-end; margin-top: 24px; }
-.pa-compact { gap: 8px; margin-bottom: 16px; }
-.pa-compact .pa-role-card { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 12px 6px; min-height: 76px; border-radius: 12px; text-align: center; }
-.pa-compact .pa-role-icon { width: 24px; height: 24px; border-radius: 0; background: none; }
-.pa-compact .pa-role-copy > strong { font-size: 15px; line-height: 1.3; }
-.pa-compact .pa-soon { padding: 0; background: none; font-size: 11px; }
 .pa-access .pa-section-title { margin: 18px 0 12px; font-size: 22px; }
 .pa-limit { margin: 18px 0 0; }
 .pa-account-actions { display: grid; gap: 12px; margin: 18px 0 0; }
 .pa-access .member-recovery-links a { font-size: 15px; color: var(--muted); text-underline-offset: 4px; padding: 8px 0; }
 @media(max-width:640px){
-  .pa-discovery { padding-top: 36px; }
-  .pa-role-grid:not(.pa-compact) { grid-template-columns: 1fr; gap: 10px; }
-  .pa-role-grid:not(.pa-compact) .pa-role-card { grid-template-columns: 42px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 16px; border-radius: 16px; }
-  .pa-role-grid:not(.pa-compact) .pa-role-icon { width: 42px; height: 42px; }
-  .pa-role-grid:not(.pa-compact) .pa-role-copy { grid-column: 2; grid-row: 1; }
-  .pa-role-grid:not(.pa-compact) .pa-role-card > svg, .pa-role-grid:not(.pa-compact) .pa-soon { grid-column: 3; }
-  .pa-role-copy > strong { font-size: 18px; }
-  .pa-role-copy > small { font-size: 14px; }
+  .pa-discovery { padding-top: 23px; }
+  .pa-discovery .pa-heading { margin-bottom: 15px; }
+  .pa-discovery .pa-heading h1 { font-size: 30px; line-height: 1.2; }
+  .pa-discovery .pa-heading p { font-size: 15px; line-height: 1.5; }
+  .pa-role-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .pa-discovery .pa-role-card { grid-template-columns: minmax(0,1fr); gap: 7px; padding: 11px 12px; border-radius: 16px; }
+  .pa-role-icon { width: 34px; height: 34px; border-radius: 11px; }
+  .pa-role-icon svg { width: 21px; height: 21px; }
+  .pa-role-copy > strong { font-size: 17px; }
+  .pa-discovery .pa-notice-card { grid-column: 1/-1; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; }
+  .pa-notice-card .pa-role-copy { grid-column: 2; grid-row: 1; }
+  .pa-notice-card .pa-soon { grid-column: 3; }
+  .pa-discovery .pa-role-copy > small { margin-top: 2px; font-size: 13px; }
+  .pa-results { margin-top: 18px; }
+  .pa-results h2 { font-size: 18px; }
+  .pa-results select { font-size: 13px; }
   .pa-result { grid-template-columns: 35px minmax(0,1fr); padding: 15px; gap: 8px 12px; }
   .pa-result-icon { width: 35px; height: 35px; border-radius: 10px; }
   .pa-result-action { grid-column: 2; }
-  .pa-compact .pa-role-copy > strong { font-size: 13px; word-break: keep-all; }
+}
+@media(max-width:380px){
+  .pa-discovery.match-shell { width: calc(100% - 24px); padding-top: 16px; }
+  .pa-discovery .member-eyebrow { display: none; }
+  .pa-discovery .pa-heading { margin-bottom: 10px; }
+  .pa-discovery .pa-heading h1 { font-size: 28px; }
+  .pa-discovery .pa-role-card { gap: 5px; padding: 9px; }
+  .pa-discovery .pa-role-copy > strong { font-size: 16px; }
+  .pa-discovery .pa-role-icon { width: 30px; height: 30px; }
+  .pa-results { margin-top: 12px; }
+  .pa-results > header > div { gap: 5px; }
 }
 @media(max-width:600px){
   .pa-notice { width: 100%; }

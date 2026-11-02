@@ -10,6 +10,13 @@
 .bx-authgate h1 { margin:15px 0 8px; font-size:clamp(26px,4vw,34px); font-weight:760; line-height:1.23; letter-spacing:-.045em; }
 .bx-authgate>svg { color:var(--green); }
 .bx-authgate p { margin:12px 0 24px; color:var(--muted); }
+.bx-policy { max-width:760px; margin-inline:auto; padding-block:clamp(44px,6vw,82px) 80px; }
+.bx-policy h1 { margin:8px 0 32px; font-size:clamp(30px,5vw,44px); letter-spacing:-.045em; }
+.bx-policy .request-description,.policy-guide p { font-size:16px; line-height:1.85; }
+.policy-guide section + section { margin-top:24px; padding-top:24px; border-top:1px solid var(--line); }
+.policy-guide h2 { margin-bottom:6px; font-size:19px; }
+.bx-shell .footer-right { column-gap:18px; }
+.bx-shell .footer-right .footer-privacy { font-weight:650; color:var(--text); }
 @media(max-width:600px){
   .bx-shell .header-actions { gap:10px; align-items:center; }
 }

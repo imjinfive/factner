@@ -12,7 +12,7 @@ import {partnerApi} from './partners.js';
 import {matchingApi} from './matching.js';
 import {packagingApi} from './packagings.js';
 import {memberSupportAdminApi} from './member-support.js';
-import {bidApi} from './bid-auth.js';
+import {publicBidApi} from './public-bid.js';
 export const statuses = {received:'접수', reviewing:'검토 중', consulting:'상담 중', quoted:'견적 안내', completed:'완료', cancelled:'취소'};
 export function quoteInput(input) {
   const data = {
@@ -36,13 +36,7 @@ export function quoteInput(input) {
   return data;
 }
 async function mainApi(req, env, url) {
-  if(url.pathname.startsWith('/api/bid/')) {
-    if (!env.BID_ROOMS) return bidApi(req,env,url);
-    const room = req.headers.get('X-Factner-Review');
-    if (!/^[a-f0-9]{64}$/.test(room || '')) fail(400,'체험 화면을 다시 열어주세요.');
-    if (env.BID_LIMIT && !(await env.BID_LIMIT.limit({key:req.headers.get('CF-Connecting-IP') || 'local'})).success) fail(429,'잠시 후 다시 시도해주세요.');
-    return env.BID_ROOMS.get(env.BID_ROOMS.idFromName(room)).fetch(req);
-  }
+  if(url.pathname.startsWith('/api/bid/'))return publicBidApi(req,env,url);
   const memberResult=await matchingApi(req,env,url)||await packagingApi(req,env,url)||await memberApi(req,env,url)||await partnerApi(req,env,url)||await orderApi(req,env,url);
   if(memberResult)return memberResult;
   const publicResult=await supplierPublicApi(req,env,url)||(url.pathname==='/api/policy'?await policyApi(req,env,url):null);

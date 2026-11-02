@@ -4,6 +4,8 @@ import {memberRecoveryApi,memberRecoveryAdminApi} from './member-recovery.js';
 import {owner} from './auth.js';
 import {verifyQuoteSubmission} from './spam.js';
 import {memberSupport,memberWorkspaceApi} from './member-support.js';
+import {isReviewEmail} from '../scripts/bid-seed.mjs';
+import {approvedMarketMember} from './policy.js';
 
 const consentVersion='member-pilot-2026-10-21';
 const fields='id,email,role,legal_type,name,contact,phone,business_number,status,review_note,created_at,updated_at,version';
@@ -18,6 +20,9 @@ export async function memberIdentity(req,env) {
  delete row.password_hash;delete row.consent_version;return row;
 }
 export function requireRole(user,role){if(user.role!==role)fail(403,'이 계정에서 사용할 수 없는 기능입니다.');}
+export async function hasMarketConsent(env,id) {
+ return Boolean(await stmt(env,`SELECT m.id FROM members m WHERE m.id=? AND ${approvedMarketMember('m')}`,id).first());
+}
 function loginInput(input){
  const email=text(input.email,254,true).toLowerCase(),password=input.password;
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'이메일을 확인해주세요.');
@@ -47,44 +52,57 @@ export async function memberFile(req,env,id,user,admin=false){
  const bytes=file.content instanceof ArrayBuffer?file.content:new Uint8Array(file.content);
  return new Response(bytes,{headers:{'Content-Type':file.mime,'Cache-Control':'private, no-store','Content-Security-Policy':"default-src 'none'; sandbox",'Content-Disposition':`${file.mime==='application/pdf'?'attachment':'inline'}; filename*=UTF-8''${encodeURIComponent(file.name).replace(/'/g,'%27')}`}});
 }
+export async function registerMember(req,env,input,{version,live=false,requireCaptcha=false}){
+  await rate(env,`signup:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,10,3600);
+  const {email,password}=loginInput(input);
+  if(isReviewEmail(email))fail(409,'회원가입에 사용할 수 없는 이메일입니다.');
+  if(!['brand','supplier'].includes(input.role)||!['individual','sole','corporate'].includes(input.legalType))fail(400,'가입 유형을 선택해주세요.');
+  const name=text(input.name,100,true),contact=text(input.contact,60,true),phone=text(input.phone,30,true),number=text(input.businessNumber,12).replace(/-/g,'');
+  if(!/^[+0-9 ()-]{7,30}$/.test(phone))fail(400,'연락처를 확인해주세요.');
+  if(live&&!/^\d{7,15}$/.test(phone.replace(/[^0-9]/g,'')))fail(400,'연락처의 숫자를 확인해주세요.');
+  if(input.legalType!=='individual'&&!/^\d{10}$/.test(number))fail(400,'사업자등록번호 10자리를 입력해주세요.');
+  if(!Array.isArray(input.files)||input.files.length>5)fail(400,'첨부 파일은 최대 5개입니다.');
+  const files=input.files.map(f=>fileInput(f,['certificate','workplace']));
+  if(input.legalType!=='individual'&&!files.some(f=>f.kind==='certificate'))fail(400,'사업자등록증을 첨부해주세요.');
+  await verifyQuoteSubmission(req,env,{...input,email},{accepting:requireCaptcha},'signup');
+  const existing=await stmt(env,'SELECT id FROM members WHERE email=?',email).first();
+  if(existing)fail(409,'이 이메일로 접수된 가입 신청이 있습니다. 로그인에서 심사 상태를 확인해주세요.');
+  const id=crypto.randomUUID(),date=now();
+  const allowed = live ? " WHERE (SELECT json_extract(value,'$.accepting') FROM settings WHERE key='service')=1 AND (SELECT id FROM policy_versions WHERE published=1 ORDER BY created_at DESC,rowid DESC LIMIT 1)=? AND (SELECT id FROM policy_versions ORDER BY created_at DESC,rowid DESC LIMIT 1)=?" : '';
+  let saved;
+  try{[saved]=await env.DB.batch([
+   stmt(env,`INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,consent_version,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?${allowed}`,id,email,await passwordHash(password),input.role,input.legalType,name,contact,phone,input.legalType==='individual'?'':number,version,date,date,...(live?[version,version]:[])),
+   ...files.map(f=>stmt(env,'INSERT INTO member_files SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=?)',f.id,id,f.kind,f.name,f.mime,f.size,f.bytes.buffer,date,id)),
+  ]);}catch(error){if(String(error.message).includes('UNIQUE'))fail(409,'이미 접수된 이메일입니다.');throw error;}
+  if(!saved.meta.changes)fail(409,'가입 안내가 변경되었습니다. 다시 확인해주세요.');
+  return json({id,status:'pending',support:await memberSupport(env,id)},201);
+ }
+export async function loginMember(req,env,input,{bid=false}={}){
+  await rate(env,`member-login:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,30,900);
+  const {email,password}=loginInput(input);
+  await rate(env,`member-login-email:${await digest(email)}`,10,900);
+  const row=await stmt(env,'SELECT * FROM members WHERE email=?',email).first();
+  const valid=await verifyPassword(password,row?.password_hash||`${'0'.repeat(64)}:${'0'.repeat(64)}`);
+  if(!row||!valid)fail(401,'이메일 또는 비밀번호를 확인해주세요.');
+  const kind=row.role==='supplier'?'packaging':'brand';
+  if(bid&&input.role!==undefined&&input.role!==kind)fail(403,'선택한 회원 유형과 계정이 일치하지 않습니다.');
+  if(row.status!=='approved')return json({error:labels[row.status],status:row.status,note:row.review_note,support:await memberSupport(env,row.id)},403);
+  const token=randomToken();
+  await stmt(env,'INSERT INTO member_sessions VALUES(?,?,?,?)',await digest(token),row.id,Date.now()+8*3600000,row.version).run();
+  delete row.password_hash;delete row.consent_version;
+  return json(bid?{user:{id:row.id,email:row.email,name:row.name,kind,legacyOnly:!await hasMarketConsent(env,row.id)}}:{member:row},200,{'Set-Cookie':cookie(req,token,8*3600)});
+ }
 export async function memberApi(req,env,url){
  const path=url.pathname;
  if(!path.startsWith('/api/member/'))return null;
  if(path==='/api/member/config'&&req.method==='GET')return json({pilot:true,consentVersion,turnstileSiteKey:env.TURNSTILE_SECRET_KEY?env.TURNSTILE_SITE_KEY||'':''});
  if(path==='/api/member/register'&&req.method==='POST'){
-  await rate(env,`signup:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,10,3600);
-  const input=await body(req,11000000),{email,password}=loginInput(input);
+  if(env.APP_KIND==='main'&&env.BID_ROOMS)fail(410,'홈의 회원가입에서 접수해주세요.');
+  const input=await body(req,11000000);
   if(input.testOnly!==true||input.consent!==true||input.consentVersion!==consentVersion)fail(400,'테스트 가입 안내와 개인정보 수집 내용을 확인해주세요.');
-  if(!['brand','supplier'].includes(input.role)||!['individual','sole','corporate'].includes(input.legalType))fail(400,'가입 유형을 선택해주세요.');
-  const name=text(input.name,100,true),contact=text(input.contact,60,true),phone=text(input.phone,30,true),number=text(input.businessNumber,12).replace(/-/g,'');
-  if(!/^[+0-9 ()-]{7,30}$/.test(phone))fail(400,'연락처를 확인해주세요.');
-  if(input.legalType!=='individual'&&!/^\d{10}$/.test(number))fail(400,'사업자등록번호 10자리를 입력해주세요.');
-  if(!Array.isArray(input.files)||input.files.length>5)fail(400,'첨부 파일은 최대 5개입니다.');
-  const files=input.files.map(f=>fileInput(f,['certificate','workplace']));
-  if(input.legalType!=='individual'&&!files.some(f=>f.kind==='certificate'))fail(400,'사업자등록증을 첨부해주세요.');
-  await verifyQuoteSubmission(req,env,{...input,email},{accepting:false},'signup');
-  const existing=await stmt(env,'SELECT id FROM members WHERE email=?',email).first();
-  if(existing)fail(409,'이 이메일로 접수된 가입 신청이 있습니다. 로그인에서 심사 상태를 확인해주세요.');
-  const id=crypto.randomUUID(),date=now();
-  try{await env.DB.batch([
-   stmt(env,`INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,consent_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,id,email,await passwordHash(password),input.role,input.legalType,name,contact,phone,input.legalType==='individual'?'':number,consentVersion,date,date),
-   ...files.map(f=>fileStatement(env,id,f)),
-  ]);}catch(error){if(String(error.message).includes('UNIQUE'))fail(409,'이미 접수된 이메일입니다.');throw error;}
-  return json({status:'pending',support:await memberSupport(env,id)},201);
+  return registerMember(req,env,input,{version:consentVersion});
  }
- if(path==='/api/member/login'&&req.method==='POST'){
-  await rate(env,`member-login:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,30,900);
-  const {email,password}=loginInput(await body(req));
-  await rate(env,`member-login-email:${await digest(email)}`,10,900);
-  const row=await stmt(env,'SELECT * FROM members WHERE email=?',email).first();
-  const valid=await verifyPassword(password,row?.password_hash||`${'0'.repeat(64)}:${'0'.repeat(64)}`);
-  if(!row||!valid)fail(401,'이메일 또는 비밀번호를 확인해주세요.');
-  if(row.status!=='approved')return json({error:labels[row.status],status:row.status,note:row.review_note,support:await memberSupport(env,row.id)},403);
-  const token=randomToken();
-  await stmt(env,'INSERT INTO member_sessions VALUES(?,?,?,?)',await digest(token),row.id,Date.now()+8*3600000,row.version).run();
-  delete row.password_hash;delete row.consent_version;
-  return json({member:row},200,{'Set-Cookie':cookie(req,token,8*3600)});
- }
+ if(path==='/api/member/login'&&req.method==='POST')return loginMember(req,env,await body(req));
  if(path==='/api/member/logout'&&req.method==='POST'){
   const token=sessionToken(req);if(token)await stmt(env,'DELETE FROM member_sessions WHERE token_hash=?',await digest(token)).run();
   return json({ok:true},200,{'Set-Cookie':cookie(req,'',0)});

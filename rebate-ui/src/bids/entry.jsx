@@ -10,7 +10,7 @@ function redirectFromWww() {
   const url = new URL(surface==='members'?'/members/':surface==='ops'?'/ops':'/', 'https://factner.com');
   const [view,detail] = route.split('/');
   // Only public post IDs and the known creation categories travel to the canonical origin.
-  const post = ['feed','mine','login','signup'].includes(view) && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(detail || '');
+  const post = ['feed','mine'].includes(view) && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(detail || '');
   const category = view==='new' && ['packaging','design'].includes(detail);
   const defaultView = surface==='members'?'account':surface==='ops'?'contracts':'intro';
   if (post || category) url.hash = view+'/'+detail;

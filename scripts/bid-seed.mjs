@@ -6,6 +6,10 @@ const people=[
   ['package1','패키지업체 1','packaging'],['packagedesign1','패키지디자인업체 1','both'],
   ...Array.from({length:10},(_,i)=>['brand'+(i+1),'브랜드'+(i+1),'brand'])
 ];
+const reviewEmails=new Set(people.map(([key])=>key+'@gmail.com'));
+export function isReviewEmail(email) {
+  return typeof email==='string' && reviewEmails.has(email.trim().toLowerCase());
+}
 // Only these fictional manufacturers have profiles intended for public discovery.
 export const reviewPartnerCards = {
   'seed-package1': {alias:'A업체',items:['box','packaging'],title:'박스·단상자 제작업체',description:'배송용 골판지 상자와 제품 단상자의 규격·재질·수량을 상담할 수 있어요.'},
@@ -24,6 +28,13 @@ const briefs=[
  ['design','반려동물 간식 파우치 일러스트',2,430000,'155 × 225 mm','강아지·고양이 2종 전면 일러스트와 뒷면 정보 레이아웃입니다.',10],
  ['packaging','유리컵 이중 골판지 우편 박스',4000,690,'110 × 110 × 145 mm','유리컵 1개입. 완충 구조, 단색 인쇄, 접착 없는 조립식을 선호합니다.',11]
 ];
+export function examplePosts() {
+  return briefs.flatMap(([category,title,quantity,unitPrice,size,description,days],i)=>category==='packaging'?[{
+    id:'example-'+(i+1), brandAlias:'브랜드 '+String.fromCharCode(65+i), category,title,quantity,unitPrice,size,description,
+    deadline:new Date(Date.now()+days*86400000+9*3600000).toISOString().slice(0,10),
+    createdAt:null,status:'open',offerCount:0,isMine:false,example:true
+  }]:[]);
+}
 export function insertReviewFixtures(prepare,at=Date.now()){
     const insert=prepare('INSERT INTO market_accounts(id,email,name,kind,password_hash) VALUES(?,?,?,?,?)');
     people.forEach(([key,name,kind])=>insert('seed-'+key,key+'@gmail.com',name,kind,fixtureHash));

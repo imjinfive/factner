@@ -1,33 +1,56 @@
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
-import {readFileSync,existsSync,mkdirSync,statSync} from 'node:fs';
+import {readFileSync,existsSync,mkdirSync,statSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {resolve,extname,sep} from 'node:path';
+import worker from '../server/worker.js';
 import {bidApi} from '../server/bid-auth.js';
+import {localMemberPreview} from '../server/public-bid.js';
 import {HttpError} from '../server/http.js';
 import {seedReview} from './bid-seed.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const folder=resolve(root,'.qa/bid-preview'); mkdirSync(folder,{recursive:true});
-const raw=new DatabaseSync(process.env.BID_PREVIEW_MEMORY==='1'?':memory:':resolve(folder,'review.sqlite'));
-raw.exec('PRAGMA foreign_keys=ON');
-if(!raw.prepare("SELECT 1 FROM sqlite_master WHERE name='market_accounts'").get()){
-  raw.exec(readFileSync(resolve(root,'migrations/0013_bid_market.sql'),'utf8'));
+const live=new DatabaseSync(process.env.BID_PREVIEW_MEMORY==='1'?':memory:':resolve(folder,'members.sqlite'));
+live.exec('PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS local_migrations(name TEXT PRIMARY KEY)');
+for(const name of readdirSync(resolve(root,'migrations')).filter(file=>file.endsWith('.sql')).sort()){
+  if(live.prepare('SELECT 1 FROM local_migrations WHERE name=?').get(name))continue;
+  live.exec('BEGIN');
+  try{live.exec(readFileSync(resolve(root,'migrations',name),'utf8'));live.prepare('INSERT INTO local_migrations VALUES(?)').run(name);live.exec('COMMIT');}
+  catch(error){live.exec('ROLLBACK');throw error;}
 }
-raw.exec('CREATE TABLE IF NOT EXISTS rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL)');
-await seedReview(raw);
-function statement(sql,args){
-  const act=()=>{
-    const q=raw.prepare(sql);
-    if(q.columns().length)return {results:q.all(...args),meta:{changes:0}};
-    return {results:[],meta:{changes:Number(q.run(...args).changes)}};
-  };
-  return {bind:(...values)=>statement(sql,values),act,first:async()=>raw.prepare(sql).get(...args)||null,all:async()=>({results:raw.prepare(sql).all(...args)}),run:async()=>act()};
+// These settings belong to the standalone loopback database only.
+if(!live.prepare('SELECT 1 FROM policy_versions LIMIT 1').get()){
+  const config={operator:'팩트너 로컬 검증',contactEmail:'contact@example.test',accepting:true};
+  const doc={...config,terms:'로컬 가입 절차 검증용 약관입니다. 외부 개인 정보를 입력하지 마세요.',privacy:'이 컴퓨터의 로컬 DB만 사용합니다.',collection:'입력한 정보는 로컬 가입·승인 검증에 사용됩니다.',transfer:'외부로 제공하지 않습니다.'};
+  live.exec('BEGIN');try{
+    live.prepare("UPDATE settings SET value=? WHERE key='service'").run(JSON.stringify(config));
+    live.prepare('INSERT INTO policy_versions VALUES(?,?,?,?,?)').run('local-registration-v1',JSON.stringify(doc),1,'local',new Date().toISOString());
+    live.exec('COMMIT');
+  }catch(error){live.exec('ROLLBACK');throw error;}
 }
-const db={prepare:sql=>statement(sql,[]),batch:async items=>{
-  raw.exec('BEGIN');try{const itemsDone=items.map(q=>q.act());raw.exec('COMMIT');return itemsDone;}catch(err){raw.exec('ROLLBACK');throw err;}
+function database(raw){
+  function statement(sql,args=[]){
+    const act=()=>{const q=raw.prepare(sql);return q.columns().length?{results:q.all(...args),meta:{changes:0}}:{results:[],meta:{changes:Number(q.run(...args).changes)}};};
+    return {bind:(...v)=>statement(sql,v.map(x=>x instanceof ArrayBuffer?new Uint8Array(x):x)),act,first:async()=>raw.prepare(sql).get(...args)||null,all:async()=>({results:raw.prepare(sql).all(...args)}),run:async()=>act()};
+  }
+  return {prepare:sql=>statement(sql),batch:async items=>{
+    raw.exec('BEGIN');try{const results=items.map(item=>item.act());raw.exec('COMMIT');return results;}catch(e){raw.exec('ROLLBACK');throw e;}
+  }};
+}
+const reviewRooms=new Map();
+function reviewEnvironment(key){
+  if(!reviewRooms.has(key)){
+    const stored=new DatabaseSync(':memory:');stored.exec('PRAGMA foreign_keys=ON');
+    stored.exec(readFileSync(resolve(root,'migrations/0013_bid_market.sql'),'utf8'));
+    stored.exec('CREATE TABLE rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL)');
+    seedReview(stored);
+    reviewRooms.set(key,{DB:database(stored),BID_DEMO:'1'});
+  }return reviewRooms.get(key);
+}
+const env={DB:database(live),APP_KIND:'main',[localMemberPreview]:true,BID_ROOMS:{
+  idFromName:name=>name,get:key=>({fetch:async req=>bidApi(req,await reviewEnvironment(key),new URL(req.url))})
 }};
-const env={DB:db,BID_DEMO:'1',previewAdminSessions:new Map()};
 const port=Number(process.env.BID_PREVIEW_PORT||4180);
 const dist=resolve(root,'rebate-ui/dist');
 if(!existsSync(resolve(dist,'index.html')))throw new Error('Build the frontend before starting the preview.');
@@ -47,11 +70,11 @@ const server=http.createServer(async(req,res)=>{
       }
       if(req.method!=='GET'&&(req.method!=='POST'||req.headers.origin!==url.origin))throw new HttpError(403,'허용되지 않은 요청입니다.');
       const chunks=[];let size=0;
-      for await(const chunk of req){size+=chunk.length;if(size>20000)throw new HttpError(413,'입력이 너무 큽니다.');chunks.push(chunk);}
+      for await(const chunk of req){size+=chunk.length;if(size>(url.pathname==='/api/bid/register'?11000000:20000))throw new HttpError(413,'입력이 너무 큽니다.');chunks.push(chunk);}
       const request=new Request(url,{method:req.method,headers:req.headers,body:req.method==='GET'?undefined:Buffer.concat(chunks)});
-      const response=await bidApi(request,env,url);
+      const response=await worker.fetch(request,env);
       if(!response)throw new HttpError(404,'없는 경로입니다.');
-      if(response.ok && req.method==='POST' && url.pathname==='/api/bid/posts'){
+      if(response.ok && !req.headers.authorization && req.method==='POST' && url.pathname==='/api/bid/posts'){
         for(const watcher of watchers)watcher.write('data: refresh\n\n');
       }
       res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;

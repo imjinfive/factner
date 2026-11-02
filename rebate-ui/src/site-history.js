@@ -1,5 +1,5 @@
 export const siteNavigationEvent = 'factner:navigation';
-const marketViews = new Set(['intro','feed','mine','new','contracts','login','signup','demo','account']);
+const marketViews = new Set(['intro','feed','mine','new','contracts','login','signup','account','find-id','recover-password','reset-password','privacy','terms','policy']);
 const memberPages = new Set(['intro','request','guide','account','activity']);
 
 // Old links still open their intended screen. New entries store the destination in browser history.
@@ -16,9 +16,10 @@ export function siteLocation({pathname, hash}, state = {}) {
   }
   const [view,detail] = (fragment || previous.factnerRoute || '').split('/');
   if (view === 'preview') return {surface:'market',route:'feed'};
+  if (view === 'demo') return {surface,route:'login'};
   const fallback = surface === 'ops' ? 'contracts' : 'intro';
   if (!marketViews.has(view)) return {surface,route:fallback};
-  return {surface,route:/^[\w-]{1,64}$/.test(detail || '') ? view+'/'+detail : view};
+  return {surface,route:['feed','mine','new'].includes(view) && /^[\w-]{1,64}$/.test(detail || '') ? view+'/'+detail : view};
 }
 
 function entryState(surface, route, entry) {

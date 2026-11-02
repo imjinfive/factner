@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { CheckCircle, Circle, FileText, X } from '@phosphor-icons/react';
 import { BID_TERMS } from '../../../shared/bid-terms.js';
+import ReviewConfirm from '../ReviewConfirm';
 import './deal.css';
 
 const number = new Intl.NumberFormat('ko-KR');
@@ -122,6 +123,35 @@ export function SelectDialog({ offer, post, tier, user, mutate, onClose, onCompl
   return <SignatureDialog title="제안 선택과 브랜드 서명" subject={`${post.title} · ${offer.alias}`} tier={tier}
     user={user} terms={BID_TERMS} offer={offer} onClose={onClose} onComplete={onComplete}
     onRecord={fields => mutate(`/offers/${offer.id}/select`, { ...fields, quantity: tier.quantity })}/>;
+}
+
+export function ConnectionDialog({offer,post,tier,mutate,onClose,onComplete}) {
+  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  const lock=useRef(false);
+  async function submit(){
+    if(lock.current)return;
+    lock.current=true;setBusy(true);setError('');
+    try{
+      await mutate('/offers/'+offer.id+'/select',{quantity:tier.quantity,accepted:true});
+      onComplete();
+    }catch(e){setError(e.message);}
+    finally{lock.current=false;setBusy(false);}
+  }
+  return <ReviewConfirm open busy={busy} error={error} title="이 제안으로 연결을 요청할까요?" confirmLabel="운영팀에 연결 요청" onCancel={onClose} onConfirm={submit}>
+    <p><strong>{post.title}</strong> · {offer.alias}</p><PriceSummary {...tier}/>
+    <p>한 공고에서는 한 업체만 선택할 수 있습니다. 운영팀이 양측을 확인한 후 연결합니다. 이 요청으로 결제되거나 제작이 발주되지는 않습니다.</p>
+  </ReviewConfirm>;
+}
+
+const connectionLabels={pending:'연결 요청 접수',reviewing:'운영팀 확인 중',completed:'연결 완료',rejected:'연결되지 않음'};
+export function Connections({connections=[],onMembers}){
+  return <section className="fd-desk" aria-label="거래 진행"><header><span className="fd-kicker">거래 진행</span><h1>계약함</h1>
+    <p>선택한 제안과 운영팀의 연결 진행 상황을 확인하세요.</p></header>
+    {connections.length?connections.map(item=><article key={item.postId} className="fd-card"><span className="fd-kicker">{connectionLabels[item.status]||'상태 확인 중'}</span>
+      <h2>{item.title}</h2>{item.quantity>0&&<p>{number.format(item.quantity)}개{item.unitPrice>0&&' · 개당 '+won(item.unitPrice)}</p>}
+      {item.status==='completed'&&<button className="button outline" onClick={onMembers}>회원 정보와 발주 내역 보기</button>}
+    </article>):<div className="empty fd-empty"><FileText size={46} aria-hidden="true"/><h2>아직 연결 요청이 없어요.</h2><p>브랜드가 제안을 선택하면 여기서 진행 상황을 볼 수 있어요.</p></div>}
+  </section>;
 }
 
 function RevealDialog({ contract, subject, mutate, onClose }) {

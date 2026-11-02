@@ -1,14 +1,14 @@
 import React, {useEffect,useRef,useState} from "react";
 import {AnimatePresence,MotionConfig,motion,useReducedMotion} from "motion/react";
 import * as Dialog from "@radix-ui/react-dialog";
-import {ArrowRight,CheckCircle,X,Package,ClipboardText,CaretRight,Plus,Moon,Sun,Tray} from "@phosphor-icons/react";
+import {ArrowRight,CheckCircle,X,ClipboardText,CaretRight,Plus,Tray} from "@phosphor-icons/react";
 import {readSaved} from "./model";
 import {api,quoteStatuses} from "./api";
+import SiteFooter from "./SiteFooter";
 import ServiceIntro from "./ServiceIntro";
 import {BrandMark, Button, Photo} from "./BrandControls";
 import MemberPortal from "./MemberPortal";
 import MatchingFlow from "./MatchingFlow";
-import {MATCH_CATEGORIES} from "./matching-preview.js";
 import {pageFromHistory,matchingFromHistory} from "./navigation.js";
 import {siteNavigationEvent, writeSiteEntry} from "./site-history.js";
 import OrderAlerts,{OrderAlertContext,OrderAlertNotice} from "./OrderAlerts";
@@ -17,13 +17,6 @@ import "./funnel-shell.css";
 const spring={type:"spring",stiffness:420,damping:30,mass:0.8};
 const money=n=>new Intl.NumberFormat("ko-KR").format(n);
 const navItems=[["intro","서비스 소개"],["request","파트너 찾기"],["guide","이용 안내"]];
-function PolicyDocument({kind}) {
-  const [data,setData]=useState(null),[error,setError]=useState(""),[retry,setRetry]=useState(0);
-  useEffect(()=>{let active=true;setError("");api("policy").then(result=>{if(active)setData(result);}).catch(problem=>{if(active)setError(problem.message);});return()=>{active=false;};},[retry]);
-  if(error)return <Empty title="안내를 불러오지 못했습니다" description={error} action={<Button onClick={()=>setRetry(value=>value+1)}>다시 시도</Button>}/>;
-  if(!data)return <p role="status">안내를 불러오는 중입니다.</p>;
-  return <div className="policy-document">{!data.published&&<p className="demo-note">운영 정보 확정 전 검토용 초안입니다.</p>}<p className="request-description">{kind==="privacy"?data.privacy:data.terms}</p><p className="helper-text">운영자: {data.operator||"미정"} · 문의: {data.contactEmail||"미정"}</p></div>;
-}
 function Modal({ open, onClose, title, description, children, wide = false }) {
   const reduce = useReducedMotion();
   return (
@@ -118,7 +111,7 @@ function memberPage() {
 
 export default function MemberApp(){
  const [member,setMember]=useState(null),[authLoading,setAuthLoading]=useState(true);
- const [page,setPage]=useState(memberPage),[flowVisited,setFlowVisited]=useState(()=>memberPage()==='request'),[signupContext,setSignupContext]=useState(null);
+ const [page,setPage]=useState(memberPage),[flowVisited,setFlowVisited]=useState(()=>memberPage()==='request');
  const [requestedOrder,setRequestedOrder]=useState(null),[attentionRefresh,setAttentionRefresh]=useState(0),[orderAlertNotice,setOrderAlertNotice]=useState(null);
  const [requests,setRequests]=useState(()=>readSaved('factner:requests',[]));
  const [modal,setModal]=useState(null),[toast,setToast]=useState('');
@@ -148,8 +141,13 @@ export default function MemberApp(){
  function openModal(value){if(!document.activeElement?.closest('.modal')){document.querySelector('[data-return-focus]')?.removeAttribute('data-return-focus');document.activeElement?.setAttribute('data-return-focus','');}setModal(value);}
  function openOrderAlert(id){if(modal){notify('입력 중인 창을 닫은 뒤 발주 알림을 확인해주세요.');return;}setRequestedOrder({id,key:Date.now()});navigate('account');}
  const startRequest=()=>navigate('request',{matching:matchingFromHistory(null,member)});
- const openAccount=()=>{setSignupContext(null);navigate('account',member?{}:{memberAuth:{mode:'login',step:0,role:'',legal:'',depth:0}});};
- const beginSignup=context=>{setSignupContext(context);navigate('account',{memberAuth:{mode:'signup',step:context?.role?1:0,role:context?.role||'',legal:'',depth:0}});};
+ const openAccount=()=>{if(member)navigate('account');else writeSiteEntry('market','login');};
+ const beginSignup=()=>writeSiteEntry('market','signup');
+ useEffect(()=>{
+   if(authLoading||member||page!=='account')return;
+   const mode=history.state?.memberAuth?.mode;
+   writeSiteEntry('market',['signup','find-id','recover-password','reset-password'].includes(mode)?mode:'login',{replace:true});
+ },[authLoading,member,page]);
   useEffect(() => {
     let cancelled=false;
     async function refresh() {
@@ -184,8 +182,8 @@ export default function MemberApp(){
  <MotionConfig transition={spring} reducedMotion="user">
   <a href="#main" className="skip-link" onClick={e=>{e.preventDefault();document.getElementById('main')?.focus();}}>본문 바로가기</a>
   <header className="site-header funnel-header"><div className="header-inner">
-   <button className="logo" aria-label="팩트너 홈" onClick={()=>navigate('intro')}><BrandMark/></button>
-   <nav aria-label="주 메뉴">{navItems.map(([key,label])=><button key={key} onClick={()=>key==='request'?startRequest():navigate(key)} className={'nav-link '+(page===key?'active':'')} aria-current={page===key?'page':undefined}>{label}{page===key&&<motion.span className="nav-indicator" layoutId="nav-indicator"/>}</button>)}</nav>
+   <button className="logo" aria-label="팩트너 홈" onClick={()=>writeSiteEntry('market','intro')}><BrandMark/></button>
+   <nav aria-label="주 메뉴">{navItems.map(([key,label])=><button key={key} onClick={()=>key==='guide'?navigate(key):writeSiteEntry('market',key==='request'?'feed':key)} className={'nav-link '+(page===key?'active':'')} aria-current={page===key?'page':undefined}>{label}{page===key&&<motion.span className="nav-indicator" layoutId="nav-indicator"/>}</button>)}</nav>
    <div className="header-actions"><button className="member-login-link" onClick={openAccount}>{member?'마이페이지':'로그인'}</button></div>
   </div></header>
   <main id="main" tabIndex={-1}>
@@ -193,19 +191,15 @@ export default function MemberApp(){
    <AnimatePresence mode="wait"><motion.div key={page} initial={reduce?false:{opacity:0,y:page==='intro'?0:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:0.18}}>
     {page==='intro'&&<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>writeSiteEntry('market','feed')}/>}
     {page==='guide'&&<Guide onRequest={startRequest}/>}
-    {page==='account'&&<>
-     {!member&&signupContext&&<aside className="signup-context shell"><div><strong>{signupContext.role==='supplier'?'패키징 제작 업체':'브랜드'} 가입 신청</strong><p>{MATCH_CATEGORIES.find(item=>item.value===signupContext.category)?.label} · 가입 승인 후 실제 파트너를 확인할 수 있어요.</p></div><button onClick={()=>navigate('request')}>조건으로 돌아가기 <ArrowRight size={18}/></button></aside>}
-     <MemberPortal member={member} onMember={setMember} authLoading={authLoading} Button={Button} Modal={Modal} signupContext={signupContext} onFindPartner={startRequest} onLegacy={()=>navigate('activity')} requestedOrder={requestedOrder} onOrderOpened={()=>setRequestedOrder(null)} onAttentionChange={()=>setAttentionRefresh(v=>v+1)}/>
-    </>}
+    {page==='account'&&(member||authLoading)&&<MemberPortal member={member} onMember={setMember} authLoading={authLoading} Button={Button} Modal={Modal} onFindPartner={()=>writeSiteEntry('market','feed')} onLegacy={()=>navigate('activity')} requestedOrder={requestedOrder} onOrderOpened={()=>setRequestedOrder(null)} onAttentionChange={()=>setAttentionRefresh(v=>v+1)}/>}
     {page==='activity'&&<section className="shell inner-page"><div className="page-heading"><h1>기존 견적 내역</h1><p>이 브라우저에서 접수한 견적을 확인할 수 있어요.</p></div>
      {requests.length?<div className="request-list">{requests.map(r=><button key={r.id} className="request-row" onClick={()=>viewRequest(r)}><span className="request-icon"><ClipboardText size={24}/></span><span><small>{new Date(r.createdAt).toLocaleDateString('ko-KR')}</small><strong>{r.brand}의 {r.category} 제작</strong><span>{money(r.quantity)}개</span></span><span className="request-status">{quoteStatuses[r.status]||'접수'}<CaretRight size={18}/></span></button>)}</div>:<Empty title="접수한 견적이 없어요" action={<Button onClick={startRequest}>견적 문의하기 <ArrowRight size={18}/></Button>}/>}
     </section>}
    </motion.div></AnimatePresence>
   </main>
-  <footer className="site-footer shell"><div><button className="logo" onClick={()=>navigate('intro')}><Package size={24} weight="fill"/><span>factner.</span></button><small>© {new Date().getFullYear()} factner.</small></div><div className="footer-right"><button onClick={()=>navigate('guide')}>이용 안내</button><button onClick={()=>navigate('activity')}>기존 견적 조회</button><button onClick={()=>openModal({type:'policy',kind:'privacy'})}>개인정보처리방침</button><button onClick={()=>openModal({type:'policy',kind:'terms'})}>이용약관</button><Button tone="ghost" className="icon-button" aria-label={theme==='light'?'다크 모드로 전환':'라이트 모드로 전환'} onClick={()=>setTheme(theme==='light'?'dark':'light')}>{theme==='light'?<Moon size={20}/>:<Sun size={20}/>}</Button><p>소개 이미지는 연출입니다.</p></div></footer>
+  <SiteFooter onHome={()=>writeSiteEntry('market','intro')} onSection={key=>writeSiteEntry('market',key)} theme={theme} onTheme={()=>setTheme(theme==='light'?'dark':'light')}/>
   {member?.role==='supplier'&&<OrderAlerts key={member.id} member={member} refreshKey={attentionRefresh} onNotice={setOrderAlertNotice} onOpen={openOrderAlert} onSessionExpired={()=>setMember(null)}/>}
   <div className="toast-region" role="status" aria-live="polite"><AnimatePresence>{toast&&<motion.div className="toast" key={toast} initial={{y:16,opacity:0}} animate={{y:0,opacity:1}} exit={{opacity:0}}><CheckCircle size={21} weight="fill"/>{toast}</motion.div>}</AnimatePresence></div>
-  <Modal open={modal?.type==='policy'} onClose={()=>setModal(null)} title={modal?.kind==='privacy'?'개인정보처리방침':'이용약관'} description="팩트너 서비스 운영 안내">{modal?.type==='policy'&&<PolicyDocument kind={modal.kind}/>}</Modal>
       <Modal
         open={modal?.type === "requestDetail"}
         onClose={() => setModal(null)}

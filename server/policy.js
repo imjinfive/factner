@@ -50,6 +50,10 @@ export async function policy(env) {
  const config=await service(env);
  return row?{...JSON.parse(row.content),version:row.id,published:!!row.published}:{...draft,operator:config.operator,contactEmail:config.contactEmail};
 }
+// Callers supply a static SQL alias. A pilot-only consent cannot grant access to the shared market.
+export function approvedMarketMember(alias) {
+  return `${alias}.status='approved' AND EXISTS(SELECT 1 FROM policy_versions pv WHERE pv.id=${alias}.consent_version AND pv.published=1)`;
+}
 export async function readiness(env,config) {
  const doc=await policy(env);
  const suppliers=await stmt(env,`SELECT count(*) AS n FROM suppliers WHERE state='published'`).first();
