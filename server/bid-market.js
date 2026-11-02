@@ -3,6 +3,7 @@ import { designerNotice, isPackagingPartner } from '../shared/partner-roles.js';
 import { examplePosts, reviewPartnerCards } from '../scripts/bid-seed.mjs';
 import { body, fail, json, now, stmt, text } from './http.js';
 import { approvedMarketMember } from './policy.js';
+import { authorIdentity,reviewPost,validateAnonymous } from './market-review.js';
 
 const categories = ['design', 'packaging'];
 const today = () => new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -16,16 +17,6 @@ function quoteTier(input) {
   const unitPrice = integer(input?.unitPrice, 1000000000, '단가');
   if (quantity * unitPrice > 1000000000000) fail(400, '수량과 단가를 확인해주세요.');
   return { quantity, unitPrice };
-}
-function anonymousText(value, length, user, required = false) {
-  const clean = text(value, length, required);
-  const normalized = clean.normalize('NFKC');
-  const contact = /@|(?:https?:\/\/|www\.|카카오톡|카톡\s*(?:ID|아이디)|오픈채팅)|\b(?:[a-z0-9-]+\.)+(?:com|net|org|kr|io|co)\b|(?:\+82[\s().-]*)?0?(?:1[016789]|2|[3-6]\d|70)[\s().-]*\d{3,4}[\s().-]*\d{4}(?!\d)/i;
-  const fold = s => s.normalize('NFKC').toLowerCase().replace(/\s/g, '');
-  if (contact.test(normalized) || (user.name && fold(clean).includes(fold(user.name)))) {
-    fail(400, '익명 게시물에는 이름·업체명·연락처·링크를 넣을 수 없습니다.');
-  }
-  return clean;
 }
 function signature(input, version) {
   if (input.accepted !== true || input.version !== version) fail(409, '계약 조항과 버전을 확인하고 동의해주세요.');
@@ -46,18 +37,20 @@ async function getState(env, user, live=false) {
   ) SELECT p.*, b.ordinal, EXISTS(SELECT 1 FROM ${awards} c WHERE c.post_id=p.id) awarded,
     (SELECT count(*) FROM market_offers o WHERE o.post_id=p.id) offer_count
     FROM market_posts p JOIN brands b ON b.id=p.brand_id
-    WHERE (? IS NULL OR p.category=?) ${live?`AND EXISTS(SELECT 1 FROM members m WHERE m.id=p.brand_id AND ${approvedMarketMember('m')})`:''}
-    ORDER BY p.created_at DESC,p.id`, category, category);
+    WHERE (? IS NULL OR p.category=?) AND (p.review_status='approved' OR p.brand_id=?)
+    ${live?`AND EXISTS(SELECT 1 FROM members m WHERE m.id=p.brand_id AND ${approvedMarketMember('m')})`:''}
+    ORDER BY COALESCE(p.reviewed_at,p.created_at) DESC,p.id`, category, category,id);
   const eligibleOffers=live?` AND EXISTS(SELECT 1 FROM members b JOIN members s ON s.id=o.supplier_id WHERE b.id=p.brand_id
     AND ${approvedMarketMember('b')} AND ${approvedMarketMember('s')})`:'';
-  const offersQuery = stmt(env, `SELECT o.* FROM market_offers o JOIN market_posts p ON p.id=o.post_id WHERE (?=1 OR p.brand_id=? OR o.supplier_id=?)${eligibleOffers} ORDER BY o.created_at,o.id`, Number(admin), id, id);
-  const contractsQuery = stmt(env, 'SELECT c.*, p.category,p.title,b.name brand_name,b.email brand_email,s.name supplier_name,s.email supplier_email FROM market_contracts c JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id JOIN market_accounts b ON b.id=p.brand_id JOIN market_accounts s ON s.id=o.supplier_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY c.brand_signed_at DESC,c.id', Number(admin), id, id);
+  const offersQuery = stmt(env, `SELECT o.* FROM market_offers o JOIN market_posts p ON p.id=o.post_id WHERE (?=1 OR p.brand_id=? OR o.supplier_id=?) AND (p.review_status='approved' OR p.brand_id=?)${eligibleOffers} ORDER BY o.created_at,o.id`, Number(admin), id, id,id);
+  const historyTitle="CASE WHEN p.review_status='approved' OR p.brand_id=? THEN p.title ELSE '비공개 공고' END AS title";
+  const contractsQuery = stmt(env, `SELECT c.*, p.category,${historyTitle},b.name brand_name,b.email brand_email,s.name supplier_name,s.email supplier_email FROM market_contracts c JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id JOIN market_accounts b ON b.id=p.brand_id JOIN market_accounts s ON s.id=o.supplier_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY c.brand_signed_at DESC,c.id`,id, Number(admin), id, id);
   const paymentsQuery = stmt(env, 'SELECT m.* FROM market_payments m JOIN market_contracts c ON c.id=m.contract_id JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY m.created_at,m.id', Number(admin), id, id);
   const queries = [postsQuery, offersQuery];
   if(live){
-    queries.push(stmt(env,`SELECT s.request_id,s.post_id,s.offer_id,s.quantity,s.unit_price,s.created_at,p.title,r.status
+    queries.push(stmt(env,`SELECT s.request_id,s.post_id,s.offer_id,s.quantity,s.unit_price,s.created_at,${historyTitle},r.status
       FROM market_connection_requests s JOIN market_posts p ON p.id=s.post_id JOIN market_offers o ON o.id=s.offer_id
-      JOIN matching_requests r ON r.id=s.request_id WHERE p.brand_id=? OR o.supplier_id=? ORDER BY s.created_at DESC`,id,id));
+      JOIN matching_requests r ON r.id=s.request_id WHERE p.brand_id=? OR o.supplier_id=? ORDER BY s.created_at DESC`,id,id,id));
     if(!user)queries.push(stmt(env,`SELECT c.rowid ordinal,c.profile FROM member_companies c JOIN members m ON m.id=c.member_id
       WHERE ${approvedMarketMember('m')} AND m.role='supplier' AND c.listed=1 ORDER BY c.rowid`));
   }else{
@@ -79,7 +72,8 @@ async function getState(env, user, live=false) {
     connections:live?results[2].results.map(c=>({id:c.request_id,postId:c.post_id,offerId:c.offer_id,title:c.title,
       quantity:c.quantity,unitPrice:c.unit_price,status:c.status,createdAt:c.created_at})):[],
     partners: (publicAccounts?.results ?? []).filter(a=>isPackagingPartner(a.kind)).map(a=>({...reviewPartnerCards[a.id],kind:a.kind})),
-    posts: posts.results.map(p => ({ id:p.id, brandAlias:'브랜드 '+(p.ordinal<=26?String.fromCharCode(64+p.ordinal):p.ordinal), category:p.category, title:p.title, quantity:p.quantity, unitPrice:p.unit_price, size:p.size, description:p.description, deadline:p.deadline, createdAt:p.created_at, status:p.awarded?'awarded':'open', offerCount:p.offer_count, isMine:p.brand_id===id })),
+    posts: posts.results.map(p => ({ id:p.id, brandAlias:'브랜드 '+(p.ordinal<=26?String.fromCharCode(64+p.ordinal):p.ordinal), category:p.category, title:p.title, quantity:p.quantity, unitPrice:p.unit_price, size:p.size, description:p.description, deadline:p.deadline, createdAt:p.created_at, status:p.awarded?'awarded':'open', offerCount:p.offer_count, isMine:p.brand_id===id,reviewStatus:p.review_status,
+      reviewedAt:p.reviewed_at,...(p.brand_id===id?{reviewVersion:p.review_version,reviewReason:p.review_reason}:{}) })),
     offers: offers.results.map(o => ({ id:o.id, postId:o.post_id, alias:o.alias.replace(/^입찰사 /, '제안사 '), tiers:JSON.parse(o.tiers), note:o.note, isMine:o.supplier_id===id })),
     contracts: contracts.results.map(c => ({
       id:c.id, postId:c.post_id, offerId:c.offer_id, category:c.category, title:c.title, status:contractStatus(c),
@@ -109,9 +103,9 @@ async function createPost(env, user, input,live) {
   if (user.kind !== 'brand') fail(403, '브랜드만 공고를 등록할 수 있습니다.');
   if (!categories.includes(input.category)) fail(400, '디자인 또는 패키징을 선택해주세요.');
   if (input.category==='design') fail(403,designerNotice);
-  const title = anonymousText(input.title, 100, user, true);
-  const size = anonymousText(input.size, 160, user);
-  const description = anonymousText(input.description, 2000, user, true);
+  const title = text(input.title,100,true),size=text(input.size,160),description=text(input.description,2000,true);
+  const identity=await authorIdentity(env,user,live);
+  validateAnonymous([title,size,description].join(' '),identity);
   const { quantity, unitPrice } = quoteTier(input);
   const deadline = text(input.deadline, 10, true);
   const date = new Date(deadline + 'T00:00:00Z');
@@ -120,24 +114,25 @@ async function createPost(env, user, input,live) {
   const check=live?` WHERE EXISTS(SELECT 1 FROM members m WHERE m.id=? AND m.role='brand' AND ${approvedMarketMember('m')})`:'';
   const saved=await stmt(env, 'INSERT INTO market_posts(id,brand_id,category,title,quantity,unit_price,size,description,deadline,created_at) SELECT ?,?,?,?,?,?,?,?,?,?'+check, id,user.id,input.category,title,quantity,unitPrice,size,description,deadline,now(),...(live?[user.id]:[])).run();
   if(!saved.meta.changes)fail(409,'승인된 회원 상태를 다시 확인해주세요.');
-  return json({ id }, 201);
+  return json({ id,reviewStatus:'pending',reviewVersion:1 }, 201);
 }
 
 async function submitOffer(env, user, postId, input,live) {
   if (!isPackagingPartner(user.kind)) fail(403, '패키징 제작업체만 제안을 보낼 수 있습니다.');
-  const post = await stmt(env, 'SELECT category,deadline FROM market_posts WHERE id=?', postId).first();
+  const post = await stmt(env, "SELECT category,deadline FROM market_posts WHERE id=? AND review_status='approved'", postId).first();
   if (!post) fail(404, '참여할 수 있는 공고가 아닙니다.');
   if (post.category==='design') fail(403,designerNotice);
   if (!Array.isArray(input.tiers) || !input.tiers.length || input.tiers.length>8) fail(400, '수량별 단가를 1~8개 입력해주세요.');
   const tiers = input.tiers.map(quoteTier).sort((a,b)=>a.quantity-b.quantity);
   if (new Set(tiers.map(t=>t.quantity)).size!==tiers.length) fail(400, '같은 수량은 한 번만 입력해주세요.');
-  const note = anonymousText(input.note, 1200, user);
+  const note=text(input.note,1200);
+  validateAnonymous(note,await authorIdentity(env,user,live));
   const id = crypto.randomUUID();
   const awards=live?'market_connection_requests':'market_contracts';
   const members=live?` AND EXISTS(SELECT 1 FROM members b JOIN members s ON s.id=? WHERE b.id=p.brand_id AND b.role='brand' AND ${approvedMarketMember('b')} AND s.role='supplier' AND ${approvedMarketMember('s')})`:'';
   const result = await stmt(env, `INSERT OR IGNORE INTO market_offers(id,post_id,supplier_id,alias,tiers,note,created_at)
     SELECT ?,p.id,?,(SELECT '제안사 ' || CASE WHEN count(*)<26 THEN char(65+count(*)) ELSE CAST(count(*)+1 AS TEXT) END FROM market_offers WHERE post_id=p.id),?,?,?
-    FROM market_posts p WHERE p.id=? AND p.deadline>=? AND NOT EXISTS(SELECT 1 FROM ${awards} a WHERE a.post_id=p.id)${members}`, id,user.id,JSON.stringify(tiers),note,now(),postId,today(),...(live?[user.id]:[])).run();
+    FROM market_posts p WHERE p.id=? AND p.review_status='approved' AND p.deadline>=? AND NOT EXISTS(SELECT 1 FROM ${awards} a WHERE a.post_id=p.id)${members}`, id,user.id,JSON.stringify(tiers),note,now(),postId,today(),...(live?[user.id]:[])).run();
   if (!result.meta.changes) fail(409, '이미 제안을 보냈거나 마감·선정된 공고입니다.');
   return json({ id }, 201);
 }
@@ -157,7 +152,7 @@ async function requestConnection(env,user,offerId,input) {
       SELECT o.post_id,o.id,?,?,COALESCE((SELECT id FROM matching_requests WHERE requester_id=p.brand_id AND target_id=o.supplier_id
         AND category='packaging' AND status IN ('pending','reviewing')),?),?
       FROM market_offers o JOIN market_posts p ON p.id=o.post_id JOIN members b ON b.id=p.brand_id JOIN members s ON s.id=o.supplier_id
-      WHERE o.id=? AND b.id=? AND b.role='brand' AND ${approvedMarketMember('b')} AND s.role='supplier' AND ${approvedMarketMember('s')}`,
+      WHERE o.id=? AND b.id=? AND p.review_status='approved' AND b.role='brand' AND ${approvedMarketMember('b')} AND s.role='supplier' AND ${approvedMarketMember('s')}`,
       tier.quantity,tier.unitPrice,id,time,offerId,user.id),
     stmt(env,`INSERT INTO matching_requests(id,requester_id,target_id,category,capacity,snapshot,status,note,created_at,updated_at)
       SELECT ?,?,?,'packaging',?,?,CASE WHEN EXISTS(SELECT 1 FROM member_partners WHERE brand_id=? AND supplier_id=? AND status='active') THEN 'completed' ELSE 'pending' END,?,?,?
@@ -184,7 +179,7 @@ async function selectOffer(env, user, offerId, input) {
   if (input.version === BID_TERMS.version) {
     const signed = signature(input, BID_TERMS.version);
     const id = crypto.randomUUID();
-    const result = await stmt(env, 'INSERT OR IGNORE INTO market_contracts(id,post_id,offer_id,quantity,unit_price,version,terms_json,brand_signature,brand_signed_at) VALUES(?,?,?,?,?,?,?,?,?)', id,offer.post_id,offerId,tier.quantity,tier.unitPrice,BID_TERMS.version,JSON.stringify(BID_TERMS),signed,now()).run();
+    const result = await stmt(env, "INSERT OR IGNORE INTO market_contracts(id,post_id,offer_id,quantity,unit_price,version,terms_json,brand_signature,brand_signed_at) SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM market_posts WHERE id=? AND review_status='approved')", id,offer.post_id,offerId,tier.quantity,tier.unitPrice,BID_TERMS.version,JSON.stringify(BID_TERMS),signed,now(),offer.post_id).run();
     if (result.meta.changes) return json({ id, status:'awaiting_supplier' }, 201);
   }
   // A lost response can be retried even after the public terms change or the supplier signs.
@@ -240,6 +235,8 @@ export async function marketApi(req, env, url, user, {live=false}={}) {
   if(live && path.startsWith('/api/bid/contracts/'))fail(403,'서명·실명 공개·결제는 이 서비스에서 제공되지 않습니다.');
   const input = await body(req);
   if (path==='/api/bid/posts') return createPost(env,user,input,live);
+  const withdraw=path.match(/^\/api\/bid\/posts\/([\w-]+)\/withdraw$/);
+  if(withdraw)return reviewPost(env,user,withdraw[1],input,{live});
   const offer = path.match(/^\/api\/bid\/posts\/([\w-]+)\/offers$/);
   if (offer) return submitOffer(env,user,offer[1],input,live);
   const select = path.match(/^\/api\/bid\/offers\/([\w-]+)\/select$/);

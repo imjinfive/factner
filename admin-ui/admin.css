@@ -32,18 +32,16 @@
 .member-workspace-nav{display:flex;flex-wrap:wrap;gap:10px;margin:-6px 0 26px}.member-workspace-nav button{background:white;color:#244c35;border:1px solid #bfcebd}.member-workspace-nav button:hover{background:#eaf1e5}.packaging-current{margin:16px 0;padding:16px;background:#f4f7ef;border-radius:10px}.packaging-current summary{cursor:pointer}.packaging-current dl{margin-top:18px}
 
 .member-fold>summary,.completed-requests>summary{cursor:pointer;font-size:19px;font-weight:650}.member-fold[open]>summary,.completed-requests[open]>summary{margin-bottom:22px}.completed-requests{margin-top:24px;padding-top:20px;border-top:1px solid #e0e5db}.workflow-status-group{margin:24px 0}.request-details{margin:20px 0}.workflow-request form .wide{grid-column:1/-1}.request-details dt{overflow-wrap:anywhere}[data-member-editor]>*{order:10}[data-member-editor]>.draft-restored{order:-2;border:2px solid #415e47}[data-member-editor]>.pending-member-review{order:-1;grid-column:1/-1}#member-service-requests{order:0}#member-selections{order:1}#member-packaging{order:2}#member-support{order:3}#member-company{order:4}.draft-restored table{white-space:normal}.draft-restored td{min-width:160px}[aria-busy=true]{cursor:progress}#member-support,#member-service-requests,#member-profile-panel{scroll-margin-top:24px}
-.overview-metrics .metric{display:grid;text-align:left;color:#182b23;gap:6px;padding:20px;line-height:1.35}
-.overview-metrics .metric span{font-size:15px;color:#506557}
-.overview-metrics .metric:hover,.overview-shortcuts button:hover{border-color:#13885b;background:#f6faf7}
-.overview-intake{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.overview-intake h2{margin:6px 0}
+.settings-back{padding-left:0;margin-bottom:14px}
+.settings-list{max-width:640px;padding-block:4px}
+.settings-list button{display:grid;gap:4px;width:100%;padding:16px 4px;border-radius:0;background:transparent;color:#182b23;text-align:left}
+.settings-list button+button{border-top:1px solid #e4ebe5}
+.settings-list button:hover strong{color:#13885b}
+.settings-list span{color:#627267;font-size:15px;font-weight:450}
+.simple-member-filter{margin:16px 0}
+.simple-member-filter input{min-width:min(230px,100%)}
 .layout .content{align-self:start;margin-block:0}
 .content header>button{flex:none;white-space:nowrap}
-.overview-shortcuts{margin-top:20px}
-.overview-shortcuts h2{margin:0 0 12px}
-.overview-shortcuts button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;background:transparent;color:#182b23;border-top:1px solid #e4ebe5;border-radius:0;padding:16px 4px}
-.overview-shortcuts span{font-size:15px;color:#506557}
-@media(max-width:600px){.overview-metrics .metric{padding:14px}.overview-intake,.overview-shortcuts button{align-items:flex-start;flex-direction:column}.overview-shortcuts button{gap:3px}}
 @media(max-width:900px){
  .layout>aside{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4px 8px;padding:12px 16px 0;min-width:0}
  .layout>aside>.wordmark{font-size:24px}

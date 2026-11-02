@@ -126,6 +126,14 @@
 .bm-compose-intro h1 { font-size: clamp(32px,3vw,44px); }
 .bm-post-form { padding: clamp(20px,3.3vw,36px); border: 1px solid var(--line); border-radius: 20px; background: var(--surface); gap: 20px; }
 .bm-fieldset { padding: 0; border: 0; min-width: 0; }
+.bm-anonymous-guide,.bm-review-state { padding: 14px 16px; border-radius: 14px; background: var(--soft); color: var(--text); line-height: 1.6; overflow-wrap: anywhere; }
+.bm-anonymous-guide strong { display: block; }
+.bm-review-state p { margin-top: 4px; white-space: pre-wrap; }
+.bm-review-state > p:first-child { margin-top: 0; }
+.bm-review-state { margin-bottom: 12px; }
+.bm-review-link { display: inline-flex; gap: 4px; align-items: center; min-height: 44px; color: var(--green-dark); font-weight: 650; }
+.bm-withdraw { border-top: 1px solid var(--line); padding-top: 14px; }
+.bm-withdraw .bm-secondary { min-height: 44px; }
 .bm-type-select { display: flex; gap: 10px; margin-top: 8px; }
 .bm-type-select label { display: flex; flex: 1; align-items: center; gap: 7px; cursor: pointer; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
 .bm-type-select label:has(:checked) { border-color: var(--green); color: var(--green-dark); background: var(--mint); }

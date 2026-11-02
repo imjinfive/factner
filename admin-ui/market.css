@@ -14,6 +14,22 @@
 .admin-market .am-tiers :is(th,td):not(:first-child) { text-align:right; }
 .admin-market .am-picked { background:#edf5ef; color:#185a40; font-weight:650; }
 .admin-market .am-note { margin:12px 0 0; }
+.admin-market .am-queues { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 20px; }
+.admin-market .am-queues button { background:transparent; color:#52655a; }
+.admin-market .am-queues button[aria-pressed="true"] { background:#dfeee4; color:#165738; }
+.admin-market [data-queue-count]:not(:empty) { display:inline-block; margin-left:3px; font-variant-numeric:tabular-nums; font-size:.9em; }
+.admin-market .am-preview>h2 { margin:0 0 22px; overflow-wrap:anywhere; }
+.admin-market .am-kicker { color:#28633f; margin:0 0 8px; font-size:14px; font-weight:650; }
+.admin-market .am-description { margin-top:20px; padding-top:15px; border-top:1px solid #e1e7e0; }
+.admin-market .am-description h3 { margin:0 0 6px; font-size:16px; }
+.admin-market .am-description p { margin:0; max-width:75ch; }
+.admin-market .am-review dl { margin-top:12px; }
+.admin-market .am-decision { margin:15px 0; }
+.admin-market .am-reason,.admin-market .am-events { margin-top:14px; padding-top:11px; border-top:1px solid #e1e7e0; }
+.admin-market .am-reason summary,.admin-market .am-events summary { cursor:pointer; color:#4b5d52; }
+.admin-market .am-reason form { max-width:650px; }
+.admin-market .am-negative { color:#773d30; background:#f5eeeb; }
+.admin-market .am-caution { color:#87552b; }
 .admin-market [data-results] .empty strong { color:#263d30; }
 @media(max-width:750px) {
   .admin-market .am-posts,.admin-market .am-posts :is(tbody,tr) { display:block; }
@@ -23,6 +39,7 @@
   .admin-market .am-posts td:first-child { display:block; }
   .admin-market .am-posts td:nth-child(2) small { display:inline; margin-left:5px; }
   .admin-market .am-posts td:nth-child(3)::before { content:'제안 '; }
+  .admin-market .am-queue-table td:nth-child(3)::before { content:'제출 '; }
   .admin-market .am-posts td:nth-child(4)::before { content:'마감 '; }
   .admin-market .am-posts td:last-child { display:block; margin-top:4px; }
   .admin-market .am-tiers :is(th,td) { padding:10px 6px; }

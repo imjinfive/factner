@@ -1,6 +1,7 @@
-import { insertReviewFixtures } from '../scripts/bid-seed.mjs';
+import { approveOriginalRoomFixtures, insertReviewFixtures } from '../scripts/bid-seed.mjs';
 import { bidApi, roomDatabase } from './bid-auth.js';
 import { HttpError, json } from './http.js';
+import {isolatedPostReview} from './room-post-review.js';
 
 const lifetime = 7 * 24 * 60 * 60 * 1000;
 
@@ -29,12 +30,14 @@ function roomEnvironment(storage) {
 export class BidRoom {
   #ctx;
   #schema;
+  #reviewSchema;
   #env;
   #ready = null;
 
-  constructor(ctx, schema) {
+  constructor(ctx, schema, reviewSchema) {
     this.#ctx = ctx;
     this.#schema = schema;
+    this.#reviewSchema = reviewSchema;
     this.#env = roomEnvironment(ctx.storage);
   }
 
@@ -46,11 +49,19 @@ export class BidRoom {
       const expiresAt = storage.transactionSync(() => {
         sql.exec('CREATE TABLE IF NOT EXISTS review_room (id INTEGER PRIMARY KEY CHECK(id=1), expires_at INTEGER NOT NULL)');
         const existing = sql.exec('SELECT expires_at FROM review_room WHERE id=1').toArray()[0];
-        if (existing) return existing.expires_at;
+        const prepare=query=>(...args)=>sql.exec(query,...args);
+        if (existing) {
+          if(!sql.exec('PRAGMA table_info(market_posts)').toArray().some(row=>row.name==='review_status')){
+            sql.exec(this.#reviewSchema);
+            approveOriginalRoomFixtures(prepare,existing.expires_at-lifetime);
+          }
+          return existing.expires_at;
+        }
         const start = Date.now();
         sql.exec(this.#schema);
+        sql.exec(this.#reviewSchema);
         sql.exec('CREATE TABLE rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)');
-        insertReviewFixtures(query => (...args) => sql.exec(query, ...args), start);
+        insertReviewFixtures(prepare, start);
         sql.exec('INSERT INTO review_room(id,expires_at) VALUES(1,?)', start + lifetime);
         return start + lifetime;
       });
@@ -62,13 +73,16 @@ export class BidRoom {
 
   async fetch(req) {
     const url = new URL(req.url);
-    if (!url.pathname.startsWith('/api/bid/') || url.pathname === '/api/bid/events') return json({ error: '없는 경로입니다.' }, 404);
+    const internal=url.origin==='https://factner-review.internal'&&url.pathname.startsWith('/internal/post-review/');
+    if (!internal&&(!url.pathname.startsWith('/api/bid/') || url.pathname === '/api/bid/events')) return json({ error: '없는 경로입니다.' }, 404);
     if (req.method !== 'GET' && req.method !== 'POST') return json({ error: '허용되지 않은 요청입니다.' }, 405);
     if (req.method === 'POST' && req.headers.get('Origin') !== url.origin) return json({ error: '허용되지 않은 출처입니다.' }, 403);
     const expiry=await this.#initialize(url.pathname==='/api/bid/login' && req.method==='POST');
+    if(internal&&(expiry===null||Date.now()>=expiry))return json({error:'공유한 공고를 찾을 수 없습니다.'},404);
     if(expiry===null)return json({error:'다시 로그인해주세요.'},401);
     if (Date.now() >= expiry) return json({ error: '시안 이용 기간이 끝났습니다.' }, 410);
     try {
+      if(internal)return await isolatedPostReview(req,this.#env);
       return await bidApi(req, this.#env, url);
     } catch (error) {
       if (error instanceof HttpError) return json({ error: error.message }, error.status);

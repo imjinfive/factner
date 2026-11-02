@@ -5,6 +5,7 @@ import { Button } from '../BrandControls';
 import CustomerAccount from './CustomerAccount';
 import { MATCH_CATEGORIES } from '../matching-preview.js';
 import { isPackagingPartner } from '../../../shared/partner-roles.js';
+import { isPublicPost } from './post-visibility.js';
 import '../member-portal.css';
 import '../matching-flow.css';
 import './access.css';
@@ -93,7 +94,7 @@ function Discovery({ pick, save, navigate, partners, posts }) {
   const allSuppliers = (partners || []).filter(partner => /^(?:[A-Z]|[1-9]\d*)업체$/.test(partner.alias) && isPackagingPartner(partner.kind));
   const suppliers = item ? allSuppliers.filter(partner => partner.items?.includes(item)) : allSuppliers;
   const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0,10);
-  const briefs = (posts || []).filter(post => post.category === 'packaging' && (post.example === true || (post.status === 'open' && post.deadline >= today)));
+  const briefs = (posts || []).filter(post => isPublicPost(post) && post.category === 'packaging' && (post.example === true || (post.status === 'open' && post.deadline >= today)));
   const roleNotes = {
     brand: Array.isArray(partners) ? `제작 파트너 ${allSuppliers.length}곳 보기` : '제작 파트너 보기',
     packaging: Array.isArray(posts) ? `브랜드 제작 의뢰 ${briefs.length}건 보기` : '브랜드 제작 의뢰 보기'

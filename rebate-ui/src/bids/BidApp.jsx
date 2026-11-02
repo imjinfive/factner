@@ -83,7 +83,7 @@ export default function BidApp({surface='market'}){
   useEffect(()=>{
     refresh(true);const focus=()=>refresh(true);
     window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);
-  },[refresh]);
+  },[refresh,route]);
   useEffect(()=>{
     if(!marketNeeded||!session||access)return;
     const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh();},session.user?5000:30000);
@@ -158,7 +158,11 @@ export default function BidApp({surface='market'}){
     setState(null);setSelect(null);
     setSession(s=>({...s,user:null}));go(ops?'login':'feed',{replace:true});await refresh(true);
   };
-  const mutate=async(path,data)=>{const result=await request(path,data);channel.current?.postMessage('refresh');await refresh();return result;};
+  const mutate=async(path,data)=>{
+    const result=await request(path,data);
+    if(path!=='/posts' && (!path.endsWith('/withdraw')||result.visibilityChanged))channel.current?.postMessage('refresh');
+    await refresh();return result;
+  };
   const legacyMember=Boolean(session?.user?.legacyOnly);
   const user=legacyMember?null:session?.user;
   const links=ops||user?.kind==='admin'?[['contracts','계약 관리']]:[
@@ -182,7 +186,7 @@ export default function BidApp({surface='market'}){
         <PartnerAccess key={navRevision} navigationKey={navRevision} mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} onNavigate={navigate} onMembers={openMembers} onAuth={authenticate} onExit={logout}/>:
         view==='contracts'&&(ops?user?.kind!=='admin':!user)?<section className="bx-authgate"><SquaresFour size={35}/><h1>{ops?'계약 운영실':'계약함'}</h1><p>{ops?'계약 운영은 관리자 전용입니다.':'로그인하면 진행 중인 계약을 확인할 수 있어요.'}</p>{!ops&&<Button onClick={()=>navigate('login')}>로그인 <ArrowRight size={16}/></Button>}</section>:
         view==='contracts'?(session.demo?<DealDesk state={state} user={user} mutate={mutate}/>:<Connections connections={state.connections} onMembers={openMembers}/>):
-        <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onDiscoveryBack={backToBrandRequests}/>}
+        <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} isDemo={Boolean(session?.demo)} reviewRoomKey={session?.demo?savedRoom():null} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onDiscoveryBack={backToBrandRequests}/>}
     </main>
     <SiteFooter onHome={()=>go('intro')} onSection={openSection} active={view} theme={theme} onTheme={themeToggle}/>
     {select&&(session?.demo?<SelectDialog {...select} user={user} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>:<ConnectionDialog {...select} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>)}

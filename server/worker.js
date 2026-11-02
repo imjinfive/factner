@@ -14,6 +14,7 @@ import {packagingApi} from './packagings.js';
 import {memberSupportAdminApi} from './member-support.js';
 import {publicBidApi,localMemberPreview} from './public-bid.js';
 import {adminMarketApi} from './admin-market.js';
+import {adminRoomPostReview} from './room-post-review.js';
 export const statuses = {received:'접수', reviewing:'검토 중', consulting:'상담 중', quoted:'견적 안내', completed:'완료', cancelled:'취소'};
 export function quoteInput(input) {
   const data = {
@@ -87,6 +88,7 @@ async function adminApi(req, env, url) {
   const authResult=await authApi(req,env,url);
   if(authResult)return authResult;
   const user=await identity(req,env);
+  if(path.startsWith('/api/admin/review-room/'))return adminRoomPostReview(req,env,url,user);
   if(path.startsWith('/api/admin/market/'))return (await adminMarketApi(req,env,url,user))||fail(404,'없는 공고 관리 기능입니다.');
   const moduleResult=await matchingApi(req,env,url,user)||await packagingApi(req,env,url,user)||await memberSupportAdminApi(req,env,url,user)||await memberAdminApi(req,env,url,user)||await partnerApi(req,env,url,user)||await orderApi(req,env,url,user)||await supplierAdminApi(req,env,url,user)||await operationsApi(req,env,url,user)||await policyApi(req,env,url,user);
   if(moduleResult)return moduleResult;

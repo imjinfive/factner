@@ -32,13 +32,13 @@ export function examplePosts() {
   return briefs.flatMap(([category,title,quantity,unitPrice,size,description,days],i)=>category==='packaging'?[{
     id:'example-'+(i+1), brandAlias:'브랜드 '+String.fromCharCode(65+i), category,title,quantity,unitPrice,size,description,
     deadline:new Date(Date.now()+days*86400000+9*3600000).toISOString().slice(0,10),
-    createdAt:null,status:'open',offerCount:0,isMine:false,example:true
+    createdAt:null,status:'open',reviewStatus:'approved',offerCount:0,isMine:false,example:true
   }]:[]);
 }
 export function insertReviewFixtures(prepare,at=Date.now()){
     const insert=prepare('INSERT INTO market_accounts(id,email,name,kind,password_hash) VALUES(?,?,?,?,?)');
     people.forEach(([key,name,kind])=>insert('seed-'+key,key+'@gmail.com',name,kind,fixtureHash));
-    const post=prepare('INSERT INTO market_posts(id,brand_id,category,title,quantity,unit_price,size,description,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)');
+    const post=prepare("INSERT INTO market_posts(id,brand_id,category,title,quantity,unit_price,size,description,deadline,created_at,review_status) VALUES(?,?,?,?,?,?,?,?,?,?,'approved')");
     const offer=prepare('INSERT INTO market_offers(id,post_id,supplier_id,alias,tiers,note,created_at) VALUES(?,?,?,?,?,?,?)');
     briefs.forEach(([category,title,q,price,size,desc,days],i)=>{
       const id=crypto.randomUUID(),created=at-(9+i*22)*60000;
@@ -52,6 +52,13 @@ export function insertReviewFixtures(prepare,at=Date.now()){
         offer(crypto.randomUUID(),id,'seed-'+who,'제안사 '+String.fromCharCode(65+j),JSON.stringify(tiers),j?'사양 확정 후 납기를 조율할 수 있습니다.':'제시된 규격과 일정을 기준으로 산출했습니다.',new Date(created+(j+1)*60000).toISOString());
       });
     });
+}
+// In an older isolated room, recover only the original seeded rows, including their generated timestamps.
+export function approveOriginalRoomFixtures(prepare,at){
+  const approve=prepare(`UPDATE market_posts SET review_status='approved' WHERE review_status='pending' AND review_version=1 AND
+    brand_id=? AND category=? AND title=? AND quantity=? AND unit_price=? AND size=? AND description=? AND deadline=? AND created_at=?`);
+  briefs.forEach(([category,title,q,price,size,desc,days],i)=>approve('seed-brand'+(i+1),category,title,q,price,size,desc,
+    new Date(at+days*86400000+9*3600000).toISOString().slice(0,10),new Date(at-(9+i*22)*60000).toISOString()));
 }
 export function seedReview(raw){
   if(raw.prepare("SELECT count(*) AS n FROM market_accounts").get().n)return;

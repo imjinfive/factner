@@ -25,14 +25,16 @@ function completeMatchingRequests(env,brandId,supplierId,actor,eventId,time){
 // connecting this pair also completes that selection and requires both market consents.
 const marketGate=`(NOT EXISTS(SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id
  WHERE r.requester_id=b.id AND r.target_id=s.id AND r.status IN ('pending','reviewing'))
- OR (${marketConsent('b')} AND ${marketConsent('s')}))`;
+ OR (${marketConsent('b')} AND ${marketConsent('s')} AND EXISTS(
+   SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id JOIN market_posts p ON p.id=c.post_id
+   WHERE r.requester_id=b.id AND r.target_id=s.id AND r.status IN ('pending','reviewing') AND p.review_status='approved')))`;
 export async function createPartner(env,user,brandId,supplierId,note,selection=null){
  await eligible(env,brandId,supplierId);
  const id=crypto.randomUUID(),time=now(),eventId=crypto.randomUUID();
  const chosen=selection?` AND EXISTS(SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id
    JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.post_id=p.id AND o.id=c.offer_id
    WHERE c.post_id=? AND r.id=? AND r.version=? AND r.status IN ('pending','reviewing') AND r.requester_id=b.id
-   AND r.target_id=s.id AND p.brand_id=b.id AND o.supplier_id=s.id)`:'';
+   AND r.target_id=s.id AND p.brand_id=b.id AND o.supplier_id=s.id AND p.review_status='approved')`:'';
  const args=selection?[selection.postId,selection.id,selection.version]:[];
  const pair=`b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved' AND ${currentMember('b')} AND ${currentMember('s')} AND ${marketGate}${chosen}`;
  const result=await env.DB.batch([

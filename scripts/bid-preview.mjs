@@ -4,7 +4,8 @@ import {readFileSync,writeFileSync,existsSync,mkdirSync,statSync,readdirSync} fr
 import {fileURLToPath} from 'node:url';
 import {resolve,extname,sep} from 'node:path';
 import worker from '../server/worker.js';
-import {bidApi} from '../server/bid-auth.js';
+import {bidApi,roomDatabase} from '../server/bid-auth.js';
+import {isolatedPostReview} from '../server/room-post-review.js';
 import {localMemberPreview} from '../server/public-bid.js';
 import {HttpError} from '../server/http.js';
 import {seedReview} from './bid-seed.mjs';
@@ -44,6 +45,7 @@ function reviewEnvironment(key){
   if(!reviewRooms.has(key)){
     const stored=new DatabaseSync(':memory:');stored.exec('PRAGMA foreign_keys=ON');
     stored.exec(readFileSync(resolve(root,'migrations/0013_bid_market.sql'),'utf8'));
+    stored.exec(readFileSync(resolve(root,'migrations/0015_market_post_review.sql'),'utf8'));
     stored.exec('CREATE TABLE rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL)');
     seedReview(stored);
     reviewRooms.set(key,{DB:database(stored),BID_DEMO:'1'});
@@ -77,7 +79,7 @@ const server=http.createServer(async(req,res)=>{
       const request=new Request(url,{method:req.method,headers:req.headers,body:req.method==='GET'?undefined:Buffer.concat(chunks)});
       const response=await worker.fetch(request,environment);
       if(!response)throw new HttpError(404,'없는 경로입니다.');
-      if(response.ok && !req.headers.authorization && req.method==='POST' && url.pathname==='/api/bid/posts'){
+      if(response.ok && req.method==='POST' && (/^\/api\/admin\/market\/posts\/[^/]+\/review$/.test(url.pathname) || (!req.headers.authorization && /^\/api\/bid\/posts\/[^/]+\/withdraw$/.test(url.pathname))) && (await response.clone().json()).visibilityChanged){
         for(const watcher of watchers)watcher.write('data: refresh\n\n');
       }
       res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
@@ -98,7 +100,12 @@ server.listen(port,'127.0.0.1',()=>console.log('팩트너 '+(admin?'관리자':'
 }
 serve(port,dist,env);
 if(process.argv.includes('--admin')){
-  const adminEnv={DB:env.DB,APP_KIND:'admin',[localMemberPreview]:true};
+  const adminEnv={DB:env.DB,APP_KIND:'admin',[localMemberPreview]:true,REVIEW_ROOMS:{
+    idFromName:key=>key,get:key=>({fetch:async request=>{
+      const room=reviewRooms.get(key);
+      if(!room)return Response.json({error:'공유한 공고를 찾을 수 없습니다.'},{status:404});
+      return isolatedPostReview(request,{...room,[roomDatabase]:room.DB});
+    }})}};
   if(!live.prepare('SELECT 1 FROM admins LIMIT 1').get()){
     const keyFile=resolve(folder,'admin-setup-key.txt');
     if(!existsSync(keyFile))writeFileSync(keyFile,randomToken(),{flag:'wx',mode:0o600});

@@ -27,6 +27,7 @@
     "APP_KIND": "admin",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAFbVVs9UqZ4yQIFU"
   },
+  "durable_objects": { "bindings": [{ "name": "REVIEW_ROOMS", "class_name": "BidRoom", "script_name": "factner-main" }] },
   "d1_databases": [
     {
       "binding": "DB",

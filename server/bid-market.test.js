@@ -11,6 +11,7 @@ function fixture(t) {
   t.after(()=>sql.close());
   sql.exec('PRAGMA foreign_keys=ON');
   sql.exec(readFileSync(new URL('../migrations/0013_bid_market.sql',import.meta.url),'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/0015_market_post_review.sql',import.meta.url),'utf8'));
   const env = { BID_DEMO:true, DB:{
     prepare(query) {
       const statement = sql.prepare(query);
@@ -45,6 +46,12 @@ function fixture(t) {
 const post = { category:'packaging',title:'칼선에 맞춘 상자',quantity:500,unitPrice:2100,size:'80×50×30㎜',description:'동일 사양으로 견적을 요청합니다.',deadline:'2099-04-12' };
 const offer = { tiers:[{quantity:1000,unitPrice:1800},{quantity:500,unitPrice:2000}],note:'운임 별도' };
 const consent = { accepted:true, version:BID_TERMS.version,signature:'비공개 서명자' };
+async function approvedPost(f){
+  const draft=await f.api(f.brand,'posts',post);
+  assert.equal(draft.data.reviewStatus,'pending');
+  f.sql.prepare("UPDATE market_posts SET review_status='approved' WHERE id=?").run(draft.data.id);
+  return draft.data.id;
+}
 
 test('bid board restricts participation by category and excludes identities and rival offers',async t=>{
   const f=fixture(t);
@@ -56,7 +63,7 @@ test('bid board restricts participation by category and excludes identities and 
   for (const change of [{deadline:'2026-02-30'},{deadline:'2000-01-01'},{quantity:-1},{unitPrice:'100'}]) {
     assert.equal((await f.api(f.brand,'posts',{...post,...change})).status,400);
   }
-  const {id}=(await f.api(f.brand,'posts',post)).data;
+  const id=await approvedPost(f);
   assert.equal((await f.api(f.otherBrand,'posts',{...post,category:'design'})).status,403);
   assert.deepEqual((await f.api(f.design,'state')).data.posts,[]);
   assert.equal((await f.api(f.design,'posts/'+id+'/offers',offer)).status,403);
@@ -84,7 +91,7 @@ test('bid board restricts participation by category and excludes identities and 
 
 test('a historic design brief stays readable while its offers and contracts cannot advance',async t=>{
   const f=fixture(t);
-  const postId=(await f.api(f.brand,'posts',post)).data.id;
+  const postId=await approvedPost(f);
   const offerId=(await f.api(f.both,'posts/'+postId+'/offers',offer)).data.id;
   const contractId=(await f.api(f.brand,'offers/'+offerId+'/select',{...consent,quantity:500})).data.id;
   f.sql.prepare("UPDATE market_posts SET category='design' WHERE id=?").run(postId);
@@ -100,7 +107,7 @@ test('a historic design brief stays readable while its offers and contracts cann
 });
 
 test('one awarded tier, signatures and an admin decision precede private reveal and simulated payment',async t=>{
-  const f=fixture(t),postId=(await f.api(f.brand,'posts',post)).data.id;
+  const f=fixture(t),postId=await approvedPost(f);
   const a=(await f.api(f.box,'posts/'+postId+'/offers',offer)).data.id;
   const b=(await f.api(f.both,'posts/'+postId+'/offers',offer)).data.id;
   const select=(user,id,extra={})=>f.api(user,'offers/'+id+'/select',{...consent,quantity:500,...extra});
@@ -153,7 +160,7 @@ test('one awarded tier, signatures and an admin decision precede private reveal 
 
 test('identical selection and signature retries return the existing record and its current status',async t=>{
   const f = fixture(t);
-  const postId = (await f.api(f.brand,'posts',post)).data.id;
+  const postId = await approvedPost(f);
   const offerId = (await f.api(f.box,'posts/'+postId+'/offers',offer)).data.id;
   const alternative = (await f.api(f.both,'posts/'+postId+'/offers',offer)).data.id;
   const select = (extra={}, id=offerId) => f.api(f.brand,'offers/'+id+'/select',{...consent,quantity:500,...extra});

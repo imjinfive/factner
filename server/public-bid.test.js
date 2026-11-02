@@ -24,7 +24,7 @@ function fixture(t){
   const rooms=new Map();
   const env={DB,APP_KIND:'main',[localMemberPreview]:true,BID_ROOMS:{idFromName:key=>key,get:key=>({fetch:async req=>{
     if(!rooms.has(key)){
-      const isolate=database(t,['0001_initial.sql','0013_bid_market.sql']);seedReview(isolate.raw);
+      const isolate=database(t,['0001_initial.sql','0013_bid_market.sql','0015_market_post_review.sql']);seedReview(isolate.raw);
       rooms.set(key,{DB:isolate.DB,[roomDatabase]:isolate.DB});
     }
     try{return await bidApi(req,rooms.get(key),new URL(req.url));}
@@ -97,6 +97,9 @@ test('approved accounts share real posts across logins; one selected offer reach
   const examples=(await f.call('bid/state')).data;assert.ok(examples.posts.every(p=>p.example));assert.ok(examples.partners.every(p=>p.example));
   assert.deepEqual((await f.call('bid/state',undefined,brand.headers)).data.posts,[]);
   const post=(await f.call('bid/posts',job,brand.headers)).data.id;
+  assert.ok((await f.call('bid/state')).data.posts.every(p=>p.example));
+  assert.equal((await f.call('bid/posts/'+post+'/offers',pricing,a.headers)).status,404);
+  f.raw.prepare("UPDATE market_posts SET review_status='approved' WHERE id=?").run(post);
   const again=await f.call('bid/login',roles[0]);
   assert.equal((await f.call('bid/state',undefined,{Cookie:again.cookie})).data.posts[0].id,post);
   const guest=(await f.call('bid/state')).data;assert.equal(guest.posts.length,1);assert.equal(guest.posts[0].example,undefined);
@@ -150,6 +153,7 @@ test('a former pilot consent retains legacy access but cannot read, advertise or
   const buyer=await f.call('bid/login',brand),maker=await f.call('bid/login',supplier);
   assert.equal(buyer.data.user.legacyOnly,false);
   const original=(await f.call('bid/posts',job,{Cookie:buyer.cookie})).data.id;
+  f.raw.prepare("UPDATE market_posts SET review_status='approved' WHERE id=?").run(original);
   const proposal=await f.call('bid/posts/'+original+'/offers',pricing,{Cookie:maker.cookie});
   assert.equal(proposal.status,201);
   f.raw.prepare('UPDATE members SET consent_version=? WHERE id=?').run('member-pilot-2026-10-21',buyer.data.user.id);
