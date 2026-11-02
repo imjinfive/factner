@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5178 --strictPort",
-    "build": "vite build",
+    "build": "vite build --configLoader native",
     "preview": "vite preview --host 127.0.0.1 --port 4178 --strictPort",
     "test": "node --test src/*.test.js"
   },

@@ -12,6 +12,7 @@ import {partnerApi} from './partners.js';
 import {matchingApi} from './matching.js';
 import {packagingApi} from './packagings.js';
 import {memberSupportAdminApi} from './member-support.js';
+import {bidApi} from './bid-auth.js';
 export const statuses = {received:'접수', reviewing:'검토 중', consulting:'상담 중', quoted:'견적 안내', completed:'완료', cancelled:'취소'};
 export function quoteInput(input) {
   const data = {
@@ -35,6 +36,13 @@ export function quoteInput(input) {
   return data;
 }
 async function mainApi(req, env, url) {
+  if(url.pathname.startsWith('/api/bid/')) {
+    if (!env.BID_ROOMS) return bidApi(req,env,url);
+    const room = req.headers.get('X-Factner-Review');
+    if (!/^[a-f0-9]{64}$/.test(room || '')) fail(400,'체험 화면을 다시 열어주세요.');
+    if (env.BID_LIMIT && !(await env.BID_LIMIT.limit({key:req.headers.get('CF-Connecting-IP') || 'local'})).success) fail(429,'잠시 후 다시 시도해주세요.');
+    return env.BID_ROOMS.get(env.BID_ROOMS.idFromName(room)).fetch(req);
+  }
   const memberResult=await matchingApi(req,env,url)||await packagingApi(req,env,url)||await memberApi(req,env,url)||await partnerApi(req,env,url)||await orderApi(req,env,url);
   if(memberResult)return memberResult;
   const publicResult=await supplierPublicApi(req,env,url)||(url.pathname==='/api/policy'?await policyApi(req,env,url):null);
@@ -160,15 +168,17 @@ export default {
         const localDev = env.DEV_ORIGIN === 'http://127.0.0.1:5178' && [env.DEV_ORIGIN,'http://127.0.0.1:5179'].includes(req.headers.get('Origin'));
         if (req.method !== 'GET' && req.headers.get('Origin') !== url.origin && !localDev) fail(403,'허용되지 않은 요청 출처입니다.');
         response = env.APP_KIND === 'admin' || localAdmin ? await adminApi(req,env,url) : await mainApi(req,env,url);
-        if (ctx) ctx.waitUntil(stmt(env,'DELETE FROM rate_limits WHERE reset_at<?',Math.floor(Date.now()/1000)-86400).run().catch(()=>{}));
+        if (ctx && !url.pathname.startsWith('/api/bid/')) ctx.waitUntil(stmt(env,'DELETE FROM rate_limits WHERE reset_at<?',Math.floor(Date.now()/1000)-86400).run().catch(()=>{}));
       } else {
         response = await env.ASSETS.fetch(req);
       }
     } catch(err) {
       if (!(err instanceof HttpError)) {
         console.error('Factner request failed:',err.name);
-        const incident=recordFailure(env,'REQUEST_FAILED',env.APP_KIND==='admin'?'admin-api':'main-api').catch(()=>{});
-        if(ctx)ctx.waitUntil(incident);else await incident;
+        if (!url.pathname.startsWith('/api/bid/')) {
+          const incident=recordFailure(env,'REQUEST_FAILED',env.APP_KIND==='admin'?'admin-api':'main-api').catch(()=>{});
+          if(ctx)ctx.waitUntil(incident);else await incident;
+        }
       }
       response = json({error:err instanceof HttpError ? err.message : '처리하지 못했습니다. 잠시 후 다시 시도해주세요.'},err.status || 500);
     }

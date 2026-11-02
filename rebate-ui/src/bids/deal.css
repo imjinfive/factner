@@ -1,0 +1,108 @@
+.fd-desk {
+  width: min(1040px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 58px 0 96px;
+  display: grid;
+  gap: 22px;
+  color: var(--text);
+}
+.fd-desk > header { margin-bottom: 8px; }
+.fd-desk h1 { margin: 7px 0 8px; font-size: clamp(30px, 4vw, 40px); line-height: 1.3; }
+.fd-desk > header p { font-size: 18px; color: var(--muted); }
+.fd-kicker { color: var(--green-dark); font-size: 13px; font-weight: 750; letter-spacing: .04em; }
+.fd-card, .fd-empty {
+  min-width: 0;
+  padding: 30px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  overflow-wrap: anywhere;
+}
+.fd-empty { padding: 62px 22px; border-style: dashed; }
+.fd-empty svg { color: var(--green); }
+.fd-empty h2 { margin: 12px 0 6px; font-size: 23px; color: var(--text); }
+.fd-empty p { margin: 0; font-size: 16px; color: var(--muted); }
+.fd-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px 22px; }
+.fd-heading h2 { margin: 4px 0 0; font-size: clamp(21px, 3vw, 26px); line-height: 1.35; }
+.fd-status { padding: 6px 11px; border-radius: 9px; background: var(--mint); color: var(--green-dark); font-size: 14px; font-weight: 650; white-space: nowrap; }
+.fd-price, .fd-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fd-price { gap: 12px; margin: 22px 0; padding: 18px 20px; border-radius: 15px; background: var(--soft); }
+.fd-price dt, .fd-steps span, .fd-parties span { display: block; font-size: 14px; color: var(--muted); }
+.fd-price dd { margin: 3px 0 0; font-size: clamp(17px, 2vw, 20px); font-weight: 700; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.fd-price > div:last-child dd { color: var(--green-dark); }
+.fd-steps { list-style: none; padding: 0; margin: 20px 0; gap: 12px; }
+.fd-steps li { display: flex; align-items: flex-start; gap: 8px; }
+.fd-steps li > svg { width: 20px; height: 20px; margin-top: 2px; color: var(--muted); }
+.fd-steps li[data-complete="true"] > svg { color: var(--green); }
+.fd-steps strong { font-size: 15px; font-weight: 650; }
+.fd-parties { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+.fd-parties > div { min-width: 0; background: var(--mint); border-radius: 14px; padding: 15px 18px; }
+.fd-parties strong, .fd-parties small { display: block; }
+.fd-parties strong { margin: 2px 0; font-size: 18px; }
+.fd-parties small { color: var(--muted); font-size: 14px; }
+.fd-note { margin: 12px 0; color: var(--muted); font-size: 15px; }
+.fd-contract-copy { margin: 18px 0; border-block: 1px solid var(--line); padding: 13px 0; }
+.fd-contract-copy summary, .fd-terms summary { cursor: pointer; font-size: 15px; font-weight: 650; color: var(--text); }
+.fd-contract-copy > p { margin: 12px 0; color: var(--muted); font-size: 14px; }
+.fd-terms { margin: 18px 0; padding: 18px 20px; border-radius: 15px; background: var(--soft); color: var(--text); }
+.fd-terms p, .fd-terms ul { margin: 8px 0; font-size: 15px; line-height: 1.65; }
+.fd-terms ul { padding-inline-start: 20px; }
+.fd-terms li + li { margin-top: 6px; }
+.fd-terms li::marker { color: var(--green-dark); }
+.fd-terms details { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.fd-terms section { margin: 16px 0; max-width: 75ch; }
+.fd-terms h4 { margin: 0; font-size: 16px; }
+.fd-terms small, .fd-pay-summary dt { color: var(--muted); }
+.fd-payments { margin-top: 22px; }
+.fd-payments h3 { font-size: 21px; letter-spacing: -.025em; }
+.fd-payment, .fd-pay-summary > div {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 0; border-bottom: 1px solid var(--line);
+}
+.fd-payment strong, .fd-pay-summary dd { text-align: end; }
+.fd-payment small { display: block; font-size: 14px; color: var(--muted); font-weight: 450; }
+.fd-payment .button { min-height: 42px; padding: 10px 15px; }
+.fd-card > .button, .fd-actions .button { font-size: 16px; }
+.fd-dialog { width: min(660px, calc(100% - 32px)); color: var(--text); overflow-wrap: anywhere; }
+.fd-dialog .modal-heading h2 { margin-top: 4px; }
+.fd-dialog .modal-heading .icon-button { flex-shrink: 0; }
+.fd-body h3 { margin: 0 0 14px; font-size: 20px; }
+.fd-body > h3:focus { outline: none; }
+.fd-body > p + p { margin-top: 8px; }
+.fd-subject { font-size: 18px; font-weight: 700; }
+.fd-input { display: grid; gap: 8px; font-weight: 600; font-size: 16px; }
+.fd-input input {
+  width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 12px;
+  padding: 13px 15px; font-size: 17px; font-weight: 450; color: var(--text); background: var(--surface);
+}
+.fd-check { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0; font-size: 16px; cursor: pointer; }
+.fd-check input { flex: none; margin: 4px 0 0; }
+.fd-actions {
+  display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; padding: 16px 0 4px;
+  position: sticky; bottom: -30px; border-top: 1px solid var(--line); background: var(--surface);
+}
+.fd-pay-summary { margin: 18px 0 0; }
+.fd-pay-summary dd { margin: 0; font-weight: 650; }
+.fd-error { margin: 15px 0 0; padding: 12px 15px; border-radius: 12px; background: var(--soft); color: var(--error); }
+@media (max-width: 640px) {
+  .fd-desk { width: calc(100% - 32px); padding: 36px 0 64px; gap: 16px; }
+  .fd-desk > header p { font-size: 16px; }
+  .fd-card { padding: 21px 18px; }
+  .fd-price { gap: 8px; padding: 14px; }
+  .fd-steps { gap: 8px; }
+  .fd-steps li { flex-direction: column; gap: 4px; }
+  .fd-parties { grid-template-columns: 1fr; gap: 8px; }
+  .fd-terms { padding: 15px; }
+  .fd-actions { gap: 8px; }
+  .fd-actions .button { min-width: 0; flex: 1; padding-inline: 8px; white-space: normal; }
+}
+@media (max-width: 600px) {
+  .fd-dialog { width: 100%; }
+  .fd-actions { bottom: -28px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
+}
+@media (max-width: 440px) {
+  .fd-price { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fd-price > div:last-child { grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid var(--line); }
+  .fd-price > div:last-child dt, .fd-price > div:last-child dd { display: inline; }
+  .fd-price > div:last-child dd { margin-inline-start: 8px; }
+}

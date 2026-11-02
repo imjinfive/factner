@@ -6,6 +6,7 @@ import {ArrowRight,CheckCircle,X,Package,ClipboardText,CaretRight,Plus,Moon,Sun,
 import {readSaved} from "./model";
 import {api,quoteStatuses} from "./api";
 import ServiceIntro from "./ServiceIntro";
+import {BrandMark, Button, Photo} from "./BrandControls";
 import MemberPortal from "./MemberPortal";
 import MatchingFlow from "./MatchingFlow";
 import {MATCH_CATEGORIES} from "./matching-preview.js";
@@ -16,30 +17,6 @@ import "./funnel-shell.css";
 const spring={type:"spring",stiffness:420,damping:30,mass:0.8};
 const money=n=>new Intl.NumberFormat("ko-KR").format(n);
 const navItems=[["intro","서비스 소개"],["request","파트너 찾기"],["guide","이용 안내"]];
-function Button({ children, className = "", tone = "primary", ...props }) {
-  const reduce = useReducedMotion();
-  return (
-    <motion.button
-      type="button"
-      className={`button ${tone} ${className}`}
-      whileHover={reduce ? {} : { y: -2 }}
-      whileTap={reduce ? {} : { scale: 0.96, y: 0 }}
-      transition={spring}
-      {...props}
-    >
-      {children}
-    </motion.button>
-  );
-}
-function Photo({ index, className = "", label }) {
-  return (
-    <div
-      role="img"
-      aria-label={label || "패키징 제작 사례 예시 이미지"}
-      className={`product-photo photo-${index} ${className}`}
-    />
-  );
-}
 function PolicyDocument({kind}) {
   const [data,setData]=useState(null),[error,setError]=useState(""),[retry,setRetry]=useState(0);
   useEffect(()=>{let active=true;setError("");api("policy").then(result=>{if(active)setData(result);}).catch(problem=>{if(active)setError(problem.message);});return()=>{active=false;};},[retry]);
@@ -135,9 +112,14 @@ function Guide({onRequest}) {
   ].map(([q,a])=><details key={q}><summary>{q}<Plus size={19}/></summary><p>{a}</p></details>)}</div>
  </section>;
 }
+function memberPage() {
+ return pageFromHistory(location.hash.slice(1) || history.state?.factnerPage || 'account');
+}
+const memberPageUrl = page => '/members/#' + page;
+
 function App(){
  const [member,setMember]=useState(null),[authLoading,setAuthLoading]=useState(true);
- const [page,setPage]=useState(()=>pageFromHistory(location.hash.slice(1)||history.state?.factnerPage)),[flowVisited,setFlowVisited]=useState(()=>pageFromHistory(location.hash.slice(1)||history.state?.factnerPage)==='request'),[signupContext,setSignupContext]=useState(null);
+ const [page,setPage]=useState(memberPage),[flowVisited,setFlowVisited]=useState(()=>memberPage()==='request'),[signupContext,setSignupContext]=useState(null);
  const [requestedOrder,setRequestedOrder]=useState(null),[attentionRefresh,setAttentionRefresh]=useState(0),[orderAlertNotice,setOrderAlertNotice]=useState(null);
  const [requests,setRequests]=useState(()=>readSaved('factner:requests',[]));
  const [modal,setModal]=useState(null),[toast,setToast]=useState('');
@@ -147,14 +129,15 @@ function App(){
  useEffect(()=>{document.documentElement.dataset.theme=theme;},[theme]);
  useEffect(()=>{
   // Refresh and browser Back/Forward retain the current workflow destination.
-  history.replaceState({...history.state,factnerPage:pageFromHistory(location.hash.slice(1)||history.state?.factnerPage)},'', '/');
-  const sync=()=>{const next=pageFromHistory(location.hash.slice(1)||history.state?.factnerPage);setPage(next);if(next==='request')setFlowVisited(true);window.scrollTo({top:0,behavior:'instant'});};
+  const current=memberPage();
+  history.replaceState({...history.state,factnerPage:current},'',memberPageUrl(current));
+  const sync=()=>{const next=memberPage();setPage(next);if(next==='request')setFlowVisited(true);window.scrollTo({top:0,behavior:'instant'});};
   window.addEventListener('popstate',sync);window.addEventListener('hashchange',sync);
   return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('hashchange',sync);};
  },[]);
  useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
  function notify(message){clearTimeout(toastTimer.current);setToast(message);toastTimer.current=setTimeout(()=>setToast(''),3400);}
- function navigate(next,entry={}){const state={...history.state,factnerPage:next,...(next==='request'?{matching:{...history.state?.matching,stage:'form',depth:0,selected:[]}}:{}),...entry};if(history.state?.factnerPage!==next)history.pushState(state,'','/');else if(Object.keys(entry).length){history.replaceState(state,'','/');window.dispatchEvent(new PopStateEvent('popstate',{state}));}if(next==='request')setFlowVisited(true);setPage(next);window.scrollTo({top:0,behavior:'instant'});}
+ function navigate(next,entry={}){const state={...history.state,factnerPage:next,...(next==='request'?{matching:{...history.state?.matching,stage:'form',depth:0,selected:[]}}:{}),...entry};if(history.state?.factnerPage!==next)history.pushState(state,'',memberPageUrl(next));else if(Object.keys(entry).length){history.replaceState(state,'',memberPageUrl(next));window.dispatchEvent(new PopStateEvent('popstate',{state}));}if(next==='request')setFlowVisited(true);setPage(next);window.scrollTo({top:0,behavior:'instant'});}
  function openModal(value){if(!document.activeElement?.closest('.modal')){document.querySelector('[data-return-focus]')?.removeAttribute('data-return-focus');document.activeElement?.setAttribute('data-return-focus','');}setModal(value);}
  function openOrderAlert(id){if(modal){notify('입력 중인 창을 닫은 뒤 발주 알림을 확인해주세요.');return;}setRequestedOrder({id,key:Date.now()});navigate('account');}
  const startRequest=()=>navigate('request',{matching:matchingFromHistory(null,member)});
@@ -194,14 +177,14 @@ function App(){
  <MotionConfig transition={spring} reducedMotion="user">
   <a href="#main" className="skip-link" onClick={e=>{e.preventDefault();document.getElementById('main')?.focus();}}>본문 바로가기</a>
   <header className="site-header funnel-header"><div className="header-inner">
-   <button className="logo" aria-label="팩트너 홈" onClick={()=>navigate('intro')}><Package size={28} weight="fill"/><span>factner<span className="logo-dot">.</span></span></button>
+   <button className="logo" aria-label="팩트너 홈" onClick={()=>navigate('intro')}><BrandMark/></button>
    <nav aria-label="주 메뉴">{navItems.map(([key,label])=><button key={key} onClick={()=>key==='request'?startRequest():navigate(key)} className={'nav-link '+(page===key?'active':'')} aria-current={page===key?'page':undefined}>{label}{page===key&&<motion.span className="nav-indicator" layoutId="nav-indicator"/>}</button>)}</nav>
    <div className="header-actions"><button className="member-login-link" onClick={openAccount}>{member?'마이페이지':'로그인'}</button></div>
   </div></header>
   <main id="main" tabIndex={-1}>
    {flowVisited&&<div hidden={page!=='request'}><MatchingFlow Button={Button} onSignup={beginSignup} onAccount={openAccount} member={member} authLoading={authLoading} active={page==='request'}/></div>}
    <AnimatePresence mode="wait"><motion.div key={page} initial={reduce?false:{opacity:0,y:page==='intro'?0:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:0.18}}>
-    {page==='intro'&&<ServiceIntro Button={Button} Photo={Photo} onRequest={startRequest}/>}
+    {page==='intro'&&<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>location.assign('/#feed')}/>}
     {page==='guide'&&<Guide onRequest={startRequest}/>}
     {page==='account'&&<>
      {!member&&signupContext&&<aside className="signup-context shell"><div><strong>{signupContext.role==='supplier'?'패키징 제작 업체':'브랜드'} 가입 신청</strong><p>{MATCH_CATEGORIES.find(item=>item.value===signupContext.category)?.label} · 가입 승인 후 실제 파트너를 확인할 수 있어요.</p></div><button onClick={()=>navigate('request')}>조건으로 돌아가기 <ArrowRight size={18}/></button></aside>}

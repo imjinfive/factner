@@ -35,7 +35,7 @@ function Opening({ Button, onRequest, still }) {
               브랜드의 가치는<br /><span>패키징부터.</span>
             </motion.h1>
             <Button className="rb-opening-cta" tone="white" onClick={onRequest}>
-              맞는 파트너 찾기 <ArrowRight size={20} aria-hidden="true" />
+              입찰 공고 보기 <ArrowRight size={20} aria-hidden="true" />
             </Button>
           </motion.div>
           {!still && <motion.p className="rb-opening-after" style={{ opacity: afterOpacity, y: afterY }}>
@@ -76,19 +76,19 @@ function OnSite({ still }) {
         <div className="rb-onsite-shade" />
         <div className="rb-onsite-copy">
           <h2 id="intro-check-title">가격만으로는<br />알 수 없는 차이.</h2>
-          <p>작업 현장부터 납품 품질까지.<br />확인한 자료로 선택을 돕습니다.</p>
+          <p>수량별 단가부터 제작 조건까지.<br />한 공고에 들어온 제안을 비교하세요.</p>
         </div>
         {!still && <>
           <motion.div className="rb-review-note" style={{ x: reviewX, rotate: reviewRotate, opacity: reviewOpacity }}>
-            <span><Star size={18} weight="fill" />브랜드 리뷰 예시</span>
-            <p>종이 질감과 인쇄 색상을<br />샘플로 비교할 수 있었어요.</p>
+            <span><Star size={18} weight="fill" />수량별 입찰 예시</span>
+            <p>1,000개는 개당 300원,<br />3,000개는 개당 250원.</p>
           </motion.div>
           <motion.div className="rb-camera-frame" aria-hidden="true" style={{ opacity: frameOpacity }}>
             <i /><i /><i /><i />
           </motion.div>
         </>}
-        <ol className="rb-inspection-list" aria-label="팩트너 현장 확인 항목">
-          {["작업 현장", "제작 샘플", "납품 품질"].map((label, index) =>
+        <ol className="rb-inspection-list" aria-label="입찰 비교 항목">
+          {["요청 사양", "수량별 단가", "제작 조건"].map((label, index) =>
             <InspectionPoint key={label} progress={progress} index={index} still={still}>{label}</InspectionPoint>)}
         </ol>
       </div>
@@ -112,7 +112,7 @@ function Ending({ Button, onRequest, still }) {
         <h2 id="intro-ending-title">상자를 여는 순간,<br /><span>브랜드를 만납니다.</span></h2>
         <p>그 첫 만남이 특별하도록.<br />팩트너가 함께합니다.</p>
         <div className="rb-ending-actions">
-          <Button className="rb-story-button" onClick={onRequest}>맞는 파트너 찾기 <ArrowRight size={20} aria-hidden="true" /></Button>
+          <Button className="rb-story-button" onClick={onRequest}>입찰 공고 보기 <ArrowRight size={20} aria-hidden="true" /></Button>
         </div>
       </motion.div>
       </div>

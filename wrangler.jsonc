@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "account_id": "9253dd1d6c8b00b6bee6dfcf3ff080f4",
   "name": "factner-main",
-  "main": "server/worker.js",
+  "main": "server/public-worker.js",
   "compatibility_date": "2026-10-19",
   "workers_dev": false,
   "routes": [
@@ -28,6 +28,10 @@
     "APP_KIND": "main",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAFbVVs9UqZ4yQIFU"
   },
+  "durable_objects": { "bindings": [{ "name": "BID_ROOMS", "class_name": "BidRoom" }] },
+  "migrations": [{ "tag": "bid-review-v1", "new_sqlite_classes": ["BidRoom"] }],
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
+  "ratelimits": [{ "name": "BID_LIMIT", "namespace_id": "1001", "simple": { "limit": 150, "period": 60 } }],
   "d1_databases": [
     {
       "binding": "DB",

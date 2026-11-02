@@ -18,7 +18,7 @@
 .rb-opening h1 span { color: #baf1cf; }
 .rb-opening .rb-opening-cta { margin-top: 28px; min-height: 52px; padding: 14px 22px; background: #fff; color: #12613e; font-size: 17px; }
 .rb-opening .rb-opening-cta:hover { background: #e9f8ef; }
-.rb-opening-after { font-size: clamp(42px, 6vw, 84px); font-weight: 740; line-height: 1.2; letter-spacing: -.05em; }
+.rb-opening-after { font-size: clamp(42px, 6vw, 84px); font-weight: 740; line-height: 1.2; letter-spacing: -.05em; pointer-events: none; }
 .rb-onsite { height: 250svh; background: var(--soft); }
 .rb-onsite .rb-stage { isolation: isolate; background: #152b21; }
 .rb-onsite-image { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 52% 56%; transform-origin: 52% 57%; }

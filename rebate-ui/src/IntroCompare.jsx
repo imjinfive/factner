@@ -61,7 +61,7 @@ export default function IntroCompare({ still }) {
         {samples.map((sample, index) => <Sample key={sample.name}
           sample={sample} index={index} progress={progress} still={still} />)}
         <motion.div className="rb-compare-rule" aria-hidden="true" style={still ? {} : { scaleX: lineScale }} />
-        <motion.p className="rb-compare-example" style={still ? {} : { opacity: noteOpacity }}>패키징 연출 이미지 · 운영팀과 실제 사양을 정리해요</motion.p>
+        <motion.p className="rb-compare-example" style={still ? {} : { opacity: noteOpacity }}>패키징 연출 이미지 · 공고에 원하는 사양을 적어주세요.</motion.p>
       </div>
     </div>
   </section>;
