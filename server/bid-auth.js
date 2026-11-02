@@ -1,7 +1,7 @@
 import { body, fail, json, rate, stmt, text } from './http.js';
 import { digest, memberPassword, passwordHash, randomToken, verifyPassword } from './security.js';
 import { marketApi } from './bid-market.js';
-import { designerNotice, isPackagingPartner } from '../shared/partner-roles.js';
+import { designerNotice, isPackagingPartner, isDesignerTestAccount } from '../shared/partner-roles.js';
 
 const kinds = new Set(['brand', 'design', 'packaging', 'both']);
 const lifetime = 8 * 3600 * 1000;
@@ -15,6 +15,9 @@ function isIsolatedReview(env) {
   return Boolean(env[roomDatabase] && env[roomDatabase] === env.DB);
 }
 const asUser = ({id, email, name, kind}) => ({id, email, name, kind});
+function canSignIn(account) {
+  return account.kind !== 'design' || isDesignerTestAccount(account);
+}
 async function current(req, env, preview) {
   const token = req.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
   if (!token) return null;
@@ -23,10 +26,10 @@ async function current(req, env, preview) {
     return {id:'preview-ops', kind:'admin', name:'팩트너 운영팀', email:'', hash};
   }
   const user = await stmt(env, 'SELECT a.id,a.email,a.name,a.kind FROM market_accounts a JOIN market_sessions s ON s.account_id=a.id WHERE s.token_hash=? AND s.expires_at>?',hash,Date.now()).first();
-  return user && user.kind!=='design' ? {...user, hash} : null;
+  return user && canSignIn(user) ? {...user, hash} : null;
 }
 async function issue(env,user,admin=false) {
-  if(user.kind==='design')fail(403,designerNotice);
+  if(!canSignIn(user))fail(403,designerNotice);
   const token=randomToken(), hash=await digest(token), until=Date.now()+lifetime;
   if(admin) env.previewAdminSessions.set(hash,until);
   else await env.DB.batch([
@@ -74,7 +77,7 @@ export async function bidApi(req,env,url) {
     }
     const row=await stmt(env,'SELECT * FROM market_accounts WHERE email=?',email).first();
     if(!await verifyPassword(pw,row?.password_hash||'0'.repeat(64)+':'+'0'.repeat(64))||!row)fail(401,'이메일 또는 비밀번호를 확인해 주세요.');
-    if(row.kind==='design'||data.role==='design')fail(403,designerNotice);
+    if(!canSignIn(row))fail(403,designerNotice);
     const loginRole=isPackagingPartner(row.kind)?'packaging':row.kind;
     if(data.role!==undefined && data.role!==loginRole)fail(403,'선택한 회원 유형과 계정이 일치하지 않습니다.');
     return issue(env,row);

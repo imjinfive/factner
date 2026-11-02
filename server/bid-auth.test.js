@@ -116,11 +116,22 @@ test('review fixtures contain 14 fictional accounts and ten distinct open briefs
   assert.deepEqual(board.partners.map(p=>p.kind).sort(),['both','packaging']);
   assert.ok(board.partners.every(p=>p.alias && p.items.length && !('id' in p) && !('email' in p) && !('name' in p)));
   assert.equal(new Set(board.posts.map(p=>p.brandAlias)).size,10);
-  const designer=selection.accounts.find(x=>x.kind==='design');
-  assert.equal((await call('login',{input:{email:designer.email,password:reviewPassword}})).status,403);
-  assert.equal((await call('demo',{input:{email:designer.email}})).status,403);
+  for(const designer of selection.accounts.filter(x=>x.kind==='design')){
+    const login=await call('login',{input:{email:designer.email,password:reviewPassword,role:'design'}});
+    assert.equal(login.status,200);
+    assert.equal((await call('session',{token:login.data.token})).data.user.id,designer.id);
+    const designerState=(await call('state',{token:login.data.token})).data;
+    assert.equal(designerState.posts.length,4);
+    assert.ok(designerState.posts.every(p=>p.category==='design'));
+    assert.equal((await call('posts',{token:login.data.token,input:{}})).status,403);
+    const quickDesigner=await call('demo',{input:{email:designer.email}});
+    assert.equal(quickDesigner.data.user.id,designer.id);
+  }
+  // Previously registered designers outside the two test accounts cannot reuse a password or session.
+  raw.prepare("INSERT INTO market_accounts SELECT 'old-designer','older@example.test','old',kind,password_hash FROM market_accounts WHERE id='seed-design1'").run();
+  assert.equal((await call('login',{input:{email:'older@example.test',password:reviewPassword,role:'design'}})).status,403);
   const oldToken='9'.repeat(64);
-  raw.prepare('INSERT INTO market_sessions VALUES(?,?,?)').run(await digest(oldToken),designer.id,Date.now()+60000);
+  raw.prepare('INSERT INTO market_sessions VALUES(?,?,?)').run(await digest(oldToken),'old-designer',Date.now()+60000);
   assert.equal((await call('session',{token:oldToken})).data.user,null);
   assert.equal((await call('posts',{token:oldToken,input:{}})).status,401);
   const seed=selection.accounts.find(x=>x.kind==='both');

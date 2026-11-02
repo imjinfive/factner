@@ -38,12 +38,13 @@ function contractStatus(row) {
 async function getState(env, user) {
   const admin = user?.kind === 'admin';
   const id = user?.id ?? '';
+  const category = isPackagingPartner(user?.kind) ? 'packaging' : user?.kind==='design' ? 'design' : null;
   const postsQuery = stmt(env, `WITH brands AS (
     SELECT id, row_number() OVER (ORDER BY rowid) AS ordinal FROM market_accounts WHERE kind='brand'
   ) SELECT p.*, b.ordinal, EXISTS(SELECT 1 FROM market_contracts c WHERE c.post_id=p.id) awarded,
     (SELECT count(*) FROM market_offers o WHERE o.post_id=p.id) offer_count
     FROM market_posts p JOIN brands b ON b.id=p.brand_id
-    WHERE ?=0 OR p.category='packaging' ORDER BY p.created_at DESC,p.id`, Number(isPackagingPartner(user?.kind)));
+    WHERE ? IS NULL OR p.category=? ORDER BY p.created_at DESC,p.id`, category, category);
   const offersQuery = stmt(env, 'SELECT o.* FROM market_offers o JOIN market_posts p ON p.id=o.post_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY o.created_at,o.id', Number(admin), id, id);
   const contractsQuery = stmt(env, 'SELECT c.*, p.category,p.title,b.name brand_name,b.email brand_email,s.name supplier_name,s.email supplier_email FROM market_contracts c JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id JOIN market_accounts b ON b.id=p.brand_id JOIN market_accounts s ON s.id=o.supplier_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY c.brand_signed_at DESC,c.id', Number(admin), id, id);
   const paymentsQuery = stmt(env, 'SELECT m.* FROM market_payments m JOIN market_contracts c ON c.id=m.contract_id JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY m.created_at,m.id', Number(admin), id, id);
@@ -163,9 +164,9 @@ async function recordPayment(env, user, contract, input) {
 }
 
 export async function marketApi(req, env, url, user) {
-  if (user?.kind==='design') fail(403, designerNotice);
   const path = url.pathname;
   if (req.method==='GET' && path==='/api/bid/state') return json(await getState(env, user));
+  if (user?.kind==='design') fail(403, designerNotice);
   if (req.method!=='POST') fail(404, '요청한 기능을 찾지 못했습니다.');
   if (!user) fail(401, '로그인이 필요합니다.');
   const input = await body(req);

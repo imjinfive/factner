@@ -14,23 +14,40 @@
           if (saved === 'light' || saved === 'dark') theme = saved;
         } catch {}
         document.documentElement.dataset.theme = theme;
-        const fragment = location.hash.slice(1);
-        const view = fragment.split('/')[0] || 'intro';
+        const state = history.state || {};
+        const path = location.pathname.replace(/\/+$/, '');
+        const surface = path === '/members' || path === '/members/index.html' ? 'members'
+          : path === '/ops' ? 'ops' : state.factnerSurface || 'market';
+        const savedRoute = surface === 'members' ? state.factnerPage || state.factnerRoute : state.factnerRoute;
+        const fragment = location.hash.slice(1) || (typeof savedRoute === 'string' ? savedRoute : '');
+        const view = fragment.split('/')[0] || (surface === 'members' ? 'account' : 'intro');
+        function feedStart() {
+          try { return sessionStorage.getItem('factner-bid-review-token') ? 'board' : 'discovery'; }
+          catch { return 'board'; }
+        }
         let start = 'other';
-        if (!/^\/ops\/?$/.test(location.pathname)) {
+        if (surface === 'members') {
+          if (view === 'account') start = 'account';
+          if (view === 'intro') start = 'intro';
+        } else if (surface !== 'ops') {
           if (view === 'intro') start = 'intro';
           else if (view === 'feed' || view === 'mine' || view === 'preview') {
             start = 'board';
-            if (fragment === 'feed' || fragment === 'preview') {
-              try {
-                if (!sessionStorage.getItem('factner-bid-review-token')) start = 'discovery';
-              } catch {}
-            }
+            if (fragment === 'feed' || fragment === 'preview') start = feedStart();
           }
           else if (['login','signup','account','demo'].includes(view)) start = 'account';
         }
         document.documentElement.dataset.bidStart = start;
         if (view === 'login') document.documentElement.dataset.bidLogin = '';
+        // The hero link is usable while the application bundle is in flight.
+        document.addEventListener('click', event => {
+          if (!event.target.closest?.('[data-boot-feed]') || event.button !== 0 ||
+              event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          history.pushState({factnerSurface:'market',factnerRoute:'feed'},'', '/');
+          document.documentElement.dataset.bidStart = feedStart();
+          window.dispatchEvent(new Event('factner:navigation'));
+        });
       })();
     </script>
     <link rel="stylesheet" href="/src/bids/loading.css" />
@@ -56,7 +73,7 @@
             <div class="rb-opening-image bl-intro-image"></div><div class="rb-opening-shade"></div>
             <div class="rb-opening-title">
               <h1>브랜드의 가치는<br /><span>패키징부터.</span></h1>
-              <a class="button white rb-opening-cta" href="#feed">파트너 찾기
+              <a class="button white rb-opening-cta" href="/" data-boot-feed>파트너 찾기
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h16m-7-7 7 7-7 7" /></svg>
               </a>
             </div>

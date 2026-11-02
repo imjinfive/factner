@@ -8,6 +8,7 @@ import ReviewConfirm from './ReviewConfirm';
 import {formatInput,formatPhone,formatBusinessNumber} from '../../admin-ui/input-format.js';
 import {prepareUpload} from '../../shared/image-upload.js';
 import {MATCH_CATEGORIES} from './matching-preview.js';
+import {siteNavigationEvent} from './site-history.js';
 import './member-portal.css';
 
 export const orderStates={requested:'매칭 대기',matched:'업체 연결 확인',assigned:'업체 확인 중',quoted:'최종 승인 대기',approved:'발주 확정',producing:'제작 중',shipped:'출고',received:'입고 완료',cancelled:'취소'};
@@ -53,7 +54,15 @@ function useAuthHistory(initialRole){
  const fallback={mode:initialRole?'signup':'login',step:initialRole?1:0,role:initialRole||'',legal:'',depth:0};
  const read=value=>value&&['login','signup','find-id','recover-password','reset-password'].includes(value.mode)?{...fallback,...value,step:[0,1,2].includes(value.step)?value.step:0}:fallback;
  const [state,setState]=useState(()=>read(window.history.state?.memberAuth));
- useEffect(()=>{window.history.replaceState({...window.history.state,memberAuth:state},'');const pop=event=>{if(event.state?.factnerPage==='account')setState(read(event.state.memberAuth));};window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
+ useEffect(()=>{
+  window.history.replaceState({...window.history.state,memberAuth:state},'','/');
+  const pop=()=>{
+   const entry=window.history.state;
+   if(entry?.factnerSurface==='members'&&entry.factnerPage==='account')setState(read(entry.memberAuth));
+  };
+  window.addEventListener('popstate',pop);window.addEventListener(siteNavigationEvent,pop);
+  return()=>{window.removeEventListener('popstate',pop);window.removeEventListener(siteNavigationEvent,pop);};
+ },[]);
  const go=(next,replace=false)=>{const value={...state,...next,depth:replace?state.depth:state.depth+1};window.history[replace?'replaceState':'pushState']({...window.history.state,factnerPage:'account',memberAuth:value},'');setState(value);};
  return [state,go,()=>state.depth>0?window.history.back():go({step:Math.max(0,state.step-1)},true)];
 }

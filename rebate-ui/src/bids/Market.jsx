@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Bag, Bell, CaretRight, Cube, Gift, ListMagnifyingGlass, MagnifyingGlass, Package, PencilRuler, Plus, Radio, Tag, Tray, X } from '@phosphor-icons/react';
+import { isPackagingPartner } from '../../../shared/partner-roles.js';
 import ReviewConfirm from '../ReviewConfirm';
 import './market.css';
 
@@ -20,11 +21,11 @@ function acceptsProposals(post) {
   return post.category === 'packaging' && post.status === 'open' && daysLeft(post) >= 0;
 }
 
-function statusText(post) {
+function statusText(post, designer = false) {
   if (post.status === 'awarded') return '선정 완료';
   const days = daysLeft(post);
   if (post.status !== 'open' || days < 0) return '접수 종료';
-  if (post.category === 'design') return '준비 중';
+  if (post.category === 'design') return designer ? '열람 전용' : '준비 중';
   return days === 0 ? '오늘 마감' : `D−${days}`;
 }
 
@@ -65,18 +66,22 @@ function matchesFilters(post, { category, query, activeOnly }) {
   return !term || [post.title, post.description, post.size].some(value => value?.toLocaleLowerCase('ko').includes(term));
 }
 
-function BoardHeader({ mine, posts, brand, onNew }) {
+function BoardHeader({ mine, posts, brand, designer, onNew }) {
   const open = posts.filter(acceptsProposals);
+  const title = mine ? (brand ? '내 공고' : '내 제안') : (designer ? '디자인 의뢰' : '파트너 찾기');
   return <header className="bm-cover">
     <div className="bm-cover-main">
       <span className="bm-live"><i/> 실시간 업데이트{!mine && <small>예시 공고 포함</small>}</span>
-      <h1>{mine ? (brand ? '내 공고' : '내 제안') : '파트너 찾기'}</h1>
-      <p>{mine ? (brand ? '등록한 공고와 파트너가 보낸 제안을 확인하세요.' : '보낸 제안과 파트너 선정 결과를 확인하세요.') : '브랜드의 제작 조건을 확인하고 패키징 견적을 제안하세요.'}</p>
+      <h1>{title}</h1>
+      {designer ? <p>{mine ? '테스트 계정으로 보낸 디자인 제안과 선정 결과를 확인하세요.' : '디자이너 테스트 계정으로 디자인 의뢰를 미리 보고 있어요.'}</p> :
+        <p>{mine ? (brand ? '등록한 공고와 파트너가 보낸 제안을 확인하세요.' : '보낸 제안과 파트너 선정 결과를 확인하세요.') : '브랜드의 제작 조건을 확인하고 패키징 견적을 제안하세요.'}</p>}
       {brand && <button type="button" className="button primary bm-cover-cta" onClick={onNew}><Plus size={17} /> 공고 등록</button>}
     </div>
     <dl className="bm-stats">
-      <div><dt>접수 중</dt><dd>{number.format(open.length)}건</dd></div>
-      <div><dt>오늘 마감</dt><dd>{number.format(open.filter(post => daysLeft(post) === 0).length)}건</dd></div>
+      {designer ? <div><dt>{mine ? '저장된 제안' : '등록된 의뢰'}</dt><dd>{number.format(posts.length)}건</dd></div> : <>
+        <div><dt>접수 중</dt><dd>{number.format(open.length)}건</dd></div>
+        <div><dt>오늘 마감</dt><dd>{number.format(open.filter(post => daysLeft(post) === 0).length)}건</dd></div>
+      </>}
     </dl>
   </header>;
 }
@@ -203,19 +208,21 @@ function Offer({ offer, post, onSelect, allowSelect }) {
 
 function PostDetail({ post, offers, user, mutate, onSelect, onSignup, onSent, standalone = false }) {
   const design = post.category === 'design';
+  const designer = user?.kind === 'design';
   const open = acceptsProposals(post);
   const ownOffer = offers.find(o => o.isMine);
-  const canBid = user?.kind === 'both' || user?.kind === 'packaging';
+  const canBid = isPackagingPartner(user?.kind);
   const Heading = standalone ? 'h1' : 'h2';
   const Subheading = standalone ? 'h2' : 'h3';
   return <section className="bm-detail" aria-label={standalone ? '브랜드 의뢰 상세' : '선택한 공고 상세'}>
-    <div className="bm-detail-head"><span className="bm-kind">{types[post.category]}</span><span className="bm-status">{statusText(post)}</span></div>
+    <div className="bm-detail-head"><span className="bm-kind">{types[post.category]}</span><span className="bm-status">{statusText(post, designer)}</span></div>
     <div className="bm-detail-title"><div><Heading>{post.title}</Heading><span>{standalone ? '브랜드 의뢰' : '공고 상세'}</span></div>
       <ProductIcon post={post} /></div>
     <dl className="bm-specs"><div><dt>요청 수량</dt><dd>{number.format(post.quantity)}개</dd></div><div><dt>희망 단가</dt><dd>{number.format(post.unitPrice)}원<span> / 개</span></dd></div>
       <div><dt>규격</dt><dd>{post.size || '미지정'}</dd></div><div><dt>제안 마감</dt><dd>{post.deadline}</dd></div></dl>
     <div className="bm-detail-copy"><Subheading>제작 조건</Subheading><p>{post.description}</p></div>
-    {design && <p className="bm-info">디자인 파트너 참여는 준비 중입니다. 현재는 패키징 제작 의뢰에 제안할 수 있어요.</p>}
+    {design && <p className="bm-info">{designer ? '새 디자인 제안은 준비 중입니다. 보낸 제안은 내 제안에서, 기존 계약은 계약함에서 확인할 수 있어요.' :
+      '디자인 파트너 참여는 준비 중입니다. 현재는 패키징 제작 의뢰에 제안할 수 있어요.'}</p>}
     {user && post.isMine ? <section className="bm-offer-section"><h3>받은 제안 <span>{offers.length}</span></h3>
       {offers.length ? offers.map(o => <Offer key={o.id} offer={o} post={post} allowSelect={!design && post.status === 'open'} onSelect={onSelect} />) : <p className="bm-hint">아직 들어온 제안이 없습니다.</p>}
     </section> : ownOffer ? <Offer offer={ownOffer} post={post} /> : design ? null : open && !user ?
@@ -247,16 +254,25 @@ export default function Market(props) {
 }
 
 function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, onSignup = onLogin, postId, onChoosePost, initialCategory, selectedPartner }) {
-  const defaultFilters = view === 'feed' && (user?.kind === 'packaging' || user?.kind === 'both') ? packagingFilters : allFilters;
+  const designer = user?.kind === 'design';
+  const defaultFilters = view === 'feed' && isPackagingPartner(user?.kind) ? packagingFilters : allFilters;
   const [filters, setFilters] = useState(() => historyFilters(defaultFilters));
+  const [historyVisit, setHistoryVisit] = useState(0);
   const { category, query, activeOnly } = filters;
   const [notice, setNotice] = useState('');
   const known = useRef(null);
   const mountedAt = useRef(Date.now());
   const detail = useRef(null);
   const list = useRef(null);
-  const posts = state?.posts ?? [], offers = state?.offers ?? [];
+  const allPosts = state?.posts ?? [], offers = state?.offers ?? [];
+  const posts = designer ? allPosts.filter(post => post.category === 'design') : allPosts;
   const mine = view === 'mine', brand = user?.kind === 'brand';
+  useEffect(() => {
+    // Two consecutive entries can show the same board with different filters.
+    const restore = () => setHistoryVisit(visit => visit + 1);
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
   useEffect(() => {
     if (!state?.posts) return;
     const previous = known.current;
@@ -272,28 +288,31 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, onSig
   }, [notice]);
   const mineIds = new Set(offers.filter(o => o.isMine).map(o => o.postId));
   const scope = mine ? posts.filter(p => brand ? p.isMine : mineIds.has(p.id)) : posts;
-  const rows = scope.filter(post => matchesFilters(post, filters)).sort((a,b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const visibleFilters = designer ? { ...filters, category:'design', activeOnly:false } : filters;
+  const rows = scope.filter(post => matchesFilters(post, visibleFilters)).sort((a,b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   const selected = postId ? scope.find(post => post.id === postId) : rows[0];
   useLayoutEffect(() => {
-    const restored = historyFilters(defaultFilters);
+    const saved = historyFilters(defaultFilters);
+    const restored = designer ? { ...saved, category:'design', activeOnly:false } : saved;
     setFilters(postId && selected && !matchesFilters(selected, restored) ? allFilters : restored);
     if (!['feed', 'mine'].includes(view)) return;
-    if (!window.matchMedia('(max-width: 900px)').matches) {
-      if (postId) detail.current?.scrollTo(0, 0);
-      return;
+    const mobile = window.matchMedia('(max-width: 900px)').matches;
+    const previous = history.state?.bidListReturn;
+    if (previous?.view === view) {
+      const frame = requestAnimationFrame(() => {
+        const button = Array.from(list.current?.querySelectorAll('[data-post]') ?? []).find(row => row.dataset.post === previous.id);
+        if (mobile && postId) detail.current?.focus({ preventScroll: true });
+        else button?.focus({ preventScroll: true });
+        if (!mobile) detail.current?.scrollTo(0, previous.detailY ?? 0);
+        window.scrollTo({ top:previous.y, behavior:'instant' });
+      });
+      return () => cancelAnimationFrame(frame);
     }
-    if (postId) {
+    if (postId && mobile) {
       detail.current?.focus({ preventScroll: true });
       window.scrollTo(0, 0);
-    } else {
-      const previous = history.state?.bidListReturn;
-      if (previous?.view === view && list.current) {
-        const button = [...list.current.querySelectorAll('[data-post]')].find(row => row.dataset.post === previous.id);
-        button?.focus({ preventScroll: true });
-        window.scrollTo(0, previous.y);
-      }
-    }
-  }, [view, postId, defaultFilters]);
+    } else if (postId) detail.current?.scrollTo(0, 0);
+  }, [view, postId, defaultFilters, designer, historyVisit]);
   function rememberFilters(next, extra = {}) {
     history.replaceState({ ...history.state, ...extra, bidMarketFilters: next }, '');
   }
@@ -303,12 +322,12 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, onSig
       else onView(view);
     }
     const next = { ...filters, ...changes };
-    rememberFilters(next);
+    rememberFilters(next, { bidListReturn:null });
     setFilters(next);
   }
   const choose = id => {
     if (id === postId) { detail.current?.scrollTo(0, 0); return; }
-    if (!postId) rememberFilters(filters, { bidListReturn: { id, view, y: window.scrollY } });
+    rememberFilters(filters, { bidListReturn: { id, view, y: window.scrollY, detailY: detail.current?.scrollTop ?? 0 } });
     if (onChoosePost) onChoosePost(id);
     else onView(view + '/' + id);
     rememberFilters(filters, { bidFromList: !postId });
@@ -327,24 +346,24 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, onSig
     <h1>{view === 'new' ? '브랜드 회원 전용입니다' : '로그인이 필요합니다'}</h1>
     <button type="button" className="bm-primary" onClick={user ? () => onView('feed') : onLogin}>{user ? '파트너 찾기' : '로그인'} <ArrowRight size={15} /></button></div></section>;
   return <section className={postId ? 'bm bm-reading' : 'bm'}>
-    <BoardHeader mine={mine} posts={scope} brand={brand} onNew={() => onView('new')} />
-    <div className="bm-toolbar"><div className="bm-tabs" aria-label="공고 분야">
+    <BoardHeader mine={mine} posts={scope} brand={brand} designer={designer} onNew={() => onView('new')} />
+    <div className="bm-toolbar">{designer ? <span className="bm-kind">디자인 · 열람 전용</span> : <div className="bm-tabs" aria-label="공고 분야">
       {Object.entries({all:'전체 공고', packaging:types.packaging, design:'디자인 · 준비 중'}).map(([key,label]) => <button type="button" key={key} aria-pressed={category === key} onClick={() => { if (key !== category) updateFilters({category:key}); }}>{label}</button>)}
-    </div><label className="bm-search"><MagnifyingGlass size={16}/><input aria-label="공고 검색" value={query} onChange={e => updateFilters({query:e.target.value})} placeholder="공고명·제작 조건 검색" />{query && <button type="button" onClick={() => updateFilters({query:''})} aria-label="검색어 지우기"><X size={14}/></button>}</label></div>
+    </div>}<label className="bm-search"><MagnifyingGlass size={16}/><input aria-label="공고 검색" value={query} onChange={e => updateFilters({query:e.target.value})} placeholder="공고명·제작 조건 검색" />{query && <button type="button" onClick={() => updateFilters({query:''})} aria-label="검색어 지우기"><X size={14}/></button>}</label></div>
     <div className="bm-layout">
       <section className="bm-ledger" aria-label="공고 목록" ref={list}>
         <div className="bm-ledger-head"><h2>{mine ? (brand ? '내 발주 공고' : '제안을 보낸 공고') : '공고 목록'} <span>{rows.length}</span></h2><div>
-          <label className="bm-active-toggle"><input type="checkbox" checked={activeOnly} onChange={e => updateFilters({activeOnly:e.target.checked})} />접수 중만</label>
+          {!designer && <label className="bm-active-toggle"><input type="checkbox" checked={activeOnly} onChange={e => updateFilters({activeOnly:e.target.checked})} />접수 중만</label>}
           <span className="bm-sort"><ArrowDown size={12}/>최신순</span></div></div>
         {rows.length > 0 ? <div className="bm-rows">{rows.map(post => <button className={`bm-row ${selected?.id === post.id ? 'is-current' : ''}`} type="button" key={post.id}
           data-post={post.id} aria-current={post.id === postId ? 'true' : undefined} onClick={() => choose(post.id)}>
           <ProductIcon post={post} /><span className="bm-row-text"><span className="bm-row-meta">{types[post.category]}<i/> {elapsed(post.createdAt)}</span>
           <strong>{post.title}</strong><span className="bm-row-figures">{number.format(post.quantity)}개 <i/> 희망 {number.format(post.unitPrice)}원/개</span></span>
-          <span className="bm-row-right"><span className={acceptsProposals(post) && daysLeft(post) <= 2 ? 'urgent' : ''}>{statusText(post)}</span><small>제안 {post.offerCount ?? 0}건</small></span>
+          <span className="bm-row-right"><span className={acceptsProposals(post) && daysLeft(post) <= 2 ? 'urgent' : ''}>{statusText(post, designer)}</span><small>제안 {post.offerCount ?? 0}건</small></span>
           <CaretRight size={14} className="bm-chevron" /></button>)}</div> :
           <div className="bm-empty"><ListMagnifyingGlass size={34} weight="light"/><h3>{scope.length ? '조건에 맞는 공고가 없습니다' : mine ? (brand ? '아직 등록한 공고가 없습니다' : '아직 보낸 제안이 없습니다') : '아직 등록된 공고가 없습니다'}</h3>
             <p>{scope.length ? '검색어나 분야를 바꾸어 보세요.' : mine ? (brand ? '첫 발주 조건을 등록해 보세요.' : '파트너를 찾는 브랜드의 공고를 살펴보세요.') : '브랜드가 공고를 등록하면 이곳에 표시됩니다.'}</p>
-            {scope.length ? <button type="button" className="bm-secondary" onClick={() => updateFilters(allFilters)}>조건 초기화</button> : mine && <button type="button" className="bm-secondary" onClick={() => onView(brand ? 'new' : 'feed')}>{brand ? '공고 등록' : '파트너 찾기'}</button>}</div>}
+            {scope.length ? <button type="button" className="bm-secondary" onClick={() => updateFilters(allFilters)}>조건 초기화</button> : mine && <button type="button" className="bm-secondary" onClick={() => onView(brand ? 'new' : 'feed')}>{brand ? '공고 등록' : designer ? '디자인 의뢰 보기' : '파트너 찾기'}</button>}</div>}
       </section>
       <aside className="bm-side" tabIndex={-1} ref={detail}>
         {postId && <button type="button" className="bm-back" onClick={returnToList}><ArrowLeft size={15}/> 공고 목록</button>}

@@ -58,7 +58,7 @@ test('bid board restricts participation by category and excludes identities and 
   }
   const {id}=(await f.api(f.brand,'posts',post)).data;
   assert.equal((await f.api(f.otherBrand,'posts',{...post,category:'design'})).status,403);
-  assert.equal((await f.api(f.design,'state')).status,403);
+  assert.deepEqual((await f.api(f.design,'state')).data.posts,[]);
   assert.equal((await f.api(f.design,'posts/'+id+'/offers',offer)).status,403);
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',{...offer,tiers:[offer.tiers[0],offer.tiers[0]]})).status,400);
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',{...offer,note:f.box.email})).status,400);

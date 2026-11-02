@@ -16,8 +16,8 @@
 .pa-role-card:not(:disabled):hover, .pa-role-card[aria-pressed=true] { border-color: var(--green); }
 .pa-role-card[aria-pressed=true] { background: var(--mint); }
 .pa-role-card[aria-pressed=true] .pa-role-icon { background: var(--surface); }
-.pa-role-card:disabled { background: var(--soft); color: var(--muted); cursor: not-allowed; opacity: 1; }
-.pa-role-card:disabled .pa-role-icon { color: var(--muted); background: var(--surface); }
+.pa-role-card.pa-notice-card { background: var(--soft); color: var(--muted); }
+.pa-notice-card .pa-role-icon { color: var(--muted); background: var(--surface); }
 .pa-soon { color: var(--muted); font-size: 12px; font-weight: 650; background: var(--surface); border-radius: 8px; padding: 4px 7px; white-space: nowrap; }
 .pa-results { margin-top: 34px; scroll-margin-top: 125px; }
 .pa-results > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
@@ -41,6 +41,9 @@
 .pa-result-action { display: inline-flex; align-items: center; gap: 6px; color: var(--green-dark); font-weight: 650; }
 .pa-empty { padding: 22px 18px; border: 1px dashed var(--line); border-radius: 15px; text-align: center; color: var(--muted); }
 .pa-empty .button { margin-top: 12px; }
+.pa-notice { width: min(480px,calc(100% - 32px)); }
+.pa-notice .modal-heading h2 { margin-top: 6px; }
+.pa-notice footer { display: flex; justify-content: flex-end; margin-top: 24px; }
 .pa-compact { gap: 8px; margin-bottom: 16px; }
 .pa-compact .pa-role-card { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; padding: 12px 6px; min-height: 76px; border-radius: 12px; text-align: center; }
 .pa-compact .pa-role-icon { width: 24px; height: 24px; border-radius: 0; background: none; }
@@ -63,4 +66,8 @@
   .pa-result-icon { width: 35px; height: 35px; border-radius: 10px; }
   .pa-result-action { grid-column: 2; }
   .pa-compact .pa-role-copy > strong { font-size: 13px; word-break: keep-all; }
+}
+@media(max-width:600px){
+  .pa-notice { width: 100%; }
+  .pa-notice footer > .button { width: 100%; }
 }

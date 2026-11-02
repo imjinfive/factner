@@ -4,6 +4,7 @@ import {MotionConfig,motion} from 'motion/react';
 import {BrandMark,Button,Photo} from '../BrandControls';
 import ServiceIntro from '../ServiceIntro';
 import {partnerDestination} from '../partner-destination.js';
+import {normalizeSiteEntry,siteNavigationEvent,writeSiteEntry} from '../site-history.js';
 import Market from './Market';
 import PartnerAccess from './PartnerAccess';
 import {BidLoading,initialBidTheme,saveBidTheme} from './BidLoading';
@@ -45,18 +46,12 @@ async function request(path,payload,token=readToken()){
 }
 
 const accessViews = ['login','signup','demo','account'];
-const routes = new Set(['intro','feed','mine','new','contracts',...accessViews]);
 const titles={intro:'서비스 소개',feed:'파트너 찾기',mine:'내 활동',new:'공고 등록',contracts:'계약함',login:'로그인',signup:'회원가입',demo:'계정 체험',account:'내 계정'};
-function currentRoute(ops) {
-  const fragment=location.hash.slice(1), [view,detail]=fragment.split('/');
-  if(view==='preview')return 'feed';
-  if(!routes.has(view))return ops?'contracts':'intro';
-  return /^[\w-]{1,64}$/.test(detail||'') ? view+'/'+detail : view;
-}
 
-export default function BidApp(){
-  const ops=location.pathname.replace(/\/+$/,'')==='/ops';
-  const [route,setRoute]=useState(()=>currentRoute(ops));
+export default function BidApp({surface='market'}){
+  const ops=surface==='ops';
+  const [route,setRoute]=useState(()=>normalizeSiteEntry().route);
+  const [navRevision,setNavRevision]=useState(0);
   const [view,detail]=route.split('/'), intro=view==='intro', access=accessViews.includes(view);
   const marketNeeded=(!intro&&!access)||['signup','login'].includes(view)||Boolean(detail&&access);
   const [session,setSession]=useState(null),[state,setState]=useState(null),[error,setError]=useState('');
@@ -65,13 +60,14 @@ export default function BidApp(){
   useEffect(()=>{document.title=titles[view]+' · 팩트너';},[view]);
   useEffect(()=>{
     const sync=()=>{
-      if(location.hash==='#preview')history.replaceState(history.state,'','#feed');
-      setSelect(null);setRoute(currentRoute(ops));
+      const next=normalizeSiteEntry();
+      if(next.surface===surface){setSelect(null);setRoute(next.route);}
     };
     sync();
-    window.addEventListener('popstate',sync);window.addEventListener('hashchange',sync);
-    return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('hashchange',sync);};
-  },[ops]);
+    const events=['popstate','hashchange',siteNavigationEvent];
+    events.forEach(event=>window.addEventListener(event,sync));
+    return()=>events.forEach(event=>window.removeEventListener(event,sync));
+  },[surface]);
 
   const refresh=useCallback(async(full=false)=>{
     if(!marketNeeded&&!full)return;
@@ -114,15 +110,27 @@ export default function BidApp(){
     return()=>stream.close();
   },[marketNeeded,access,session?.demo,session?.hosted,refresh]);
 
-  function go(target,{replace=false,scroll=true,entry={}}={}){
-    if(ops&&!['contracts','demo','login','account'].includes(target.split('/')[0])){location.assign('/#'+target);return;}
-    const same=location.hash==='#'+target;
-    if(!same)history[replace?'replaceState':'pushState'](entry,'','#'+target);
-    setSelect(null);setRoute(target);
+  function go(target,{replace=false,scroll=true,entry={},force=false,targetSurface}={}){
+    const destination=targetSurface || (ops&&!['contracts','demo','login','account'].includes(target.split('/')[0])?'market':surface);
+    const same=destination===surface && target===route;
+    if(!same||force)writeSiteEntry(destination,target,{replace,entry});
+    setSelect(null);
     if(scroll){
       window.scrollTo({top:0,behavior:'instant'});
       if(!same)requestAnimationFrame(()=>document.getElementById('bid-work')?.focus({preventScroll:true}));
     }
+  }
+  function openSection(target){
+    const details=history.state || {};
+    const hasChoices=Boolean(details.bidAccessPick?.role || details.bidMarketFilters?.query ||
+      details.bidMarketFilters?.activeOnly || (details.bidMarketFilters?.category && details.bidMarketFilters.category!=='all'));
+    go(target,{force:true,replace:route===target&&!hasChoices});
+    setNavRevision(value=>value+1);
+    if(marketNeeded)refresh(true);
+  }
+  function openMembers(){
+    writeSiteEntry('members','account');
+    window.scrollTo({top:0,behavior:'instant'});
   }
   const navigate=target=>{
     if(!session?.user && ['mine','new','account'].includes(target.split('/')[0]))target='login';
@@ -147,10 +155,8 @@ export default function BidApp(){
     const category=state?.posts.find(p=>p.id===postId)?.category||(path==='/register'?context.category:null);
     const target=partnerDestination(data.user.kind,{postId,category});
     const selectedPartner=['/register','/login'].includes(path)&&data.user.kind==='brand' && state?.partners?.find(p=>p.alias===context.candidate);
-    if(ops&&data.user.kind!=='admin'){location.assign('/#'+target);return;}
-    if(!ops&&data.user.kind==='admin'){location.assign('/ops');return;}
     const entry=selectedPartner?{selectedPartner:{alias:selectedPartner.alias,title:selectedPartner.title}}:{};
-    go(target,{replace:true,entry});await refresh(true);
+    go(target,{replace:true,entry,targetSurface:data.user.kind==='admin'?'ops':'market'});await refresh(true);
   };
   const logout=async()=>{
     await request('/logout',{});++seq.current;sessionStorage.removeItem(tokenKey);setState(null);setSelect(null);
@@ -169,20 +175,20 @@ export default function BidApp(){
   return <MotionConfig reducedMotion="user"><div className="bx-shell">
     <a className="skip-link" href="#bid-work" onClick={e=>{e.preventDefault();document.getElementById('bid-work')?.focus();}}>본문 바로가기</a>
     <header className="site-header funnel-header"><div className="header-inner">
-      <button className="logo" aria-label="팩트너 홈" onClick={()=>go('intro')}><BrandMark/></button>
-      <nav aria-label="주 메뉴">{links.map(([key,label])=><button key={key} className={'nav-link '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>navigate(key)}>{label}{view===key&&<motion.span className="nav-indicator" layoutId="partner-navigation"/>}</button>)}</nav>
+      <button className="logo" aria-label="팩트너 홈" onClick={()=>openSection('intro')}><BrandMark/></button>
+      <nav aria-label="주 메뉴">{links.map(([key,label])=><button key={key} className={'nav-link '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>openSection(key)}>{label}{view===key&&<motion.span className="nav-indicator" layoutId="partner-navigation"/>}</button>)}</nav>
       <div className="header-actions bx-account">{!session?<span className="bx-account-placeholder" aria-label="계정 확인 중"/>:user?<button className="member-login-link bx-user" onClick={()=>go('account')}><span>{user.name}</span><CaretDown size={15}/></button>:<button className="member-login-link" onClick={()=>navigate('login')}>로그인</button>}</div>
     </div></header>
     <main id="bid-work" tabIndex={-1}>
       {error&&<div role="alert" className="bx-alert">{error} <button onClick={()=>refresh(true)}>다시 연결</button></div>}
       {intro?<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>navigate('feed')}/>:missing?(error?null:<BidLoading view={loadingView}/>):access||discovery?
-        <PartnerAccess mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} sourcePost={detail&&(state?.posts||[]).find(p=>p.id===detail)} onNavigate={navigate} onAuth={authenticate} onExit={logout} ops={ops}/>:
+        <PartnerAccess key={navRevision} navigationKey={navRevision} mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} sourcePost={detail&&(state?.posts||[]).find(p=>p.id===detail)} onNavigate={navigate} onMembers={openMembers} onAuth={authenticate} onExit={logout} ops={ops}/>:
         view==='contracts'&&(ops?user?.kind!=='admin':!user)?<section className="bx-authgate"><SquaresFour size={35}/><h1>{ops?'계약 운영실':'계약함'}</h1><p>{ops?'양측 서명을 확인하고 거래 당사자를 소개합니다.':'로그인하면 진행 중인 계약을 확인할 수 있어요.'}</p><Button onClick={()=>navigate(ops?'demo':'login')}>{ops?'운영팀 계정으로 입장':'로그인'} <ArrowRight size={16}/></Button></section>:
         view==='contracts'?<DealDesk state={state} user={user} mutate={mutate}/>:
-        <Market key={user?.id||'guest'} state={state} user={user} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} selectedPartner={view==='new'?history.state?.selectedPartner:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onSignup={post=>navigate('signup/'+post.id)} onDiscoveryBack={backToBrandRequests}/>}
+        <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} selectedPartner={view==='new'?history.state?.selectedPartner:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onSignup={post=>navigate('signup/'+post.id)} onDiscoveryBack={backToBrandRequests}/>}
     </main>
     <footer className="site-footer shell"><div><button className="logo" aria-label="팩트너 홈" onClick={()=>go('intro')}><BrandMark size={24}/></button><small>© {new Date().getFullYear()} factner.</small></div>
-      <div className="footer-right"><button onClick={()=>navigate('feed')}>파트너 찾기</button>{session?.demo&&<button onClick={()=>go('demo')}>계정 체험</button>}{session?.demo&&!ops&&<a href="/ops">운영실</a>}{session?.hosted&&<a href="/members/">기존 회원 서비스</a>}
+      <div className="footer-right"><button onClick={()=>openSection('feed')}>파트너 찾기</button>{session?.demo&&<button onClick={()=>go('demo')}>계정 체험</button>}{session?.demo&&!ops&&<button onClick={()=>go('contracts',{targetSurface:'ops'})}>운영실</button>}{session?.hosted&&<button onClick={openMembers}>기존 회원 서비스</button>}
         <Button tone="ghost" className="icon-button" aria-label={theme==='light'?'다크 모드로 전환':'라이트 모드로 전환'} onClick={themeToggle}>{theme==='light'?<Moon size={20}/>:<Sun size={20}/>}</Button>
         <p>{intro?'소개 이미지는 연출입니다.':'체험용 서비스 · 실제 결제는 발생하지 않습니다.'}</p></div></footer>
     {select&&<SelectDialog {...select} user={user} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>}

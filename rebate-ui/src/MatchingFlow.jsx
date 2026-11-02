@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Package, Factory, Storefront, Gift, Stack, Check
 import { api } from './api';
 import { MATCH_CATEGORIES, MATCH_CAPACITIES, previewCandidates } from './matching-preview.js';
 import { matchingFromHistory } from './navigation.js';
+import { siteNavigationEvent } from './site-history.js';
 import ReviewConfirm from './ReviewConfirm';
 import './matching-flow.css';
 
@@ -31,20 +32,21 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
   const selectedCandidates = visibleCandidates.filter(item => flow.selected.includes(item.id));
 
   useEffect(() => {
-    if (!active || authLoading) return;
+    if (!active || authLoading || history.state?.factnerSurface!=='members') return;
     const restored = matchingFromHistory(history.state, member);
-    history.replaceState({ ...history.state, matching: restored }, '', location.href);
+    history.replaceState({ ...history.state, matching: restored }, '', '/');
     setFlow(restored);
   }, [active, authLoading, member?.id, member?.role]);
 
   useEffect(() => {
     const restore = () => {
-      if (history.state?.factnerPage !== 'request' || authLoading) return;
+      if (history.state?.factnerSurface !== 'members' || history.state.factnerPage !== 'request' || authLoading) return;
       setFlow(matchingFromHistory(history.state, member));
       setSubmitError('');
     };
     window.addEventListener('popstate', restore);
-    return () => window.removeEventListener('popstate', restore);
+    window.addEventListener(siteNavigationEvent, restore);
+    return () => { window.removeEventListener('popstate', restore); window.removeEventListener(siteNavigationEvent, restore); };
   }, [member?.id, member?.role, authLoading]);
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export default function MatchingFlow({ Button, onSignup, onAccount, member, auth
 
   function save(next, push = false) {
     const current = { ...next, memberId: member?.id || null, form: { ...next.form, role: member?.role || next.form.role } };
-    history[push ? 'pushState' : 'replaceState']({ ...history.state, factnerPage: 'request', matching: current }, '', location.href);
+    history[push ? 'pushState' : 'replaceState']({ ...history.state, factnerPage: 'request', matching: current }, '', '/');
     setFlow(current);
     setSubmitError('');
     setHelpSent(false);

@@ -5,11 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="theme-color" content="#13885b" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    </script>
+    <link rel="stylesheet" href="/src/bids/loading.css" />
     <link rel="icon" type="image/svg+xml" href="/factner.svg" />
     <title>팩트너 · 회원 및 발주</title>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <div id="root">
+      <div class="bx-bootstrap" role="status" aria-label="회원 화면을 불러오는 중">
+        <header class="site-header funnel-header" aria-hidden="true"><div class="header-inner">
+          <span class="logo"><i class="bl-brand-icon"></i><span>factner.</span></span>
+          <nav><span class="nav-link">서비스 소개</span><span class="nav-link">파트너 찾기</span><span class="nav-link">이용 안내</span></nav>
+        </div></header>
+      </div>
+    </div>
+    <script type="module" src="/src/bids/entry.jsx"></script>
   </body>
 </html>
