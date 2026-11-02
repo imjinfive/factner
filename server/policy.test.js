@@ -94,3 +94,22 @@ test('stale consent is rejected, accepted consent is retained, and unconfigured 
  const config=JSON.stringify({...operator,accepting:true});env.DB.raw.prepare("UPDATE settings SET value=? WHERE key='service'").run(config);
  assert.equal((await publicClient('quotes',{...valid(),consentVersion:updated.data.version,testOnly:false})).status,503);
 });
+
+test('member intake opens independently from old quotes and closes on a policy change', async()=>{
+ const env=environment(),admin=await administrator(env),guest=client(env);
+ const status=async()=> (await guest('bid/session')).data.registration.available;
+ assert.equal(await status(),false);
+ assert.equal((await admin('admin/settings',{...operator,memberAccepting:true},'PUT')).status,400);
+ await admin('admin/settings',operator,'PUT');
+ const initial=await policy(env);
+ await admin('admin/policy',{...initial,published:true,reviewed:true},'PUT');
+ Object.assign(env,{TURNSTILE_SITE_KEY:'site-key',TURNSTILE_SECRET_KEY:'secret-key'});
+ Object.assign(admin.env,env,{APP_KIND:'admin'});
+ assert.equal((await admin('admin/settings',{...operator,memberAccepting:true},'PUT')).status,200);
+ assert.equal(await status(),true);
+ assert.equal((await admin('admin/settings')).data.memberIntake.available,true);
+ assert.equal((await guest('config')).data.mode,'test');
+ await admin('admin/policy',{...await policy(env),published:true,reviewed:true},'PUT');
+ assert.equal(await status(),false);
+ assert.equal((await admin('admin/settings')).data.memberIntake.enabled,false);
+});

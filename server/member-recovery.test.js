@@ -58,6 +58,16 @@ test('member registration, login and password changes accept eight characters an
  assert.equal((await f.admin('admin/members')).status,200);
 });
 
+test('withdrawal disables existing recovery codes and hides exact identity matches and recovery requests',async()=>{
+ const f=await fixture(),member=await register(f),code=await issue(f,member);
+ f.DB.raw.prepare("UPDATE members SET consent_version='order-archive-only' WHERE id=?").run(member.id);
+ assert.deepEqual((await f.member('member/find-id',identity)).data.emails,[]);
+ assert.equal((await f.member('member/recovery-request',{...identity,email:member.email})).status,200);
+ assert.equal(f.DB.raw.prepare('SELECT requested_at FROM member_recovery WHERE member_id=?').get(member.id).requested_at,null);
+ assert.equal((await f.member('member/reset-password',{email:member.email,code,newPassword:'Newpass8'})).status,400);
+ assert.equal(f.DB.raw.prepare('SELECT password_hash FROM members WHERE id=?').get(member.id).password_hash,member.password_hash);
+});
+
 test('ID recovery matches every identity field exactly, normalizes phone formatting and masks the email',async()=>{
  const f=await fixture();await register(f);
  const found=await f.member('member/find-id',{...identity,phone:'(010) 1234 5678'});

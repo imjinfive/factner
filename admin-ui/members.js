@@ -6,7 +6,7 @@ import {reviewBeforeSave} from './review.js';
 import {memberSupport} from './member-support.js';
 import {captureDrafts,restoreDrafts,showMemberSection} from './member-editor.js';
 
-const states={pending:'심사 대기',approved:'이용 중',rejected:'가입 보류',suspended:'이용 중지'};
+const states={pending:'심사 대기',approved:'이용 중',rejected:'가입 보류',suspended:'이용 중지',archived:'주문 보관'};
 const legal={individual:'개인',sole:'개인사업자',corporate:'법인사업자'};
 const roles={brand:'브랜드',supplier:'제작 업체'};
 const date=value=>new Date(value).toLocaleString('ko-KR');
@@ -16,40 +16,41 @@ export async function membersView(context){
  let edited=false;
  const setDirty=value=>{edited=value;context.setDirty?.(value);};
  const leave=()=>!edited||confirm('저장하지 않은 내용이 있습니다. 이동할까요?');
- let page=1,status='',q='',role='',legalType='',request=0;
+ let page=1,status=Object.hasOwn(states,context.initialStatus)?context.initialStatus:'',q='',role='',legalType='',service=context.initialService||'',request=0;
  const showError=error=>notice(error.message);
  const badge=m=>`<span class="badge member-state member-state-${m.status}">${states[m.status]}</span>`;
  const options=(items,selected)=>Object.entries(items).map(([key,label])=>`<option value="${key}" ${selected===key?'selected':''}>${label}</option>`).join('');
 
  async function list(){
   const requestId=++request;
-  const params=new URLSearchParams({page,status,q,role,legalType});
-  const [data,{requests},matching,packaging,service]=await Promise.all([api(`admin/members?${params}`),api('admin/members/recovery'),api('admin/matching/requests'),api('admin/packaging-reviews'),api('admin/member-requests')]);page=data.page;
+  const params=new URLSearchParams({page,status,q,role,legalType,service});
+  const [data,{requests},matching,packaging,serviceRequests]=await Promise.all([api(`admin/members?${params}`),api('admin/members/recovery'),api('admin/matching/requests'),api('admin/packaging-reviews'),api('admin/member-requests')]);page=data.page;
   if(requestId!==request||context.isActive&&!context.isActive())return;setDirty(false);
   shell(`<header><div><h1>회원·업체 관리</h1><p class="muted">가입 승인부터 업체 정보, 패키징 검토와 거래 연결까지 한곳에서 관리하세요.</p></div><button id="member-refresh" class="secondary">새로고침</button></header>
    <section class="panel recovery-queue ${requests.length?'needs-attention':''}" id="recovery-queue"><div class="member-section-heading"><div><span class="eyebrow">먼저 확인해주세요</span><h2>비밀번호 재설정 요청 <strong class="recovery-count">${requests.length}건</strong></h2></div></div><p class="muted">등록된 연락처로 본인을 확인한 뒤 재설정 코드를 안내해주세요.</p>
     ${requests.length?`<div class="workflow-queue-rows">${requests.map(r=>`<button class="workflow-queue-row recovery-row" type="button" data-member="${esc(r.member_id)}" data-section="member-recovery-panel"><strong>${esc(r.name)} · ${esc(r.contact)}</strong><span>${esc(r.phone)}<small>${esc(r.email)}</small></span><span>${date(r.requested_at)}</span><span class="recovery-action">본인 확인 · 코드 발급 →</span></button>`).join('')}</div>`:'<p class="muted">대기 중인 요청이 없습니다.</p>'}
    </section>
-   ${workflowQueue({esc,requests:matching.requests,reviews:packaging.reviews,service:service.requests})}
+   ${workflowQueue({esc,requests:matching.requests,reviews:packaging.reviews,service:serviceRequests.requests})}
    <section class="panel">
     <form id="member-filter" class="filters member-filters">
      <input type="search" name="q" aria-label="회원 검색" placeholder="업체명 · 담당자 · 이메일 · 연락처 · 사업자번호" value="${esc(q)}" maxlength="100">
      <select name="role" aria-label="활동 구분"><option value="">모든 활동</option>${options(roles,role)}</select>
      <select name="legalType" aria-label="회원 유형"><option value="">모든 유형</option>${options(legal,legalType)}</select>
+     <select name="service" aria-label="가입 서비스"><option value="">모든 가입 경로</option><option value="market" ${service==='market'?'selected':''}>파트너 찾기 가입</option></select>
      <button type="submit">검색</button><button id="member-reset" class="quiet" type="button">초기화</button>
     </form>
     <div class="member-status-tabs" role="group" aria-label="회원 상태">
      ${Object.entries({'':'전체',...states}).map(([key,label])=>`<button type="button" data-member-status="${key}" aria-pressed="${status===key}">${label}<span>${data.counts[key||'all'].toLocaleString('ko-KR')}</span></button>`).join('')}
     </div>
     <div class="table-scroll"><table><thead><tr><th>업체 / 담당자</th><th>활동</th><th>유형</th><th>연락처</th><th>상태</th><th>가입일</th></tr></thead><tbody>
-     ${data.members.map(m=>`<tr><td><button class="link-button" data-member="${m.id}">${esc(m.name)}</button><small>${esc(m.contact)} · ${esc(m.email)}</small></td><td>${roles[m.role]}</td><td>${legal[m.legal_type]}</td><td>${esc(m.phone)}</td><td>${badge(m)}</td><td>${new Date(m.created_at).toLocaleDateString('ko-KR')}</td></tr>`).join('')}
+     ${data.members.map(m=>`<tr><td><button class="link-button" data-member="${m.id}">${esc(m.name)}</button><small>${m.status==='archived'?'탈퇴 회원':esc(m.contact)+' · '+esc(m.email)}</small></td><td>${roles[m.role]}</td><td>${legal[m.legal_type]||'—'}</td><td>${esc(m.phone||'—')}</td><td>${badge(m)}</td><td>${m.created_at?new Date(m.created_at).toLocaleDateString('ko-KR'):'—'}</td></tr>`).join('')}
     </tbody></table>${data.total?'':'<div class="empty">조건에 맞는 회원이 없습니다.</div>'}</div>
     <div class="pagination"><span>${data.total}명 · ${page} / ${Math.max(1,Math.ceil(data.total/30))}</span><button id="member-prev" class="secondary" ${page===1?'disabled':''}>이전</button><button id="member-next" class="secondary" ${page*30>=data.total?'disabled':''}>다음</button></div>
    </section>${context.openLegacy?'<details class="legacy-company"><summary>이전 업체 자료</summary><p class="muted">회원 계정에 연결되지 않은 이전 업체 자료는 보관됩니다. 새 업체 조건과 패키징은 해당 회원 상세에서 입력해주세요.</p><button type="button" id="member-legacy" class="secondary">이전 업체 자료 확인</button></details>':''}`);
-  const readFilters=()=>{const f=new FormData(document.querySelector('#member-filter'));q=f.get('q');role=f.get('role');legalType=f.get('legalType');page=1;};
+  const readFilters=()=>{const f=new FormData(document.querySelector('#member-filter'));q=f.get('q');role=f.get('role');legalType=f.get('legalType');service=f.get('service');page=1;};
   document.querySelector('#member-filter').onsubmit=e=>{e.preventDefault();readFilters();list().catch(showError);};
   document.querySelectorAll('[data-member-status]').forEach(b=>b.onclick=()=>{readFilters();status=b.dataset.memberStatus;list().catch(showError);});
-  document.querySelector('#member-reset').onclick=()=>{page=1;status=q=role=legalType='';list().catch(showError);};
+  document.querySelector('#member-reset').onclick=()=>{page=1;status=q=role=legalType=service='';list().catch(showError);};
   document.querySelector('#member-refresh').onclick=()=>list().catch(showError);
   document.querySelector('#member-prev').onclick=()=>{page--;list().catch(showError);};
   document.querySelector('#member-next').onclick=()=>{page++;list().catch(showError);};
@@ -60,7 +61,16 @@ export async function membersView(context){
 
  async function detail(id,section,drafts=[],compare=false){
   const requestId=++request;
-  const [{member:m,files,reviews,orderCounts,profileEvents=[]},{partners}]=await Promise.all([api(`admin/members/${id}`),api(`admin/partners?memberId=${encodeURIComponent(id)}`)]);
+  const {member:m,files,reviews,orderCounts,profileEvents=[]}=await api(`admin/members/${id}`);
+  if(requestId!==request||context.isActive&&!context.isActive())return;
+  if(m.status==='archived'){
+   setDirty(false);
+   shell(`<header><div><button class="quiet" id="member-back">← 회원 목록</button><h1>${esc(m.name)}</h1><p>${roles[m.role]} · 과거 발주 조회 전용</p></div>${badge(m)}</header><section class="panel"><h2>보관된 발주 ${orderCounts.total}건</h2><button id="member-orders" class="secondary">발주 내역 보기</button></section>`);
+   document.querySelector('#member-back').onclick=()=>list().catch(showError);
+   document.querySelector('#member-orders').onclick=()=>ordersView({...context,memberId:id,memberName:m.name,memberArchived:true,onBack:()=>detail(id)}).catch(showError);
+   return;
+  }
+  const {partners}=await api(`admin/partners?memberId=${encodeURIComponent(id)}`);
   const reviewing=['pending','rejected'].includes(m.status),choices=reviewing?{approved:'가입 승인',rejected:'가입 보류'}:{approved:'이용 재개',suspended:'이용 중지'};
   let pendingDrafts=[];
   const reload=async()=>{await detail(id,undefined,pendingDrafts);refreshAlerts();};
@@ -113,7 +123,9 @@ export async function membersView(context){
   const editor=document.querySelector('[data-member-editor]');
   for(const form of editor.querySelectorAll('form'))for(const event of ['input','change'])form.addEventListener(event,()=>{form.dataset.edited='true';setDirty(true);});
   document.querySelectorAll('[data-member-section]').forEach(button=>button.onclick=()=>showMemberSection(button.dataset.memberSection));
-  if(section)showMemberSection(section);
+  const target=section==='member-selections'&&context.initialRequestId&&document.getElementById('member-request-'+context.initialRequestId);
+  if(target){showMemberSection(target.id);target.focus({preventScroll:true});}
+  else if(section)showMemberSection(section);
   document.querySelector('#member-back').onclick=()=>{if(leave())list().catch(showError);};
   document.querySelector('#member-orders').onclick=()=>{if(leave())ordersView({...context,memberId:id,memberName:m.name,onBack:()=>detail(id)}).catch(showError);};
   document.querySelector('#member-partners').onclick=()=>{if(leave())partnersView({...context,initialMember:m,onBack:()=>detail(id)}).catch(showError);};
@@ -143,5 +155,5 @@ export async function membersView(context){
    editor.prepend(message);setDirty(true);if(compare)message.scrollIntoView({block:'start'});
   }
  }
- await list();
+ if(context.initialMemberId)await detail(context.initialMemberId,context.initialSection||context.section||context.focusSection);else await list();
 }

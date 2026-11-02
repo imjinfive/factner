@@ -1,3 +1,4 @@
+import {currentMember} from './member-lifecycle.js';
 import {body,fail,json,now,stmt,text,rate} from './http.js';
 import {owner} from './auth.js';
 import {memberIdentity,requireRole} from './members.js';
@@ -24,7 +25,7 @@ async function listPackagings(env,brandId){
  });
 }
 async function brandMember(env,id){
- const member=await stmt(env,"SELECT id,role,status FROM members WHERE id=? AND role='brand'",id).first();if(!member)fail(404,'브랜드 회원을 찾을 수 없습니다.');return member;
+ const member=await stmt(env,`SELECT id,role,status FROM members WHERE id=? AND role='brand' AND ${currentMember()}`,id).first();if(!member)fail(404,'브랜드 회원을 찾을 수 없습니다.');return member;
 }
 export async function packagingApi(req,env,url,adminUser){
  const path=url.pathname,admin=!!adminUser;
@@ -41,14 +42,14 @@ export async function packagingApi(req,env,url,adminUser){
    const brandId=url.searchParams.get('memberId'),status=url.searchParams.get('status')||'';
    if(brandId!==null&&!uuid(brandId))fail(400,'회원을 확인해주세요.');
    if(!['','pending','approved','rejected'].includes(status))fail(400,'검토 상태를 확인해주세요.');
-   const rows=await stmt(env,`SELECT r.*,b.name AS brand_name,p.spec AS current_spec,p.approval_status FROM packaging_reviews r JOIN members b ON b.id=r.brand_id JOIN packagings p ON p.id=r.packaging_id WHERE (? IS NULL OR r.brand_id=?) AND (?='' OR r.status=?) ORDER BY (r.status='pending') DESC,r.created_at DESC,r.id DESC LIMIT 500`,brandId,brandId,status,status).all();
+   const rows=await stmt(env,`SELECT r.*,b.name AS brand_name,p.spec AS current_spec,p.approval_status FROM packaging_reviews r JOIN members b ON b.id=r.brand_id JOIN packagings p ON p.id=r.packaging_id WHERE ${currentMember('b')} AND (? IS NULL OR r.brand_id=?) AND (?='' OR r.status=?) ORDER BY (r.status='pending') DESC,r.created_at DESC,r.id DESC LIMIT 500`,brandId,brandId,status,status).all();
    return json({reviews:rows.results.map(row=>({...parseReview(row),current_spec:JSON.parse(row.current_spec)}))});
   }
   if(review[1]&&req.method==='PATCH'){
    const input=await body(req),note=text(input.note,1500);
    if(input.confirmed!==true||!['approve','reject'].includes(input.action)||!Number.isSafeInteger(input.version))fail(400,'검토 결과와 내용을 다시 확인해주세요.');
    if(input.action==='reject'&&!note)fail(400,'보완할 내용을 입력해주세요.');
-   const row=await stmt(env,'SELECT * FROM packaging_reviews WHERE id=?',review[1]).first();if(!row)fail(404,'검토 요청을 찾을 수 없습니다.');
+   const row=await stmt(env,`SELECT r.* FROM packaging_reviews r JOIN members m ON m.id=r.brand_id WHERE r.id=? AND ${currentMember('m')}`,review[1]).first();if(!row)fail(404,'검토 요청을 찾을 수 없습니다.');
    if(row.status!=='pending'||row.version!==input.version)fail(409,'이미 처리했거나 변경된 요청입니다.');
    const packaging=await stmt(env,'SELECT * FROM packagings WHERE id=?',row.packaging_id).first();
    if(packaging.archived||packaging.version!==row.base_version)fail(409,'패키징이 변경되었습니다. 새로고침해주세요.');

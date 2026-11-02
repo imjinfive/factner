@@ -8,6 +8,8 @@ import {createSecurity} from './security.js';
 import {renderSuppliers} from './suppliers.js';
 import {operationsView} from './operations.js';
 import {policyView} from './policy.js';
+import {marketView} from './market.js';
+import {overviewView} from './overview.js';
 const root = document.querySelector('#app');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const states = {received:'접수',reviewing:'검토 중',consulting:'상담 중',quoted:'견적 안내',completed:'완료',cancelled:'취소'};
@@ -52,9 +54,24 @@ function renderOrderAlerts(){
  const counts=data&&(data.unread||data.overdue)?'<div class="order-alert-actions"><strong>확인이 필요한 발주</strong><button data-attention="unread">미확인 '+data.unread+'건</button><button data-attention="overdue" class="'+(data.overdue?'late':'')+'">답변 지연 '+data.overdue+'건</button></div>':'';
  bar.hidden=!html&&!counts;if(bar.innerHTML!==html+counts){bar.innerHTML=html+counts;bar.querySelectorAll('[data-attention]').forEach(b=>b.onclick=()=>{if(!dirty||confirm('저장하지 않은 내용이 있습니다. 이동할까요?'))navigate('orders',{attention:b.dataset.attention});});}
 }
+function navigation() {
+  const owner=user.role==='owner';
+  const items=[
+    ...(owner?[['overview','운영 현황'],['members','회원·업체 관리','member-attention-badge'],['market','공고·제안 관리'],['partners','거래 연결 관리']]:[]),
+    ['orders','발주 관리','order-attention-badge'],['quotes','이전 견적 관리'],
+    ...(owner?[['policy','운영 문서'],['operations','알림 발송'],['users','관리자 계정']]:[]),
+    ['password','비밀번호 변경']
+  ];
+  return items.map(([key,label,badge])=>`<button type="button" data-nav="${key}" ${view===key?'class="selected" aria-current="page"':''}>${label}${badge?` <span id="${badge}" class="order-nav-badge" hidden></span>`:''}</button>`).join('');
+}
 function shell(content) {
-  root.innerHTML=`<div class="layout"><aside><div class="wordmark">factner.</div><small>관리자</small><nav><button data-nav="quotes" class="${view==='quotes'?'selected':''}">이전 견적 관리</button><button data-nav="orders" class="${view==='orders'?'selected':''}">발주 관리 <span id="order-attention-badge" class="order-nav-badge" hidden></span></button>${user.role==='owner'?`<button data-nav="members" class="${view==='members'?'selected':''}">회원·업체 관리 <span id="member-attention-badge" class="order-nav-badge" hidden></span></button><button data-nav="partners" class="${view==='partners'?'selected':''}">업체 매칭</button><button data-nav="policy" class="${view==='policy'?'selected':''}">운영 문서</button><button data-nav="operations" class="${view==='operations'?'selected':''}">알림 발송</button><button data-nav="users" class="${view==='users'?'selected':''}">관리자 계정</button>`:''}<button data-nav="password" class="${view==='password'?'selected':''}">비밀번호 변경</button></nav><div class="account"><p>${esc(user.display_name)}<br><small>${user.role==='owner'?'대표 관리자':'관리자'}</small></p><div class="account-actions"><button id="logout" class="quiet">로그아웃</button>${user.role==='owner'?`<button data-nav="settings" class="settings-button ${view==='settings'?'selected':''}" aria-label="운영 설정" title="운영 설정" aria-pressed="${view==='settings'}"><svg viewBox="0 0 256 256" width="28" height="28" fill="currentColor" aria-hidden="true"><path d="M216,130.16q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.6,107.6,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.29,107.29,0,0,0-26.25-10.86,8,8,0,0,0-7.06,1.48L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.6,107.6,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z"/></svg></button>`:''}</div></div></aside><main class="content"><section id="member-attention-bar" class="member-attention-bar" aria-label="회원 요청 알림" aria-live="polite" hidden></section><section id="order-attention-bar" class="order-attention-bar" aria-label="발주 알림" aria-live="polite" hidden></section>${content}</main></div>`;
+  root.innerHTML=`<div class="layout"><aside><div class="wordmark">factner.</div><small>관리자</small><nav aria-label="관리자 메뉴">${navigation()}</nav><div class="account"><p>${esc(user.display_name)}<br><small>${user.role==='owner'?'대표 관리자':'관리자'}</small></p><div class="account-actions"><button id="logout" class="quiet">로그아웃</button>${user.role==='owner'?`<button data-nav="settings" class="settings-button ${view==='settings'?'selected':''}" aria-label="운영 설정" title="운영 설정" aria-pressed="${view==='settings'}"><svg viewBox="0 0 256 256" width="28" height="28" fill="currentColor" aria-hidden="true"><path d="M216,130.16q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.6,107.6,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.29,107.29,0,0,0-26.25-10.86,8,8,0,0,0-7.06,1.48L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.6,107.6,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z"/></svg></button>`:''}</div></div></aside><main class="content"><section id="member-attention-bar" class="member-attention-bar" aria-label="회원 요청 알림" aria-live="polite" hidden></section><section id="order-attention-bar" class="order-attention-bar" aria-label="발주 알림" aria-live="polite" hidden></section>${content}</main></div>`;
   renderOrderAlerts();renderMemberAlerts();
+  const nav=root.querySelector('aside nav'),selected=nav.querySelector('[aria-current="page"]');
+  if(selected&&nav.scrollWidth>nav.clientWidth){
+    const start=selected.getBoundingClientRect().left-nav.getBoundingClientRect().left;
+    nav.scrollLeft=Math.max(0,start-(nav.clientWidth-selected.offsetWidth)/2);
+  }
   root.querySelectorAll('[data-nav]').forEach(button=>button.addEventListener('click',()=>{if(!dirty||confirm('저장하지 않은 내용이 있습니다. 이동할까요?'))navigate(button.dataset.nav);}));
   document.querySelector('#logout').addEventListener('click',async()=>{try{await send('auth/logout',{});user=null;await boot();}catch(error){notice(error.message);}});
 }
@@ -63,16 +80,20 @@ async function navigate(next,options={}) {
   const generation=renderId,scopedShell=content=>{if(user&&renderId===generation)shell(content);};
   try{
     if(next==='quotes'){await list();refreshTimer=setInterval(()=>{if(!currentId&&!dirty&&document.visibilityState==='visible')list(false).catch(error=>notice(error.message));},20000);}
-    if(next==='members')await membersView({api,send,shell:scopedShell,esc,submit,notice,setDirty:value=>dirty=value,isActive:()=>!!user&&renderId===generation,focusSection:options.section,refreshAlerts:()=>memberAlerts.refresh(),openLegacy:()=>navigate('suppliers')});
+    const isActive=()=>!!user&&renderId===generation;
+    if(next==='overview')await overviewView({api,shell:scopedShell,navigate,isActive});
+    if(next==='market')await marketView({api,send,shell:scopedShell,esc,notice,isActive,initialStatus:options.status,initialPostId:options.postId,
+      openMatching:(brandId,requestId)=>navigate('members',{memberId:brandId,requestId,section:'member-selections'})});
+    if(next==='members')await membersView({api,send,shell:scopedShell,esc,submit,notice,setDirty:value=>dirty=value,isActive,focusSection:options.section,initialStatus:options.status,initialService:options.service,initialMemberId:options.memberId,initialRequestId:options.requestId,refreshAlerts:()=>memberAlerts.refresh(),openLegacy:()=>navigate('suppliers')});
     if(next==='partners')await partnersView({api,send,shell,esc,submit,notice});
     if(next==='orders')await ordersView({api,send,shell:scopedShell,esc,submit,notice,initialAttention:options.attention||'',setDirty:value=>dirty=value,isActive:()=>!!user&&renderId===generation});
     if(next==='users')await users();
-    if(next==='settings')await settings();
+    if(next==='settings')await settings(scopedShell,isActive);
     if(next==='password')security.password(shell);
     if(next==='suppliers')await renderSuppliers({api,send,shell,esc,submit,notice,setDirty:value=>dirty=value,isActive:()=>view==='suppliers'});
     if(next==='operations')await operationsView({api,send,shell,esc,submit,notice});
     if(next==='policy')await policyView({api,send,shell,esc,submit,notice,setDirty:value=>dirty=value});
-  }catch(error){if(!user||generation!==renderId)return;notice(error.message);if(user)shell(`<h1>연결을 확인해주세요</h1><p role="alert">${esc(error.message)}</p><button id="retry">다시 시도</button>`);document.querySelector('#retry')?.addEventListener('click',()=>navigate(next));}
+  }catch(error){if(!user||generation!==renderId)return;notice(error.message);shell(`<h1>연결을 확인해주세요</h1><p role="alert">${esc(error.message)}</p><button id="retry">다시 시도</button>`);document.querySelector('#retry')?.addEventListener('click',()=>navigate(next,options));}
 }
 async function list(reset=true) {
   const requestId=renderId;
@@ -104,17 +125,35 @@ async function users() {
   document.querySelector('#user-form').onsubmit=e=>submit(e,async data=>{await send('admin/users',data);notice('관리자 계정을 만들었어요.');await users();});
   root.querySelectorAll('[data-user]').forEach(button=>button.addEventListener('click',async()=>{try{await send(`admin/users/${button.dataset.user}`,{active:button.dataset.active==='true'},'PATCH');await users();}catch(error){notice(error.message);}}));
 }
-async function settings() {
+async function settings(render,isActive) {
   const config=await api('admin/settings');
-  shell(`<header><div><h1>운영 설정</h1></div></header><section class="panel narrow"><p class="badge">${config.accepting?'정식 접수 중':'테스트 접수 중'}</p><ul class="readiness">${config.readiness.map(item=>`<li>${item.ready?'✓':'○'} ${esc(item.label)} — ${item.ready?'준비됨':'확인 필요'}</li>`).join('')}</ul><form id="settings-form"><label>운영자명 / 상호<input name="operator" value="${esc(config.operator)}" maxlength="100"></label><label>문의 이메일<input name="contactEmail" type="email" value="${esc(config.contactEmail)}" maxlength="254"></label><label class="check"><input name="accepting" type="checkbox" ${config.accepting?'checked':''}> 정식 견적 접수 시작</label><button type="submit">운영 설정 저장</button></form></section>`);
-  document.querySelector('#settings-form').oninput=()=>dirty=true;
-  document.querySelector('#settings-form').onsubmit=e=>submit(e,async data=>{await send('admin/settings',{...data,accepting:data.accepting==='on'},'PUT');dirty=false;notice('운영 설정을 저장했어요.');await settings();});
+  if(!isActive())return;
+  const checklist=items=>`<ul class="readiness">${items.map(item=>`<li>${item.ready?'✓':'○'} ${esc(item.label)} · ${item.ready?'준비됨':'확인 필요'}</li>`).join('')}</ul>`;
+  render(`<header><div><h1>운영 설정</h1><p class="muted">고객 사이트의 가입 접수 상태와 운영 정보를 관리하세요.</p></div></header>
+    <section class="panel narrow"><form id="settings-form"><h2>운영자 정보</h2>
+      <label>운영자명 / 상호<input name="operator" value="${esc(config.operator)}" maxlength="100"></label>
+      <label>문의 이메일<input name="contactEmail" type="email" value="${esc(config.contactEmail)}" maxlength="254"></label>
+      <h2>회원가입 접수</h2><span class="badge">${config.memberIntake.available?'접수 중':'접수 닫힘'}</span>
+      ${checklist(config.memberIntake.checks)}
+      <p><button type="button" id="settings-policy" class="link-button">운영 문서 확인</button></p>
+      <label class="check"><input name="memberAccepting" type="checkbox" ${config.memberIntake.enabled?'checked':''}>브랜드·패키징 제작업체 가입 신청 접수</label>
+      <details class="completed-requests"><summary>이전 견적 접수 설정</summary>${checklist(config.readiness)}
+      <label class="check"><input name="accepting" type="checkbox" ${config.accepting?'checked':''}>비회원 견적 접수</label></details>
+      <button type="submit">운영 설정 저장</button></form></section>`);
+  const form=document.querySelector('#settings-form');
+  form.oninput=()=>dirty=true;
+  form.querySelector('#settings-policy').onclick=()=>{if(!dirty||confirm('저장하지 않은 내용이 있습니다. 이동할까요?'))navigate('policy');};
+  form.onsubmit=e=>submit(e,async data=>{
+    await send('admin/settings',{...data,accepting:data.accepting==='on',memberAccepting:data.memberAccepting==='on',policyVersion:config.policyVersion},'PUT');
+    if(!isActive())return;
+    dirty=false;notice('운영 설정을 저장했어요.');await settings(render,isActive);
+  });
 }
 async function boot() {
   clearInterval(refreshTimer);orderAlerts.stop();memberAlerts.stop();memberAttentionState={data:null,error:''};attentionState={data:null,error:''};user=null;renderId++;
   try{const data=await api('auth/me');await security.accept(data);}catch{try{const state=await api('auth/state');security.auth(state.setupRequired);}catch(error){root.innerHTML=`<main class="auth"><h1>서버 연결을 확인해주세요</h1><p>${esc(error.message)}</p><button id="reconnect">다시 연결</button></main>`;document.querySelector('#reconnect').addEventListener('click',boot);}}
 }
-const security=createSecurity({root,send,submit,boot,onAuthenticated:async current=>{user=current;orderAlerts.start();if(user.role==='owner')memberAlerts.start();await navigate(user.role==='owner'?'members':'orders');}});
+const security=createSecurity({root,send,submit,boot,onAuthenticated:async current=>{user=current;orderAlerts.start();if(user.role==='owner')memberAlerts.start();await navigate(user.role==='owner'?'overview':'orders');}});
 window.addEventListener('focus',()=>{if(user){orderAlerts.refresh();if(user.role==='owner')memberAlerts.refresh();}});
 window.addEventListener('visibilitychange',()=>{if(user&&document.visibilityState==='visible'){orderAlerts.refresh();if(user.role==='owner')memberAlerts.refresh();}});
 window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});

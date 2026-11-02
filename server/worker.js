@@ -4,7 +4,7 @@ import {json,HttpError,fail,now,stmt,body,text,rate} from './http.js';
 import {authApi,identity,owner} from './auth.js';
 import {supplierPublicApi,supplierAdminApi} from './suppliers.js';
 import {quoteNotificationStatement,operationsApi,drainNotifications,recordFailure,cleanOperations} from './operations.js';
-import {service,policy,policyApi,readiness} from './policy.js';
+import {service,policy,policyApi,readiness,memberIntake} from './policy.js';
 import {verifyQuoteSubmission} from './spam.js';
 import {memberApi,memberAdminApi} from './members.js';
 import {orderApi} from './orders.js';
@@ -12,7 +12,8 @@ import {partnerApi} from './partners.js';
 import {matchingApi} from './matching.js';
 import {packagingApi} from './packagings.js';
 import {memberSupportAdminApi} from './member-support.js';
-import {publicBidApi} from './public-bid.js';
+import {publicBidApi,localMemberPreview} from './public-bid.js';
+import {adminMarketApi} from './admin-market.js';
 export const statuses = {received:'접수', reviewing:'검토 중', consulting:'상담 중', quoted:'견적 안내', completed:'완료', cancelled:'취소'};
 export function quoteInput(input) {
   const data = {
@@ -86,16 +87,29 @@ async function adminApi(req, env, url) {
   const authResult=await authApi(req,env,url);
   if(authResult)return authResult;
   const user=await identity(req,env);
+  if(path.startsWith('/api/admin/market/'))return (await adminMarketApi(req,env,url,user))||fail(404,'없는 공고 관리 기능입니다.');
   const moduleResult=await matchingApi(req,env,url,user)||await packagingApi(req,env,url,user)||await memberSupportAdminApi(req,env,url,user)||await memberAdminApi(req,env,url,user)||await partnerApi(req,env,url,user)||await orderApi(req,env,url,user)||await supplierAdminApi(req,env,url,user)||await operationsApi(req,env,url,user)||await policyApi(req,env,url,user);
   if(moduleResult)return moduleResult;
   if (path === '/api/admin/settings') {
     owner(user);
-    if (req.method === 'GET') {const config=await service(env);return json({...config,readiness:await readiness(env,config)});}
+    const configBefore=await service(env);
+    const doc=await policy(env);
+    const captchaReady=Boolean(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY || env[localMemberPreview]);
+    if (req.method === 'GET') return json({...configBefore,memberIntake:memberIntake(configBefore,doc,captchaReady),policyVersion:doc.version,readiness:await readiness(env,configBefore)});
     if (req.method === 'PUT') {
       const input = await body(req);
-      const config = {operator:text(input.operator,100),contactEmail:text(input.contactEmail,254),accepting:input.accepting === true};
+      const config = {...configBefore,operator:text(input.operator,100),contactEmail:text(input.contactEmail,254),accepting:input.accepting === true,
+        memberAccepting:input.memberAccepting===undefined?Boolean(configBefore.memberAccepting ?? configBefore.accepting):input.memberAccepting===true};
+      if(config.memberAccepting){
+        if(input.policyVersion!==undefined && input.policyVersion!==doc.version)fail(409,'운영 문서가 바뀌었습니다. 새로고침 후 다시 확인해주세요.');
+        const missing=memberIntake(config,doc,captchaReady).checks.filter(item=>!item.ready);
+        if(missing.length)fail(400,`회원가입 접수 전 확인: ${missing.map(item=>item.label).join(', ')}`);
+      }
       if(config.accepting){const missing=(await readiness(env,config)).filter(item=>!item.ready);if(missing.length)fail(400,`정식 접수 전 확인: ${missing.map(item=>item.label).join(', ')}`);}
-      await stmt(env,"UPDATE settings SET value=? WHERE key='service'",JSON.stringify(config)).run();
+      const saved=await stmt(env,`UPDATE settings SET value=? WHERE key='service' AND json(value)=json(?)
+        AND (?=0 OR (SELECT id FROM policy_versions ORDER BY created_at DESC,rowid DESC LIMIT 1)=?)`,
+        JSON.stringify(config),JSON.stringify(configBefore),Number(config.memberAccepting||config.accepting),doc.version).run();
+      if(!saved.meta.changes)fail(409,'운영 설정이나 게시 문서가 바뀌었습니다. 새로고침 후 다시 확인해주세요.');
       return json(config);
     }
   }

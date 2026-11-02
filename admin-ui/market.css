@@ -1,0 +1,33 @@
+.admin-market { min-width:0; }
+.admin-market [data-detail] { display:grid; gap:18px; }
+.admin-market .am-heading,.admin-market .am-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.admin-market .am-heading { justify-content:space-between; margin-bottom:18px; }
+.admin-market .am-heading :is(h2,h3) { margin:0; }
+.admin-market .am-heading h3 { font-size:18px; }
+.admin-market .am-back { padding-left:0; }
+.admin-market .am-title { line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
+.admin-market .am-selection { border-color:#a8c6b5; }
+.admin-market .am-actions { margin-top:20px; }
+.admin-market .am-offer { border-top:1px solid #dce5df; padding:18px 0 0; margin-top:18px; }
+.admin-market .am-offer .am-heading { margin-bottom:10px; }
+.admin-market .am-tiers { font-variant-numeric:tabular-nums; }
+.admin-market .am-tiers :is(th,td):not(:first-child) { text-align:right; }
+.admin-market .am-picked { background:#edf5ef; color:#185a40; font-weight:650; }
+.admin-market .am-note { margin:12px 0 0; }
+.admin-market [data-results] .empty strong { color:#263d30; }
+@media(max-width:750px) {
+  .admin-market .am-posts,.admin-market .am-posts :is(tbody,tr) { display:block; }
+  .admin-market .am-posts thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .admin-market .am-posts tbody tr { padding:14px 0; border-bottom:1px solid #dce5df; white-space:normal; }
+  .admin-market .am-posts td { display:inline-block; padding:3px 12px 3px 0; border:0; vertical-align:top; }
+  .admin-market .am-posts td:first-child { display:block; }
+  .admin-market .am-posts td:nth-child(2) small { display:inline; margin-left:5px; }
+  .admin-market .am-posts td:nth-child(3)::before { content:'제안 '; }
+  .admin-market .am-posts td:nth-child(4)::before { content:'마감 '; }
+  .admin-market .am-posts td:last-child { display:block; margin-top:4px; }
+  .admin-market .am-tiers :is(th,td) { padding:10px 6px; }
+  .admin-market .filters { flex-wrap:wrap; }
+  .admin-market .filters input { flex-basis:100%; }
+  .admin-market .filters select { flex:1; }
+  .admin-market [data-detail] dl { grid-template-columns:minmax(70px,100px) 1fr; gap:9px; }
+}

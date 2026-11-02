@@ -1,6 +1,7 @@
 import {body,fail,json,now,stmt,text} from './http.js';
 import {owner} from './auth.js';
 import {notificationReadiness} from './operations.js';
+import {currentMember} from './member-lifecycle.js';
 
 const draft = {
  version:'draft-2026-10-28',published:false,
@@ -51,8 +52,22 @@ export async function policy(env) {
  return row?{...JSON.parse(row.content),version:row.id,published:!!row.published}:{...draft,operator:config.operator,contactEmail:config.contactEmail};
 }
 // Callers supply a static SQL alias. A pilot-only consent cannot grant access to the shared market.
+export function marketConsent(alias) {
+  return `(${currentMember(alias)} AND EXISTS(SELECT 1 FROM policy_versions pv WHERE pv.id=${alias}.consent_version AND pv.published=1))`;
+}
 export function approvedMarketMember(alias) {
-  return `${alias}.status='approved' AND EXISTS(SELECT 1 FROM policy_versions pv WHERE pv.id=${alias}.consent_version AND pv.published=1)`;
+  return `${alias}.status='approved' AND ${marketConsent(alias)}`;
+}
+export function memberIntake(config, doc, captchaReady) {
+ const enabled=config.memberAccepting ?? config.accepting;
+ const operatorReady=Boolean(config.operator && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.contactEmail));
+ const published=Boolean(doc.published && operatorReady && doc.operator===config.operator && doc.contactEmail===config.contactEmail);
+ const checks=[
+  {label:'운영 상호·문의 이메일',ready:operatorReady},
+  {label:'현재 운영 정보로 검토·게시한 약관 및 개인정보처리방침',ready:published},
+  {label:'회원가입 스팸 방지 연결',ready:Boolean(captchaReady)}
+ ];
+ return {enabled:Boolean(enabled),available:Boolean(enabled && published && captchaReady),published,checks};
 }
 export async function readiness(env,config) {
  const doc=await policy(env);
@@ -85,7 +100,7 @@ export async function policyApi(req,env,url,user) {
    const version=crypto.randomUUID();
    await env.DB.batch([
     stmt(env,'INSERT INTO policy_versions VALUES(?,?,?,?,?)',version,JSON.stringify(content),Number(published),user.id,now()),
-    stmt(env,"UPDATE settings SET value=? WHERE key='service'",JSON.stringify({...config,accepting:false})),
+    stmt(env,"UPDATE settings SET value=json_set(value,'$.accepting',json('false'),'$.memberAccepting',json('false')) WHERE key='service'"),
    ]);
    return json({...content,version,published});
   }

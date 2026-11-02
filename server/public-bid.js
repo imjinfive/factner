@@ -1,7 +1,7 @@
 import {body,fail,json,stmt} from './http.js';
 import {randomToken} from './security.js';
 import {memberApi,memberIdentity,loginMember,registerMember,hasMarketConsent} from './members.js';
-import {service,policy,approvedMarketMember} from './policy.js';
+import {service,policy,approvedMarketMember,memberIntake} from './policy.js';
 import {marketApi} from './bid-market.js';
 import {isReviewEmail,reviewPassword} from '../scripts/bid-seed.mjs';
 import {designerNotice} from '../shared/partner-roles.js';
@@ -12,11 +12,10 @@ const validRoom = value=>/^[a-f0-9]{64}$/.test(value||'');
 
 async function registration(env) {
   const [settings,doc]=await Promise.all([service(env),policy(env)]);
-  const published=Boolean(doc.published && settings.operator && settings.contactEmail &&
-    doc.operator===settings.operator && doc.contactEmail===settings.contactEmail);
   const captcha=Boolean(env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY);
+  const {available,published}=memberIntake(settings,doc,captcha || env[localMemberPreview]);
   return {
-    available:Boolean(settings.accepting && published && (captcha || env[localMemberPreview])),
+    available,
     consentVersion:published?doc.version:null,
     terms:published?doc.terms:'',privacy:published?doc.privacy:'',collection:published?doc.collection:'',transfer:published?doc.transfer:'',
     turnstileSiteKey:captcha?env.TURNSTILE_SITE_KEY:''

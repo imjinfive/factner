@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import {captureDrafts,restoreDrafts} from './member-editor.js';
 import {workflowQueue,memberWorkspace} from './member-workspace.js';
 
+test('selected market requests have individually focusable cards and require a confirmed partner connection to complete',async()=>{
+ const request={id:'request-one',requester_name:'브랜드',target_name:'제작사',category:'box',status:'pending',marketPostId:'post-one',marketPostCount:2};
+ const api=async path=>path.includes('company')?{profile:{}}:path.includes('matching/requests')?{requests:[request]}:{};
+ const {html}=await memberWorkspace({api,esc:value=>String(value??'')},{id:'a',role:'supplier'},()=>{});
+ assert.match(html,/id="member-request-request-one" tabindex="-1"/);
+ assert.match(html,/관련 공고 2건/);assert.match(html,/data-connect-request="request-one"/);
+ assert.doesNotMatch(html,/<option value="completed"/);
+});
+
 const field=(name,value,type='text')=>({name,value,type,checked:false,closest:()=>({textContent:name})});
 const form=(id,elements)=>({id,elements,dataset:{edited:'true'},dispatchEvent(){this.inputRestored=true;}});
 

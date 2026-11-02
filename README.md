@@ -12,11 +12,15 @@
 
 실회원은 D1의 승인 회원과 보안 쿠키로 공고·제안을 공유합니다. 지정된 테스트 이메일은 비밀번호로 로그인하면 브라우저별 SQLite Durable Object에서 가상 데이터를 사용합니다. 예시 데이터를 운영 D1에 넣지 않으며 테스트 서명과 모의 결제를 실거래로 처리하지 않습니다.
 
+[팩트너 관리자](https://admin.factner.com/)의 **운영 현황 → 공고·제안 관리**에서 실제 공고, 수량별 제안, 선정 조건과 연결 요청을 확인합니다. 대표 관리자가 양측을 확인해 연결하면 같은 요청에 속한 공고의 진행 상태가 브랜드와 제작업체 양쪽에 반영됩니다. 익명 탈퇴 기록은 회원 관리의 **주문 보관**, 발주 관리의 **보관 발주**에서 읽을 수 있습니다. 회원가입 접수와 이전 비회원 견적 접수는 운영 설정에서 각각 관리합니다.
+
 ### 로컬 시안
 
 Node 24에서 `npm run preview:bids`를 실행하고 [팩트너 홈](http://localhost:4180), [파트너 찾기](http://localhost:4180/#feed) 또는 [운영실](http://localhost:4180/ops)을 엽니다. 체험 계정의 공통 비밀번호는 `Factner-Demo-2026!`입니다. 브랜드는 `brand1@gmail.com`부터 `brand10@gmail.com`까지, 패키징 제작업체는 `package1@gmail.com`과 `packagedesign1@gmail.com`입니다. `design1@gmail.com`, `design2@gmail.com`은 디자이너 로그인 후 디자인 공고를 미리볼 수 있습니다. 신규 디자이너 가입과 디자인 제안은 준비 중입니다.
 
 로컬 Node 서버는 루프백에서만 실행합니다. 로컬 일반 가입·공고는 `.qa/bid-preview/members.sqlite`에 보관하며, 테스트 계정 공간은 분리합니다. 공개 사이트의 운영 데이터를 로컬 시연에 사용하지 않습니다.
+
+`npm run preview:admin`은 같은 로컬 회원 DB를 쓰는 [고객 사이트](http://localhost:4180/)와 [관리자 사이트](http://localhost:4181/)를 함께 엽니다. 로컬 관리자 계정이 없으면 `.qa/bid-preview/admin-setup-key.txt`의 키로 첫 계정을 만듭니다. 이 키는 운영 사이트에서 사용할 수 없습니다.
 
 브랜드와 박스·패키징·부자재 제작 업체를 연결하는 서비스입니다. GitHub 저장소는 [imjinfive/factner](https://github.com/imjinfive/factner)입니다. 기존 로컬 폴더와 `rebate-ui/` 경로는 유지합니다. kimkimco / kimkimdeck / kimkim_deck과 코드·설정·데이터를 공유하지 않는 독립 프로젝트입니다.
 

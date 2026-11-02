@@ -5,7 +5,8 @@ import {owner} from './auth.js';
 import {verifyQuoteSubmission} from './spam.js';
 import {memberSupport,memberWorkspaceApi} from './member-support.js';
 import {isReviewEmail} from '../scripts/bid-seed.mjs';
-import {approvedMarketMember} from './policy.js';
+import {approvedMarketMember,marketConsent} from './policy.js';
+import {currentMember} from './member-lifecycle.js';
 
 const consentVersion='member-pilot-2026-10-21';
 const fields='id,email,role,legal_type,name,contact,phone,business_number,status,review_note,created_at,updated_at,version';
@@ -15,7 +16,7 @@ const sessionToken=req=>req.headers.get('Cookie')?.match(/(?:^|;\s*)factner_memb
 export async function memberIdentity(req,env) {
  const token=sessionToken(req);
  if(!token)fail(401,'로그인이 필요합니다.');
- const row=await stmt(env,`SELECT m.* FROM member_sessions s JOIN members m ON m.id=s.member_id WHERE s.token_hash=? AND s.expires_at>? AND s.member_version=m.version AND m.status='approved'`,await digest(token),Date.now()).first();
+ const row=await stmt(env,`SELECT m.* FROM member_sessions s JOIN members m ON m.id=s.member_id WHERE s.token_hash=? AND s.expires_at>? AND s.member_version=m.version AND m.status='approved' AND ${currentMember('m')}`,await digest(token),Date.now()).first();
  if(!row)fail(401,'다시 로그인해주세요.');
  delete row.password_hash;delete row.consent_version;return row;
 }
@@ -68,7 +69,7 @@ export async function registerMember(req,env,input,{version,live=false,requireCa
   const existing=await stmt(env,'SELECT id FROM members WHERE email=?',email).first();
   if(existing)fail(409,'이 이메일로 접수된 가입 신청이 있습니다. 로그인에서 심사 상태를 확인해주세요.');
   const id=crypto.randomUUID(),date=now();
-  const allowed = live ? " WHERE (SELECT json_extract(value,'$.accepting') FROM settings WHERE key='service')=1 AND (SELECT id FROM policy_versions WHERE published=1 ORDER BY created_at DESC,rowid DESC LIMIT 1)=? AND (SELECT id FROM policy_versions ORDER BY created_at DESC,rowid DESC LIMIT 1)=?" : '';
+  const allowed = live ? " WHERE (SELECT COALESCE(json_extract(value,'$.memberAccepting'),json_extract(value,'$.accepting')) FROM settings WHERE key='service')=1 AND (SELECT id FROM policy_versions WHERE published=1 ORDER BY created_at DESC,rowid DESC LIMIT 1)=? AND (SELECT id FROM policy_versions ORDER BY created_at DESC,rowid DESC LIMIT 1)=?" : '';
   let saved;
   try{[saved]=await env.DB.batch([
    stmt(env,`INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,consent_version,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?${allowed}`,id,email,await passwordHash(password),input.role,input.legalType,name,contact,phone,input.legalType==='individual'?'':number,version,date,date,...(live?[version,version]:[])),
@@ -81,7 +82,7 @@ export async function loginMember(req,env,input,{bid=false}={}){
   await rate(env,`member-login:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,30,900);
   const {email,password}=loginInput(input);
   await rate(env,`member-login-email:${await digest(email)}`,10,900);
-  const row=await stmt(env,'SELECT * FROM members WHERE email=?',email).first();
+  const row=await stmt(env,`SELECT * FROM members WHERE email=? AND ${currentMember()}`,email).first();
   const valid=await verifyPassword(password,row?.password_hash||`${'0'.repeat(64)}:${'0'.repeat(64)}`);
   if(!row||!valid)fail(401,'이메일 또는 비밀번호를 확인해주세요.');
   const kind=row.role==='supplier'?'packaging':'brand';
@@ -136,30 +137,38 @@ export async function memberAdminApi(req,env,url,user){
  const recovery=await memberRecoveryAdminApi(req,env,path,user);if(recovery)return recovery;
  if(path==='/api/admin/members'&&req.method==='GET'){
   const query=text(url.searchParams.get('q')||'',100),q=`%${query.replace(/[\\%_]/g,'\\$&')}%`,status=url.searchParams.get('status')||'',role=url.searchParams.get('role')||'',legalType=url.searchParams.get('legalType')||'';
-  if(!['','pending','approved','rejected','suspended'].includes(status)||!['','brand','supplier'].includes(role)||!['','individual','sole','corporate'].includes(legalType))fail(400,'회원 검색 조건을 확인해주세요.');
+  if(!['','pending','approved','rejected','suspended','archived'].includes(status)||!['','brand','supplier'].includes(role)||!['','individual','sole','corporate'].includes(legalType))fail(400,'회원 검색 조건을 확인해주세요.');
   const digits=query.replace(/[+ ()-]/g,''),number=/^\d+$/.test(digits)?`%${digits}%`:'';
   const page=Math.max(1,Math.min(10000,Number.parseInt(url.searchParams.get('page'),10)||1));
   const where=`WHERE (name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR contact LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR business_number LIKE ? ESCAPE '\\' OR (?<>'' AND (REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,'-',''),' ',''),'(',''),')',''),'+','') LIKE ? OR business_number LIKE ?))) AND (?='' OR role=?) AND (?='' OR legal_type=?)`;
   const args=[q,q,q,q,q,number,number,number,role,role,legalType,legalType];
-  const grouped=await stmt(env,`SELECT status,count(*) AS n FROM members ${where} GROUP BY status`,...args).all();
-  const counts={all:0,pending:0,approved:0,rejected:0,suspended:0};for(const row of grouped.results){counts[row.status]=row.n;counts.all+=row.n;}
+  const filtered=url.searchParams.get('service')==='market'?where+' AND '+marketConsent('members'):where;
+  const listStatus=`CASE WHEN ${currentMember()} THEN status ELSE 'archived' END`;
+  const grouped=await stmt(env,`SELECT ${listStatus} AS member_status,count(*) AS n FROM members ${filtered} GROUP BY member_status`,...args).all();
+  const counts={all:0,pending:0,approved:0,rejected:0,suspended:0,archived:0};for(const row of grouped.results){counts[row.member_status]=row.n;if(row.member_status!=='archived')counts.all+=row.n;}
   const total=status?counts[status]:counts.all,lastPage=Math.max(1,Math.ceil(total/30)),currentPage=Math.min(page,lastPage);
-  const rows=await stmt(env,`SELECT ${fields} FROM members ${where} AND (?='' OR status=?) ORDER BY created_at DESC,id DESC LIMIT 30 OFFSET ?`,...args,status,status,(currentPage-1)*30).all();
-  return json({members:rows.results,total,page:currentPage,counts});
+  const rows=await stmt(env,`SELECT ${fields} FROM members ${filtered} AND ${status==='archived'?`NOT (${currentMember()})`:currentMember()} AND (?='' OR status=?) ORDER BY created_at DESC,id DESC LIMIT 30 OFFSET ?`,...args,status==='archived'?'':status,status,(currentPage-1)*30).all();
+  return json({members:status==='archived'?rows.results.map(({id,name,role})=>({id,name,role,status:'archived'})):rows.results,total,page:currentPage,counts});
  }
  const file=path.match(/^\/api\/admin\/members\/files\/([a-f0-9-]{36})$/);
- if(file&&req.method==='GET')return memberFile(req,env,file[1],user,true);
+ if(file&&req.method==='GET'){
+  const current=await stmt(env,`SELECT f.id FROM member_files f JOIN members m ON m.id=f.member_id WHERE f.id=? AND ${currentMember('m')}`,file[1]).first();
+  if(!current)fail(404,'파일을 찾을 수 없습니다.');
+  return memberFile(req,env,file[1],user,true);
+ }
  const match=path.match(/^\/api\/admin\/members\/([a-f0-9-]{36})$/);
  if(match){
-  const member=await stmt(env,`SELECT ${fields} FROM members WHERE id=?`,match[1]).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
+  const member=await stmt(env,`SELECT ${fields},NOT (${currentMember()}) AS archived FROM members WHERE id=?`,match[1]).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
   if(req.method==='GET'){
+   const orderCounts=await stmt(env,`SELECT count(*) AS total,COALESCE(SUM(status NOT IN ('received','cancelled')),0) AS active,COALESCE(SUM(status='received'),0) AS received,COALESCE(SUM(status='cancelled'),0) AS cancelled FROM orders WHERE ${member.role==='brand'?'brand_id':'supplier_id'}=?`,member.id).first();
+   if(member.archived)return json({member:{id:member.id,name:member.name,role:member.role,status:'archived'},orderCounts});
    const files=await stmt(env,"SELECT id,name,mime,kind FROM member_files WHERE member_id=? AND kind IN ('certificate','workplace')",member.id).all();
    const reviews=await stmt(env,'SELECT actor,status,note,created_at FROM member_reviews WHERE member_id=? ORDER BY created_at DESC,rowid DESC',member.id).all();
-   const orderCounts=await stmt(env,`SELECT count(*) AS total,COALESCE(SUM(status NOT IN ('received','cancelled')),0) AS active,COALESCE(SUM(status='received'),0) AS received,COALESCE(SUM(status='cancelled'),0) AS cancelled FROM orders WHERE ${member.role==='brand'?'brand_id':'supplier_id'}=?`,member.id).first();
    const profileEvents=await stmt(env,'SELECT actor,changes,created_at FROM member_profile_events WHERE member_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50',member.id).all();
    return json({member,files:files.results,reviews:reviews.results,orderCounts,profileEvents:profileEvents.results.map(e=>({...e,changes:JSON.parse(e.changes)}))});
   }
   if(req.method==='PATCH'){
+   if(member.archived)fail(409,'탈퇴 회원의 주문 보관 기록은 변경할 수 없습니다.');
    const input=await body(req),note=text(input.note,1000);
    if(input.action==='profile'){
     if(Object.keys(input).some(key=>!['action','version','name','contact','phone'].includes(key)))fail(400,'업체명·담당자·연락처만 수정할 수 있습니다.');
@@ -169,7 +178,7 @@ export async function memberAdminApi(req,env,url,user){
     const changes=Object.fromEntries(Object.entries(values).filter(([key,value])=>value!==member[key]).map(([key,value])=>[key,{before:member[key],after:value}]));
     if(!Object.keys(changes).length)return json({ok:true});
     const time=now(),result=await env.DB.batch([
-     stmt(env,'UPDATE members SET name=?,contact=?,phone=?,updated_at=?,version=version+1 WHERE id=? AND version=?',values.name,values.contact,values.phone,time,member.id,input.version),
+     stmt(env,`UPDATE members SET name=?,contact=?,phone=?,updated_at=?,version=version+1 WHERE id=? AND version=? AND ${currentMember()}`,values.name,values.contact,values.phone,time,member.id,input.version),
      stmt(env,'INSERT INTO member_profile_events SELECT ?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),member.id,user.display_name,JSON.stringify(changes),time),
      stmt(env,'UPDATE member_sessions SET member_version=? WHERE member_id=? AND member_version=? AND changes()=1',input.version+1,member.id,input.version),
     ]);
@@ -180,7 +189,7 @@ export async function memberAdminApi(req,env,url,user){
    if(input.status!=='approved'&&!note)fail(400,'회원에게 안내할 사유를 입력해주세요.');
    if(!Number.isSafeInteger(input.version))fail(400,'심사 버전을 확인해주세요.');
    const result=await env.DB.batch([
-    stmt(env,'UPDATE members SET status=?,review_note=?,updated_at=?,version=version+1 WHERE id=? AND version=?',input.status,note,now(),member.id,input.version),
+    stmt(env,`UPDATE members SET status=?,review_note=?,updated_at=?,version=version+1 WHERE id=? AND version=? AND ${currentMember()}`,input.status,note,now(),member.id,input.version),
     stmt(env,'INSERT INTO member_reviews SELECT ?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),member.id,user.display_name,input.status,note,now()),
     stmt(env,'DELETE FROM member_sessions WHERE member_id=? AND EXISTS(SELECT 1 FROM members WHERE id=? AND status<>?)',member.id,member.id,'approved'),
    ]);

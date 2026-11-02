@@ -38,6 +38,47 @@ async function approve(admin,client,email,role='brand'){
 const spec=files=>({name:'수분크림 단상자',size:'60 × 60 × 80 mm',material:'종이 350g',printing:'로고 1도',finish:'무광',description:'샘플 기준',files});
 const request=(s)=>({id:crypto.randomUUID(),spec:s,quantity:3000,requestedDate:'2030-06-30',address:'테스트 배송지',note:'샘플과 동일하게 제작'});
 
+test('withdrawn order references are excluded from members, access and assignments; historical orders stay readable',async()=>{
+ const {DB,brand,supplier,admin}=await fixture(),brandId=await approve(admin,brand,'active@test.test');
+ const email='archived@test.test',id=await approve(admin,supplier,email,'supplier'),time=new Date().toISOString();
+ const order=request(spec([]));legacyOrder(DB,brandId,order);
+ DB.raw.prepare("UPDATE orders SET supplier_id=?,status='assigned',shared_at=?,response_requested_at=? WHERE id=?").run(id,time,time,order.id);
+ DB.raw.prepare("UPDATE members SET consent_version='order-archive-only',status='suspended' WHERE id=?").run(id);
+ const ordinary=(await admin('admin/members')).data;
+ assert.deepEqual(ordinary.members.map(m=>m.id),[brandId]);assert.equal(ordinary.counts.all,1);assert.equal(ordinary.counts.suspended,0);assert.equal(ordinary.counts.archived,1);
+ const archive=(await admin('admin/members?status=archived&role=supplier')).data;
+ assert.deepEqual(archive.members.map(m=>m.id),[id]);assert.equal(archive.members[0].status,'archived');assert.equal('email' in archive.members[0],false);
+ const path='admin/members/'+id,detail=(await admin(path)).data;
+ assert.equal(detail.member.status,'archived');assert.equal(detail.orderCounts.total,1);assert.equal('files' in detail,false);
+ assert.equal((await admin(path,{status:'approved',version:2},'PATCH')).status,409);
+ assert.equal((await admin(path,{action:'profile',version:2},'PATCH')).status,409);
+ assert.equal((await admin(path+'/recovery-code',{verified:true,version:2})).status,404);
+ for(const suffix of ['/company','/support'])assert.equal((await admin(path+suffix,{},'PUT')).status,404);
+ const file=DB.raw.prepare('SELECT id FROM member_files WHERE member_id=?').get(id);
+ assert.equal((await admin('admin/members/files/'+file.id)).status,404);
+ DB.raw.prepare('INSERT INTO member_recovery(member_id,requested_at) VALUES(?,?)').run(id,time);
+ assert.deepEqual((await admin('admin/members/recovery')).data.requests,[]);
+ // A past accidental approval must not make the archive a login or a selectable supplier.
+ DB.raw.prepare("UPDATE members SET status='approved' WHERE id=?").run(id);
+ assert.equal((await supplier('member/me')).status,401);
+ assert.equal((await supplier('member/login',{email,password})).status,401);
+ assert.deepEqual((await admin('admin/orders/suppliers')).data.suppliers,[]);
+ assert.equal((await admin('admin/orders/attention')).data.pending,0);
+ const liveOrder=request(spec([]));legacyOrder(DB,brandId,liveOrder);
+ assert.deepEqual((await admin('admin/orders')).data.orders.map(o=>o.id),[liveOrder.id]);
+ const preserved=(await admin('admin/orders?scope=archived')).data.orders;
+ assert.deepEqual(preserved.map(o=>o.id),[order.id]);
+ assert.equal(preserved[0].unread,false);assert.equal(preserved[0].overdue,false);assert.equal(preserved[0].response_due_at,null);
+ assert.equal((await admin('admin/orders?scope=nope')).status,400);
+ assert.equal((await brand('orders')).data.total,2);
+ assert.equal((await admin('admin/orders?memberId='+brandId)).data.total,2);
+ assert.equal((await admin('admin/orders?memberId='+id)).data.orders[0].id,order.id);
+ const historical=(await admin('admin/orders/'+order.id)).data;
+ assert.equal(historical.order.archived,1);assert.equal(historical.events.length,1);
+ assert.equal((await admin('admin/orders/'+order.id,{action:'message',message:'거래 변경',version:1},'PATCH')).status,409);
+ assert.equal(DB.raw.prepare('SELECT count(*) n FROM orders WHERE id=?').get(order.id).n,1);
+});
+
 test('signup requires business documents, consent, private review and explicit approval before login',async()=>{
  const {admin,brand,supplier,DB,common}=await fixture();
  assert.equal((await brand('member/register',{...signup('brand@test.test'),legalType:'corporate',businessNumber:'123-45-67890'})).status,400);
@@ -157,9 +198,9 @@ test('member management searches literal text and normalized numbers, combines f
  for(const q of ['100%','_','\\','김담당','literal-brand@','01012345678','010 1234 5678','123-45-67890']){
   const data=await find(q);assert.deepEqual(data.members.map(m=>m.id),[target.id],q);assert.equal(data.total,1,q);
  }
- const all=await find('관리');assert.equal(all.total,4);assert.deepEqual(all.counts,{all:4,pending:1,approved:1,rejected:1,suspended:1});
- const brands=await find('관리','&role=brand&status=approved');assert.equal(brands.total,1);assert.deepEqual(brands.counts,{all:3,pending:0,approved:1,rejected:1,suspended:1});
- const corporate=await find('관리','&role=brand&legalType=corporate&status=pending');assert.equal(corporate.total,0);assert.deepEqual(corporate.counts,{all:1,pending:0,approved:1,rejected:0,suspended:0});
+ const all=await find('관리');assert.equal(all.total,4);assert.deepEqual(all.counts,{all:4,pending:1,approved:1,rejected:1,suspended:1,archived:0});
+ const brands=await find('관리','&role=brand&status=approved');assert.equal(brands.total,1);assert.deepEqual(brands.counts,{all:3,pending:0,approved:1,rejected:1,suspended:1,archived:0});
+ const corporate=await find('관리','&role=brand&legalType=corporate&status=pending');assert.equal(corporate.total,0);assert.deepEqual(corporate.counts,{all:1,pending:0,approved:1,rejected:0,suspended:0,archived:0});
  for(const filter of ['role=owner','legalType=unknown','status=deleted'])assert.equal((await admin(`admin/members?${filter}`)).status,400,filter);
  for(let i=0;i<32;i++)seed({name:`페이지 ${i}`,date:new Date(Date.UTC(2026,9,21,0,i)).toISOString()});
  const first=await find('페이지','&page=1'),second=await find('페이지','&page=2');

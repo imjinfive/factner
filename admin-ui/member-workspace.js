@@ -20,8 +20,8 @@ export async function memberWorkspace(context,member,reload){
  function requestCard(r){
   const linked=(context.partners||[]).some(p=>p.status==='active'&&p.brand_id===(r.requester_role==='brand'?r.requester_id:r.target_id)&&p.supplier_id===(r.requester_role==='supplier'?r.requester_id:r.target_id));
   const terminal=['completed','rejected'].includes(r.status);
-  const connect=r.status==='rejected'?'':linked&&terminal?'<span class="badge">거래 연결됨</span>':`<button type="button" data-connect-request="${esc(r.id)}">${linked?'연결 확인 · 요청 처리 완료':'양측 확인 후 거래 연결'}</button>`;
-  return `<article class="workflow-request"><div class="member-section-heading"><div><strong>${esc(r.requester_name)} → ${esc(r.target_name)}</strong><p>${categories[r.category]||esc(r.category)} · ${date(r.created_at)}</p></div><span class="badge">${requestStates[r.status]||esc(r.status)}</span></div>${terminal?`<p class="pre">${esc(r.note)||'별도 안내 없음'}</p><div class="actions">${connect}</div>`:`<form data-matching-request="${esc(r.id)}"><label>진행 상태<select name="status" required><option value="" ${r.status==='pending'?'selected':''} disabled>처리할 상태 선택</option>${Object.entries(requestStates).filter(([value])=>value!=='pending').map(([value,label])=>`<option value="${value}" ${r.status===value?'selected':''}>${label}</option>`).join('')}</select></label><label>처리 안내<input name="note" maxlength="1000" value="${esc(r.note)}" placeholder="양측에 안내할 검토 결과와 후속 일정"></label><div class="actions"><button type="submit" class="secondary">처리 내용 저장</button>${connect}</div></form>`}</article>`;
+  const connect=r.status==='rejected'?'':linked&&terminal?'<span class="badge">거래 연결됨</span>':terminal&&r.marketPostId?'<span class="muted">거래 재개는 매칭 관리에서 확인하세요.</span>':`<button type="button" data-connect-request="${esc(r.id)}">${linked?'연결 확인 · 요청 처리 완료':'양측 확인 후 거래 연결'}</button>`;
+  return `<article class="workflow-request" id="member-request-${esc(r.id)}" tabindex="-1"><div class="member-section-heading"><div><strong>${esc(r.requester_name)} → ${esc(r.target_name)}</strong><p>${categories[r.category]||esc(r.category)} · ${date(r.created_at)}${r.marketPostCount>1?' · 관련 공고 '+Number(r.marketPostCount)+'건':''}</p></div><span class="badge">${requestStates[r.status]||esc(r.status)}</span></div>${terminal?`<p class="pre">${esc(r.note)||'별도 안내 없음'}</p><div class="actions">${connect}</div>`:`<form data-matching-request="${esc(r.id)}"><label>진행 상태<select name="status" required><option value="" ${r.status==='pending'?'selected':''} disabled>처리할 상태 선택</option>${Object.entries(requestStates).filter(([value])=>value!=='pending'&&!(r.marketPostId&&value==='completed')).map(([value,label])=>`<option value="${value}" ${r.status===value?'selected':''}>${label}</option>`).join('')}</select></label><label>처리 안내<input name="note" maxlength="1000" value="${esc(r.note)}" placeholder="양측에 안내할 검토 결과와 후속 일정"></label><div class="actions"><button type="submit" class="secondary">처리 내용 저장</button>${connect}</div></form>`}</article>`;
  }
  const filesHtml=files=>`<div class="review-files">${(files||[]).map(f=>`<a class="review-file" href="/api/admin/members/files/${esc(f.id)}" target="_blank" rel="noreferrer">${f.mime?.startsWith('image/')?`<img src="/api/admin/members/files/${esc(f.id)}" alt="${esc(f.name)}">`:'<span class="review-document">PDF</span>'}<span>${esc(f.name)}</span></a>`).join('')}</div>`;
  const fields=spec=>Object.entries(specFields).map(([key,label])=>`<label>${label}${key==='description'?`<textarea name="${key}" maxlength="2000" rows="3">${esc(spec[key])}</textarea>`:`<input name="${key}" value="${esc(spec[key])}" maxlength="${['printing','finish'].includes(key)?200:100}" ${['name','size','material'].includes(key)?'required':''}>`}</label>`).join('');
@@ -54,14 +54,18 @@ export async function memberWorkspace(context,member,reload){
    await send(`admin/members/${id}/company`,payload,'PUT');notice('회원 계정에 업체 상세를 저장했어요.');await refresh();
   });
   document.querySelectorAll('[data-matching-request]').forEach(form=>form.onsubmit=e=>submit(e,async values=>{
-   const r=requests.find(r=>r.id===form.dataset.matchingRequest);if(values.status==='pending')throw new Error('검토 중, 처리 완료 또는 보류를 선택해주세요.');
-   if(!await reviewBeforeSave({title:'선택 요청 처리 확인',rows:[['선택한 회원',r.requester_name],['선택된 회원',r.target_name],['상태',requestStates[values.status]],['안내',values.note]],message:'처리 완료만으로 거래가 연결되지는 않습니다. 거래 연결 버튼에서 양측을 확인해주세요.'}))return;
+   const r=requests.find(r=>r.id===form.dataset.matchingRequest);if(values.status==='pending')throw new Error('처리할 상태를 선택해주세요.');
+   if(!await reviewBeforeSave({title:'선택 요청 처리 확인',rows:[['선택한 회원',r.requester_name],['선택된 회원',r.target_name],['상태',requestStates[values.status]],['안내',values.note]],message:r.marketPostId?'거래를 연결할 때는 양측 확인 후 거래 연결을 선택하세요.':'처리 완료만으로 거래가 연결되지는 않습니다. 거래 연결 버튼에서 양측을 확인해주세요.'}))return;
    await send(`admin/matching/requests/${r.id}`,{...values,version:r.version,confirmed:true},'PATCH');notice('선택 요청 처리 내용을 저장했어요.');await refresh();
   }));
   document.querySelectorAll('[data-connect-request]').forEach(button=>button.onclick=async()=>{
    const r=requests.find(r=>r.id===button.dataset.connectRequest),form=button.closest('form'),note=form?.elements.note.value||r.note||'';
    if(!await reviewBeforeSave({title:'실제 거래 연결을 확인해주세요',rows:[['브랜드',r.requester_role==='brand'?r.requester_name:r.target_name],['제작 업체',r.requester_role==='supplier'?r.requester_name:r.target_name],['선택 품목',categories[r.category]||r.category],['운영 메모',note]],action:'양측 확인 완료 · 거래 연결',message:'양측과 거래 조건을 확인한 뒤 연결하세요. 연결 후 브랜드가 이 제작 업체로 발주할 수 있습니다.'}))return;
-   try{await context.withMemberSave(async()=>{await send('admin/partners',{brandId:r.requester_role==='brand'?r.requester_id:r.target_id,supplierId:r.requester_role==='supplier'?r.requester_id:r.target_id,note,confirmed:true});notice('거래를 연결하고 양방향 선택 요청을 함께 완료했어요.');await refresh();},form);}catch(error){notice(error.message);}
+   try{await context.withMemberSave(async()=>{
+    if(r.marketPostId)await send(`admin/market/posts/${encodeURIComponent(r.marketPostId)}/connect`,{confirmed:true,version:r.version,note});
+    else await send('admin/partners',{brandId:r.requester_role==='brand'?r.requester_id:r.target_id,supplierId:r.requester_role==='supplier'?r.requester_id:r.target_id,note,confirmed:true});
+    notice('거래를 연결하고 선택 요청을 완료했어요.');await refresh();
+   },form);}catch(error){notice(error.message);}
   });
   async function savePackaging(event,original,review){
    const decision=event.submitter?.value||'approve';

@@ -1,3 +1,4 @@
+import {currentMember} from './member-lifecycle.js';
 import {body,fail,json,now,stmt,text,rate} from './http.js';
 import {memberIdentity,requireRole,memberFile} from './members.js';
 
@@ -6,10 +7,11 @@ const uuid=value=>typeof value==='string'&&/^[a-f0-9-]{36}$/.test(value);
 function date(value){const d=text(value,10,true);if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||!Number.isFinite(Date.parse(d))||new Date(d).toISOString().slice(0,10)!==d||d<now().slice(0,10))fail(400,'오늘 이후의 올바른 날짜를 선택해주세요.');return d;}
 const responseHours=24,responseMillis=responseHours*60*60*1000;
 const nextResponseAt=row=>new Date(Math.max(Date.now(),(Date.parse(row.response_requested_at)||0)+1)).toISOString();
-const pendingSql="o.status='assigned' AND o.supplier_id IS NOT NULL AND o.shared_at IS NOT NULL AND o.response_requested_at IS NOT NULL";
+const currentOrder=alias=>`NOT EXISTS(SELECT 1 FROM members archived_member WHERE archived_member.id IN (${alias}.brand_id,${alias}.supplier_id) AND NOT (${currentMember('archived_member')}))`;
+const pendingSql=`o.status='assigned' AND o.supplier_id IS NOT NULL AND o.shared_at IS NOT NULL AND o.response_requested_at IS NOT NULL AND ${currentOrder('o')}`;
 export function orderAttention(row,time=now()){
- const pending=row.status==='assigned'&&!!row.supplier_id&&!!row.shared_at&&!!row.response_requested_at;
- const due=row.response_requested_at?new Date(Date.parse(row.response_requested_at)+responseMillis).toISOString():null;
+ const pending=!row.archived&&row.status==='assigned'&&!!row.supplier_id&&!!row.shared_at&&!!row.response_requested_at;
+ const due=!row.archived&&row.response_requested_at?new Date(Date.parse(row.response_requested_at)+responseMillis).toISOString():null;
  return {response_due_at:due,unread:pending&&!row.supplier_seen_at,overdue:pending&&Date.parse(due)<=Date.parse(time)};
 }
 async function memberFilter(env,url,admin){
@@ -19,7 +21,7 @@ async function memberFilter(env,url,admin){
  return {sql:` AND o.${member.role==='brand'?'brand_id':'supplier_id'}=?`,args:[id]};
 }
 const parseOrder=(row,time=now())=>({...row,...orderAttention(row,time),spec:JSON.parse(row.spec),proposal:row.proposal?JSON.parse(row.proposal):null,approved_snapshot:row.approved_snapshot?JSON.parse(row.approved_snapshot):null,shipping:row.shipping?JSON.parse(row.shipping):null});
-const orderSelect=`SELECT o.*,b.name AS brand_name,s.name AS supplier_name FROM orders o JOIN members b ON b.id=o.brand_id LEFT JOIN members s ON s.id=o.supplier_id`;
+const orderSelect=`SELECT o.*,b.name AS brand_name,s.name AS supplier_name,NOT (${currentMember('b')} AND (s.id IS NULL OR ${currentMember('s')})) AS archived FROM orders o JOIN members b ON b.id=o.brand_id LEFT JOIN members s ON s.id=o.supplier_id`;
 async function getOrder(env,id,user,admin){
  const row=await stmt(env,`${orderSelect} WHERE o.id=?`,id).first();
  if(!row||(!admin&&row.brand_id!==user.id&&(row.supplier_id!==user.id||['requested','matched'].includes(row.status)||(row.status==='cancelled'&&!row.shared_at))))fail(404,'발주를 찾을 수 없습니다.');
@@ -30,7 +32,7 @@ async function mutate(env,order,input,user,patch,action,details={}){
  const entries=Object.entries(patch),time=now();
  const approvalGuard=patch.status==='approved'?" AND EXISTS(SELECT 1 FROM members b JOIN members s ON s.id=orders.supplier_id WHERE b.id=orders.brand_id AND b.role='brand' AND b.status='approved' AND s.role='supplier' AND s.status='approved')":'';
  const result=await env.DB.batch([
-  stmt(env,`UPDATE orders SET ${entries.map(([key,value])=>key==='supplier_seen_at'&&value!==null?'supplier_seen_at=COALESCE(supplier_seen_at,?)':`${key}=?`).join(',')},updated_at=?,version=version+1 WHERE id=? AND version=?${approvalGuard}`,...entries.map(([,value])=>value),time,order.id,input.version),
+  stmt(env,`UPDATE orders SET ${entries.map(([key,value])=>key==='supplier_seen_at'&&value!==null?'supplier_seen_at=COALESCE(supplier_seen_at,?)':`${key}=?`).join(',')},updated_at=?,version=version+1 WHERE id=? AND version=? AND ${currentOrder('orders')}${approvalGuard}`,...entries.map(([,value])=>value),time,order.id,input.version),
   stmt(env,'INSERT INTO order_events SELECT ?,?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),order.id,user.id,user.name||user.display_name,action,JSON.stringify(details),time),
  ]);
  if(!result[0].meta.changes)fail(409,'변경된 내용이 있습니다. 새로고침해주세요.');
@@ -57,7 +59,9 @@ export async function orderApi(req,env,url,adminUser){
   if(req.method==='GET'){
    const page=Math.max(1,Math.min(10000,Number.parseInt(url.searchParams.get('page'),10)||1)),status=text(url.searchParams.get('status')||'',30);
    const access=admin?'1=1':user.role==='brand'?'o.brand_id=?':"o.supplier_id=? AND (o.status NOT IN ('requested','matched','cancelled') OR (o.status='cancelled' AND o.shared_at IS NOT NULL))";
-   const args=admin?[]:[user.id],where=`WHERE ${access} AND (?='' OR o.status=?)`;
+   const scope=url.searchParams.get('scope')||'current';if(!['current','archived'].includes(scope))fail(400,'발주 보관 조건을 확인해주세요.');
+   const scoped=admin&&!url.searchParams.has('memberId')?` AND ${scope==='archived'?'NOT ':''}(${currentOrder('o')})`:'';
+   const args=admin?[]:[user.id],where=`WHERE ${access}${scoped} AND (?='' OR o.status=?)`;
    const filter=await memberFilter(env,url,admin),attention=text(url.searchParams.get('attention')||'',20),time=now();
    if(!['','unread','overdue'].includes(attention))fail(400,'알림 필터를 확인해주세요.');
    const attentionSql=attention?` AND ${pendingSql} AND ${attention==='unread'?'o.supplier_seen_at IS NULL':'o.response_requested_at<=?'}`:'';
@@ -76,7 +80,7 @@ export async function orderApi(req,env,url,adminUser){
    if(!uuid(supplierId)||input.sharingConsent!==true||input.confirmed!==true)fail(400,'연결된 제작 업체와 발주 조건을 다시 확인해주세요.');
    let partner=null;
    if(supplierId){
-    partner=await stmt(env,"SELECT p.id,s.name FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved'",user.id,supplierId).first();
+    partner=await stmt(env,`SELECT p.id,s.name FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved' AND ${currentMember('s')}`,user.id,supplierId).first();
     if(!partner)fail(409,'현재 연결된 제작 업체가 아닙니다. 매칭 상태를 다시 확인해주세요.');
    }
    let source=null;if(input.sourceId){source=await getOrder(env,input.sourceId,user,false);if(source.brand_id!==user.id)fail(404,'이전 발주를 찾을 수 없습니다.');}
@@ -87,7 +91,7 @@ export async function orderApi(req,env,url,adminUser){
    const details={spec,packagingId:packaging.id,packagingVersion:packaging.version,quantity,requestedDate:deadline,address,note};
    if(partner)details.sharing={partnerId:partner.id,supplierId,supplier:partner.name,consent:true,items:'패키징 사양·첨부 파일·수량·납기·배송지·요청 사항',purpose:'견적 및 제작 진행',version:'partner-order-sharing-2026-10-21'};
    const result=await env.DB.batch([
-    stmt(env,`INSERT INTO orders(id,brand_id,supplier_id,source_id,spec,quantity,requested_date,address,note,status,shared_at,response_requested_at,created_at,updated_at,packaging_id,packaging_version) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=? AND role='brand' AND status='approved') AND EXISTS(SELECT 1 FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved') AND EXISTS(SELECT 1 FROM packagings WHERE id=? AND brand_id=? AND version=? AND approval_status='approved' AND archived=0)`,input.id,user.id,supplierId,source?.id||null,JSON.stringify(spec),quantity,deadline,address,note,'assigned',time,time,time,time,packaging.id,packaging.version,user.id,user.id,supplierId,packaging.id,user.id,packaging.version),
+    stmt(env,`INSERT INTO orders(id,brand_id,supplier_id,source_id,spec,quantity,requested_date,address,note,status,shared_at,response_requested_at,created_at,updated_at,packaging_id,packaging_version) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=? AND role='brand' AND status='approved' AND ${currentMember()}) AND EXISTS(SELECT 1 FROM member_partners p JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=? AND p.status='active' AND s.role='supplier' AND s.status='approved' AND ${currentMember('s')}) AND EXISTS(SELECT 1 FROM packagings WHERE id=? AND brand_id=? AND version=? AND approval_status='approved' AND archived=0)`,input.id,user.id,supplierId,source?.id||null,JSON.stringify(spec),quantity,deadline,address,note,'assigned',time,time,time,time,packaging.id,packaging.version,user.id,user.id,supplierId,packaging.id,user.id,packaging.version),
     ...spec.files.map(f=>stmt(env,'INSERT INTO order_files SELECT ?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND brand_id=?)',input.id,f.id,input.id,user.id)),
     stmt(env,'INSERT INTO order_events SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND brand_id=?)',crypto.randomUUID(),input.id,user.id,user.name,partner?'연결된 제작 업체에 발주 요청':source?'지난 발주로 다시 요청':'발주 요청',JSON.stringify(details),time,input.id,user.id),
    ]);
@@ -96,7 +100,7 @@ export async function orderApi(req,env,url,adminUser){
   }
  }
  if(path==='/api/admin/orders/suppliers'&&admin&&req.method==='GET'){
-  const rows=await stmt(env,"SELECT id,name,business_number FROM members WHERE role='supplier' AND status='approved' ORDER BY name").all();return json({suppliers:rows.results});
+  const rows=await stmt(env,`SELECT id,name,business_number FROM members WHERE role='supplier' AND status='approved' AND ${currentMember()} ORDER BY name`).all();return json({suppliers:rows.results});
  }
  const file=path.match(/^\/api\/admin\/orders\/files\/([a-f0-9-]{36})$/);
  if(file&&admin&&req.method==='GET'){
@@ -110,6 +114,7 @@ export async function orderApi(req,env,url,adminUser){
    return json({order,events:events.results.map(e=>({...e,details:JSON.parse(e.details)}))});
   }
   if(req.method==='PATCH'){
+   if(row.archived)fail(409,'탈퇴 회원의 과거 발주는 조회만 할 수 있습니다.');
    const input=await body(req),action=input.action;
    if(action!=='seen'&&input.confirmed!==true)fail(400,'변경할 발주 조건과 입력 내용을 다시 확인해주세요.');
    if(action==='seen'){
@@ -117,7 +122,7 @@ export async function orderApi(req,env,url,adminUser){
     if(row.status!=='assigned'||!row.shared_at||!row.response_requested_at||input.responseRequestedAt!==row.response_requested_at)fail(409,'발주가 변경되었습니다. 다시 열어주세요.');
     const time=now();
     await env.DB.batch([
-     stmt(env,"UPDATE orders SET supplier_seen_at=? WHERE id=? AND supplier_id=? AND status='assigned' AND shared_at IS NOT NULL AND response_requested_at=? AND supplier_seen_at IS NULL",time,row.id,user.id,input.responseRequestedAt),
+     stmt(env,`UPDATE orders SET supplier_seen_at=? WHERE id=? AND supplier_id=? AND status='assigned' AND shared_at IS NOT NULL AND response_requested_at=? AND supplier_seen_at IS NULL AND ${currentOrder('orders')}`,time,row.id,user.id,input.responseRequestedAt),
      stmt(env,'INSERT INTO order_events SELECT ?,?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),row.id,user.id,user.name,'제작 업체 발주 확인',JSON.stringify({responseRequestedAt:input.responseRequestedAt}),time),
     ]);
     const current=await stmt(env,'SELECT status,supplier_id,response_requested_at,supplier_seen_at FROM orders WHERE id=?',row.id).first();
@@ -126,7 +131,7 @@ export async function orderApi(req,env,url,adminUser){
    }
    if(action==='assign'&&admin){
     if(!['requested','matched'].includes(row.status))fail(409,'견적 진행 중에는 업체를 변경할 수 없습니다.');
-    const supplier=await stmt(env,"SELECT id,name FROM members WHERE id=? AND role='supplier' AND status='approved'",text(input.supplierId,36,true)).first();if(!supplier)fail(400,'승인된 제작 업체를 선택해주세요.');
+    const supplier=await stmt(env,`SELECT id,name FROM members WHERE id=? AND role='supplier' AND status='approved' AND ${currentMember()}`,text(input.supplierId,36,true)).first();if(!supplier)fail(400,'승인된 제작 업체를 선택해주세요.');
     return mutate(env,row,input,user,{supplier_id:supplier.id,status:'matched'},'매칭 업체 제안',{supplier:supplier.name});
    }
    if(!admin&&user.role==='brand'&&row.brand_id===user.id){

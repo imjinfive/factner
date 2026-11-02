@@ -1,3 +1,4 @@
+import {currentMember} from './member-lifecycle.js';
 import {body,fail,json,now,stmt,text,rate} from './http.js';
 import {owner} from './auth.js';
 
@@ -68,7 +69,7 @@ export async function memberSupportAdminApi(req,env,url,user){
  owner(user);
  if(req.method!=='GET')await rate(env,`member-support-admin:${user.id}`,100,3600);
  if(memberPath){
-  const member=await stmt(env,'SELECT id FROM members WHERE id=?',memberPath[1]).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
+  const member=await stmt(env,`SELECT id FROM members WHERE id=? AND ${currentMember()}`,memberPath[1]).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
   const current=await memberSupport(env,member.id);
   if(req.method==='GET')return json({support:current});
   if(req.method==='PUT'){
@@ -87,13 +88,13 @@ export async function memberSupportAdminApi(req,env,url,user){
   const memberId=url.searchParams.get('memberId'),status=url.searchParams.get('status')||'';
   if(memberId!==null&&!uuid(memberId))fail(400,'회원을 확인해주세요.');
   if(!['','active','pending','reviewing','completed','rejected'].includes(status))fail(400,'요청 상태를 확인해주세요.');
-  const rows=await stmt(env,`${requestSelect} WHERE (? IS NULL OR r.member_id=?) AND (?='' OR r.status=? OR (?='active' AND r.status IN ('pending','reviewing'))) ORDER BY r.created_at DESC,r.id DESC LIMIT 500`,memberId,memberId,status,status,status).all();
+  const rows=await stmt(env,`${requestSelect} WHERE ${currentMember('m')} AND (? IS NULL OR r.member_id=?) AND (?='' OR r.status=? OR (?='active' AND r.status IN ('pending','reviewing'))) ORDER BY r.created_at DESC,r.id DESC LIMIT 500`,memberId,memberId,status,status,status).all();
   return json({requests:rows.results.map(publicRequest)});
  }
  if(requestPath&&req.method==='PATCH'){
   const input=await body(req),note=text(input.note,2000,true),time=now();
   if(input.confirmed!==true||!['reviewing','completed','rejected'].includes(input.status)||!Number.isSafeInteger(input.version))fail(400,'처리 상태와 안내를 다시 확인해주세요.');
-  const row=await stmt(env,'SELECT * FROM member_requests WHERE id=?',requestPath[1]).first();if(!row)fail(404,'요청을 찾을 수 없습니다.');
+  const row=await stmt(env,`SELECT r.* FROM member_requests r JOIN members m ON m.id=r.member_id WHERE r.id=? AND ${currentMember('m')}`,requestPath[1]).first();if(!row)fail(404,'요청을 찾을 수 없습니다.');
   const result=await env.DB.batch([
    stmt(env,"UPDATE member_requests SET status=?,note=?,version=version+1,updated_at=? WHERE id=? AND version=? AND status IN ('pending','reviewing')",input.status,note,time,row.id,input.version),
    stmt(env,'INSERT INTO member_request_events SELECT ?,?,?,?,?,? WHERE changes()=1',crypto.randomUUID(),row.id,user.display_name,input.status,note,time),
