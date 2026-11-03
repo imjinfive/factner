@@ -1,9 +1,8 @@
-import {body,fail,json,rate,stmt} from './http.js';
+import {body,fail,json,stmt} from './http.js';
 import {digest,memberPassword,randomToken} from './security.js';
 import {memberApi,memberIdentity,loginMember,registerMember,hasMarketConsent} from './members.js';
-import {service,policy,approvedMarketMember,memberIntake,initialPolicyVersion} from './policy.js';
+import {service,policy,approvedMarketMember,memberIntake} from './policy.js';
 import {isPreviewEmail} from './bid-auth.js';
-import {verifyTurnstile} from './spam.js';
 import {marketApi} from './bid-market.js';
 import {isReviewEmail,reviewPassword} from '../scripts/bid-seed.mjs';
 import {designerNotice} from '../shared/partner-roles.js';
@@ -19,7 +18,7 @@ async function registration(env) {
   const {available,published}=memberIntake(settings,doc,captcha || env[localMemberPreview]);
   return {
     available,
-    previewAvailable:Boolean(env.DRAFT_SIGNUP_ENABLED==='1' && env.BID_ROOMS && !doc.published && doc.version===initialPolicyVersion && (captcha || env[localMemberPreview])),
+    trial:published && doc.customerTrial===true,
     consentVersion:published?doc.version:null,
     terms:published?doc.terms:'',privacy:published?doc.privacy:'',collection:published?doc.collection:'',transfer:published?doc.transfer:'',
     turnstileSiteKey:captcha?env.TURNSTILE_SITE_KEY:''
@@ -43,31 +42,17 @@ async function reviewRequest(req,env,key,input,path) {
 export async function publicBidApi(req,env,url) {
   const path=url.pathname.slice('/api/bid'.length);
   if(env.BID_LIMIT && !(await env.BID_LIMIT.limit({key:req.headers.get('CF-Connecting-IP')||'local'})).success)fail(429,'잠시 후 다시 시도해주세요.');
-  if(path==='/demo'||path==='/preview-login')fail(404,'없는 페이지입니다.');
-  if(path==='/preview-register'){
-    if(req.method!=='POST')fail(405,'허용되지 않은 요청입니다.');
-    if(!(await registration(env)).previewAvailable)fail(503,'현재 테스트 회원가입이 열려 있지 않습니다.');
-    const input=await body(req,4096);
-    if(input.kind==='design')fail(403,designerNotice);
-    if(Object.keys(input).some(key=>!['kind','legalType','turnstileToken'].includes(key)) || !['brand','packaging'].includes(input.kind)||!['individual','sole','corporate'].includes(input.legalType))fail(400,'테스트 가입에는 활동과 가입 유형만 선택해주세요.');
-    await rate(env,`preview-signup:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,10,3600);
-    await verifyTurnstile(req,env,input,{accepting:!env[localMemberPreview]},'signup');
-    const email=`test-${randomToken().slice(0,24)}@preview.factner.invalid`,password=randomToken().slice(0,24);
-    const key=await previewRoom(email,password);
-    const reply=await reviewRequest(req,env,key,{kind:input.kind,legalType:input.legalType,email,password});
-    if(!reply.ok)return reply;
-    return json({...await reply.json(),reviewRoom:key},201);
-  }
+  if(path==='/demo'||path==='/preview-login'||path==='/preview-register')fail(404,'없는 페이지입니다.');
   if(path==='/register' && req.method==='POST'){
     const info=await registration(env);
     if(!info.available)fail(503,'현재 회원가입 접수를 준비하고 있습니다.');
-    const input=await body(req,11000000);
+    const input=await body(req,info.trial?20000:11000000);
     if(input.kind==='design')fail(403,designerNotice);
     if(!['brand','packaging'].includes(input.kind))fail(400,'회원 유형을 확인해주세요.');
     if(isPreviewEmail(input.email))fail(409,'회원가입에 사용할 수 없는 이메일입니다.');
     if(input.consent!==true||input.termsConsent!==true||input.consentVersion!==info.consentVersion)fail(409,'현재 이용약관과 개인정보 수집 내용을 확인해주세요.');
     return registerMember(req,env,{...input,role:input.kind==='brand'?'brand':'supplier'},
-      {version:info.consentVersion,live:true,requireCaptcha:!env[localMemberPreview]});
+      {version:info.consentVersion,trial:info.trial,live:true,requireCaptcha:!env[localMemberPreview]});
   }
   const room=req.headers.get('X-Factner-Review');
   if(path==='/login' && req.method==='POST'){

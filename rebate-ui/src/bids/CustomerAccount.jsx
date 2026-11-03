@@ -25,32 +25,28 @@ function discardReview() {
 export default function CustomerAccount({mode, session, onNavigate, onAuth, SignupNotice}) {
   const [choice,setChoice] = useState(progress);
   const [pending,setPending] = useState(null);
-  const [done,setDone] = useState(() => history.state?.customerSignupComplete);
-  const [credentials,setCredentials] = useState(null);
+  const [done,setDone] = useState(() => history.state?.customerSignupComplete === true);
   const [error,setError] = useState('');
   const [busy,setBusy] = useState(false);
   const [cert,setCert] = useState([]), [photos,setPhotos] = useState([]);
   const [certBusy,setCertBusy] = useState(false), [photosBusy,setPhotosBusy] = useState(false);
   const [token,setToken] = useState(''), [attempt,setAttempt] = useState(0);
   const lock = useRef(false), draft = useRef({}), password = useRef(null);
-  const receiptTitle = useRef(null);
   const signup = mode === 'signup', login = mode === 'login';
   const registration = session.registration;
   const available = registration?.available === true && Boolean(registration.consentVersion);
-  const preview = !registration?.available && registration?.previewAvailable === true;
   const {role,legal} = choice;
   const step = legal ? 2 : role ? 1 : 0;
 
-  useEffect(() => {if (signup && done === 'preview') receiptTitle.current?.focus();},[signup,done]);
   useLayoutEffect(() => {
-    discardReview();setChoice(progress());setError('');setPending(null);setCredentials(null);setDone(history.state?.customerSignupComplete);
+    discardReview();setChoice(progress());setError('');setPending(null);setDone(history.state?.customerSignupComplete === true);
     if (mode === 'signup' && !history.state?.[entryKey]) {
       draft.current = {};setCert([]);setPhotos([]);setToken('');
     }
   },[mode]);
   useEffect(() => {
     const restore = () => {
-      setChoice(progress());setPending(null);setError('');setCredentials(null);setDone(history.state?.customerSignupComplete);discardReview();
+      setChoice(progress());setPending(null);setError('');setDone(history.state?.customerSignupComplete === true);discardReview();
       if (password.current) password.current.value = '';
     };
     window.addEventListener('popstate',restore);
@@ -69,7 +65,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
     const entry={...history.state};
     delete entry[entryKey];delete entry.signupPreviousDistance;delete entry.customerSignupComplete;
     history.pushState(entry,'','/');
-    draft.current={};setChoice(progress());setCert([]);setPhotos([]);setToken('');setError('');setDone(false);setCredentials(null);
+    draft.current={};setChoice(progress());setCert([]);setPhotos([]);setToken('');setError('');setDone(false);
   }
   function previousStep() {
     const distance = Number(history.state?.signupPreviousDistance);
@@ -88,7 +84,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
   function review(event) {
     event.preventDefault();
     if (lock.current || !available || certBusy || photosBusy) return;
-    if (legal !== 'individual' && !cert.length) {setError('사업자등록증을 첨부해주세요.');return;}
+    if (legal !== 'individual' && !cert.length) {setError(registration.trial ? '견본 사업자등록증을 첨부해주세요.' : '사업자등록증을 첨부해주세요.');return;}
     const fields = new FormData(event.currentTarget);
     const application = {
       kind:role === 'brand' ? 'brand' : 'packaging',legalType:legal,
@@ -108,13 +104,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
     lock.current = true;setBusy(true);setError('');
     try {
       const result = await onAuth(path,payload);
-      if (path === '/preview-register') {
-        if (result?.status !== 'preview' || !result.email || !result.password) throw new Error('테스트 계정 발급 결과를 확인하지 못했습니다.');
-        const entry = history.state;
-        if (entry?.factnerRoute !== 'signup' || entry[entryKey]?.role !== role || entry[entryKey]?.legal !== legal) return;
-        history.replaceState({...entry,customerSignupComplete:'preview'},'','/');
-        setCredentials({email:result.email,password:result.password});setDone('preview');
-      } else if (path === '/register') {
+      if (path === '/register') {
         if (result?.status !== 'pending') throw new Error('가입 신청 상태를 확인하지 못했습니다.');
         discardReview();
         history.replaceState({...history.state,customerSignupComplete:true},'','/');
@@ -123,38 +113,23 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       draft.current = {};
     } catch (e) {
       setError(e.message || '요청을 처리하지 못했습니다. 다시 확인해주세요.');
-      if (path === '/preview-register' && registration?.turnstileSiteKey) {
-        setToken('');setAttempt(n => n+1);
-      } else if (path === '/register' && (registration?.turnstileSiteKey || e.httpStatus === 409)) {
+      if (path === '/register' && (registration?.turnstileSiteKey || e.httpStatus === 409)) {
         discardReview();setPending(null);
         if (registration?.turnstileSiteKey) setAttempt(n => n+1);
       }
     } finally {lock.current = false;setBusy(false);}
   }
-  if (signup && done === 'preview') return <section className="member-auth member-card member-complete pa-preview-complete">
-    <h1 ref={receiptTitle} tabIndex={-1}>테스트 계정을 만들었습니다</h1>
-    <p>발급 후 7일 동안 사용할 수 있습니다.</p>
-    {credentials ? <>
-      <p>아래 로그인 정보를 보관하세요. 이 화면을 벗어나면 비밀번호를 다시 볼 수 없습니다.</p>
-      <dl className="pa-preview-credentials"><dt>테스트 이메일</dt><dd>{credentials.email}</dd><dt>비밀번호</dt><dd>{credentials.password}</dd></dl>
-    </> : <p>보관한 테스트 이메일과 비밀번호로 로그인하세요. 로그인 정보를 저장하지 않았다면 새 테스트 계정을 만들 수 있습니다.</p>}
-    {credentials ? <Button disabled={busy} onClick={()=>submit('/login',credentials)}>{busy ? '로그인 중…' : '이 계정으로 로그인'}</Button> :
-      <Button onClick={()=>onNavigate('login')}>로그인하기</Button>}
-    {!credentials && <Button tone="ghost" onClick={startSignup}>새 테스트 계정 만들기</Button>}
-    {error && <p className="member-error" role="alert">{error}</p>}
-  </section>;
-  if (signup && done === true) return <section className="member-auth member-card member-complete">
+  if (signup && done) return <section className="member-auth member-card member-complete">
     <div className="member-symbol"><Clock size={38}/></div><h1>가입 신청을 받았어요</h1>
     <p>팩트너 운영팀이 자료와 업체 정보를 확인합니다. 가입 승인 후 로그인할 수 있어요.</p>
     <Button onClick={() => onNavigate('login')}>로그인으로 돌아가기</Button>
   </section>;
 
-  const title = signup ? [preview ? '테스트 회원가입' : '회원가입','가입 유형 선택',preview ? '테스트 계정 확인' : '가입 정보 입력'][step]
+  const title = signup ? ['회원가입','가입 유형 선택','가입 정보 입력'][step]
     : ({login:'로그인','find-id':'아이디 찾기','recover-password':'비밀번호 찾기','reset-password':'새 비밀번호 설정'}[mode]);
   return <section className="member-auth pa-access">
     <header className="member-auth-heading"><h1>{title}</h1>
-      {signup && <p>{preview ? '개인정보나 서류 없이 가상 계정으로 가입합니다. 테스트 활동은 실제 거래와 분리됩니다.' :
-        ['팩트너에서 어떤 일을 하실 건가요?','개인 또는 사업자로 신청할 수 있습니다.','운영팀이 신청 내용을 확인한 뒤 가입을 승인합니다.'][step]}</p>}</header>
+      {signup && <p>{['팩트너에서 어떤 일을 하실 건가요?','개인 또는 사업자로 신청할 수 있습니다.','운영팀이 신청 내용을 확인한 뒤 가입을 승인합니다.'][step]}</p>}</header>
     <div className="member-card"><div className="member-tabs" role="tablist" aria-label="계정">
       <button type="button" role="tab" aria-selected={login} disabled={busy} onClick={() => onNavigate('login')}>로그인</button>
       <button type="button" role="tab" aria-selected={signup} disabled={busy} onClick={startSignup}>회원가입</button>
@@ -168,31 +143,18 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
     </fieldset></form> : !signup ? <Suspense fallback={<p className="member-hint">계정 정보를 확인하고 있습니다.</p>}>
       <Recovery key={mode} mode={mode} onMode={onNavigate} Button={Button}/>
     </Suspense> : <>
-      <div className="member-steps" aria-label={`회원가입 ${step+1}단계`}>{['활동 선택','가입 유형',preview ? '계정 확인' : '정보 입력'].map((label,i)=>
+      <div className="member-steps" aria-label={`회원가입 ${step+1}단계`}>{['활동 선택','가입 유형','정보 입력'].map((label,i)=>
         <span key={label} aria-current={i === step ? 'step' : undefined} className={i === step ? 'current' : ''}>{i+1}. {label}</span>)}</div>
-      {!available && !preview && <p className="member-pilot" role="status">현재 가입 접수가 열려 있지 않습니다. 가입에 필요한 정보는 미리 확인할 수 있습니다.</p>}
+      {!available && <p className="member-pilot" role="status">현재 가입 접수가 열려 있지 않습니다. 가입에 필요한 정보는 미리 확인할 수 있습니다.</p>}
+      {registration?.trial && <p className="member-pilot">테스트 운영 중입니다. 업체명, 담당자, 연락처, 사업자등록번호는 가상 정보로 입력하세요. 실제 서류와 사진은 받지 않습니다.</p>}
       {step === 0 && <MemberActivityChoices onChoose={role=>choose({role,legal:''})}>
         <SignupNotice><button type="button" className="member-choice pa-designer"><span className="member-symbol"><PenNib size={30}/></span>
           <span><strong>디자이너</strong><small>신규 가입 준비 중</small></span></button></SignupNotice>
       </MemberActivityChoices>}
       {step === 1 && <MemberLegalChoices onChoose={legal=>choose({role,legal})}/>}
-      {step === 2 && preview && <form className="member-form" onSubmit={event=>{
-        event.preventDefault();
-        const payload = {kind:role === 'brand' ? 'brand' : 'packaging',legalType:legal};
-        if (registration.turnstileSiteKey) {
-          if (!token) return;
-          payload.turnstileToken=token;
-        }
-        submit('/preview-register',payload);
-      }}><fieldset disabled={busy}>
-        <p className="member-tag">{role === 'brand' ? '브랜드' : '패키징 제작업체'} · {legalTypes[legal]}</p>
-        <p>테스트 이메일과 비밀번호를 발급합니다. 발급 후 7일 동안 사용할 수 있습니다.</p>
-        {registration.turnstileSiteKey && <Turnstile siteKey={registration.turnstileSiteKey} onToken={setToken} resetKey={attempt} action="signup"/>}
-        <Button type="submit" className="member-full" disabled={busy || Boolean(registration.turnstileSiteKey && !token)}>{busy ? '계정을 만드는 중…' : '테스트 계정 만들기'}</Button>
-      </fieldset></form>}
-      {step === 2 && !preview && <>
+      {step === 2 && <>
         <form className="member-form" onSubmit={review} onChange={rememberDraft}><fieldset disabled={!available || busy}>
-          <MemberRegistrationFields role={role} legal={legal} draft={draft.current} cert={cert} setCert={setCert} onCertBusy={setCertBusy}
+          <MemberRegistrationFields role={role} legal={legal} trial={registration?.trial} draft={draft.current} cert={cert} setCert={setCert} onCertBusy={setCertBusy}
             photos={photos} setPhotos={setPhotos} onPhotosBusy={setPhotosBusy} passwordRef={password}/>
           {registration?.collection && <details className="member-disclosure"><summary>가입 심사 자료 수집 안내</summary><p>{registration.collection}</p></details>}
           {registration?.privacy && <details className="member-disclosure"><summary>개인정보처리방침</summary><p>{registration.privacy}</p></details>}

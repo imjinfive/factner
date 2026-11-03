@@ -1,6 +1,6 @@
 import { body, fail, json, rate, stmt, text } from './http.js';
 import { isReviewEmail } from '../scripts/bid-seed.mjs';
-import { digest, memberPassword, passwordHash, randomToken, verifyPassword } from './security.js';
+import { digest, memberPassword, randomToken, verifyPassword } from './security.js';
 import { marketApi } from './bid-market.js';
 import { designerNotice, isPackagingPartner, isDesignerTestAccount } from '../shared/partner-roles.js';
 
@@ -46,15 +46,7 @@ export async function bidApi(req,env,url) {
   if(!preview)fail(503,'현재 파트너 찾기는 체험 공간에서만 이용할 수 있습니다.');
   const path=url.pathname.slice('/api/bid'.length);
   const user=await current(req,env);
-  if(path==='/register'||path==='/demo')fail(404,'없는 페이지입니다.');
-  if(path==='/preview-register' && hosted && req.method==='POST'){
-    const input=await body(req), types={individual:'개인',sole:'개인사업자',corporate:'법인사업자'};
-    if(!isPreviewEmail(input.email)||!['brand','packaging'].includes(input.kind)||!Object.hasOwn(types,input.legalType))fail(400,'가입 유형을 확인해주세요.');
-    const name=`테스트 ${input.kind==='brand'?'브랜드':'제작업체'} (${types[input.legalType]})`;
-    const result=await stmt(env,"INSERT OR IGNORE INTO market_accounts VALUES('preview-account',?,?,?,?)",input.email,name,input.kind,await passwordHash(memberPassword(input.password))).run();
-    if(!result.meta.changes)fail(409,'이미 발급한 테스트 계정입니다.');
-    return json({status:'preview',email:input.email,password:input.password},201);
-  }
+  if(path==='/register'||path==='/demo'||path==='/preview-register')fail(404,'없는 페이지입니다.');
   const previewLogin=path==='/preview-login' && hosted;
   if(!user && path!=='/login' && !previewLogin)fail(401,'다시 로그인해주세요.');
   if(path==='/session' && req.method==='GET')return json({user:asUser(user),mode:'review',demo:true,hosted,accounts:[]});

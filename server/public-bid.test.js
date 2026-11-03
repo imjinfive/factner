@@ -6,8 +6,11 @@ import worker from './worker.js';
 import {localMemberPreview} from './public-bid.js';
 import {memberAdminApi} from './members.js';
 import {partnerApi} from './partners.js';
+import {policy,policyApi} from './policy.js';
 import {bidApi,roomDatabase} from './bid-auth.js';
 import {seedReview,reviewPassword} from '../scripts/bid-seed.mjs';
+import {digest,passwordHash} from './security.js';
+import {customerTrialVersion,trialCertificate} from '../shared/customer-trial.js';
 
 const migrationDir=new URL('../migrations/',import.meta.url);
 function database(t,files){
@@ -37,11 +40,11 @@ function fixture(t){
       headers:{Origin:'https://example.test','Content-Type':'application/json',...headers},body:input===undefined?undefined:JSON.stringify(input)}),env);
     return {status:response.status,data:await response.json(),cookie:response.headers.get('Set-Cookie')?.split(';')[0]};
   }
-  function publish(){
+  function publish(version='accepted-version'){
     const config={operator:'Example',contactEmail:'help@example.test',accepting:true};
     const document={...config,privacy:'수집 방침',collection:'필수 정보',transfer:'제공 범위',terms:'이용약관'};
     raw.prepare("UPDATE settings SET value=? WHERE key='service'").run(JSON.stringify(config));
-    raw.prepare('INSERT INTO policy_versions VALUES(?,?,?,?,?)').run('accepted-version',JSON.stringify(document),1,'owner',new Date().toISOString());
+    raw.prepare('INSERT INTO policy_versions VALUES(?,?,?,?,?)').run(version,JSON.stringify(document),1,'owner',new Date().toISOString());
   }
   const owner={id:'owner',role:'owner',display_name:'운영자'};
   async function approve(id){
@@ -57,52 +60,29 @@ const account=(key,kind='brand')=>({email:key+'@example.test',password,name:key+
 const job={category:'packaging',title:'단상자 신규 제작',quantity:1000,unitPrice:300,size:'50 × 50',description:'코팅 종이 / 택배 납품',deadline:'2099-01-01'};
 const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225}],note:'배송 포함'};
 
-test('draft signup issues only generated credentials in a private room that can be reopened from another browser',async t=>{
-  const f=fixture(t),input={kind:'brand',legalType:'individual'};
-  const create=(fields=input)=>f.call('bid/preview-register',fields);
-  const ready=async()=>(await f.call('bid/session')).data.registration.previewAvailable;
-  assert.equal(await ready(),false);assert.equal((await create()).status,503);
-  f.env.DRAFT_SIGNUP_ENABLED='1';delete f.env[localMemberPreview];
-  assert.equal(await ready(),false);
-  Object.assign(f.env,{TURNSTILE_SITE_KEY:'site-key',TURNSTILE_SECRET_KEY:'secret-key'});
-  assert.equal(await ready(),true);
-  assert.equal((await create()).status,400);
-  assert.equal((await create({...input,kind:'design'})).status,403);
-  assert.equal((await create({...input,kind:'both'})).status,400);
-  assert.equal((await create({...input,legalType:'designer'})).status,400);
-  for(const field of ['email','name','contact','password','files','role'])assert.equal((await create({...input,[field]:'private'})).status,400);
-  assert.equal(f.rooms.size,0);assert.equal((await f.call('bid/register',account('real'))).status,503);
-  t.mock.method(globalThis,'fetch',async(url,options)=>{
-    assert.equal(url,'https://challenges.cloudflare.com/turnstile/v0/siteverify');
-    const token=JSON.parse(options.body).response;
-    return Response.json({success:token==='proof',hostname:'example.test',action:'signup'});
-  });
-  assert.equal((await create({...input,turnstileToken:'wrong'})).status,400);assert.equal(f.rooms.size,0);
-  let first;
-  for(const kind of ['brand','packaging'])for(const legalType of ['individual','sole','corporate']){
-    const {status,data}=await create({kind,legalType,turnstileToken:'proof'});
-    assert.equal(status,201);assert.equal(data.status,'preview');assert.match(data.email,/^test-[0-9a-f]{24}@preview\.factner\.invalid$/);
-    const login=await f.call('bid/login',{email:data.email.toUpperCase(),password:data.password},{'X-Factner-Review':'a'.repeat(64)});
-    assert.equal(login.status,200);assert.equal(login.data.user.kind,kind);assert.equal(login.data.reviewRoom,data.reviewRoom);
-    first??={...data,token:login.data.token};
-  }
-  assert.equal(f.rooms.size,6);
-  assert.equal((await f.call('bid/login',{email:first.email,password:'incorrect-password'})).status,401);
-  assert.equal(f.rooms.size,6);
-  assert.equal((await f.call('bid/login',{email:'brand1@gmail.com',password:reviewPassword},{'X-Factner-Review':first.reviewRoom})).status,401);
-  const headers={Authorization:'Bearer '+first.token,'X-Factner-Review':first.reviewRoom};
-  assert.equal((await f.call('bid/session',undefined,headers)).data.mode,'review');
-  assert.equal((await f.call('bid/state',undefined,headers)).status,200);
-  assert.equal((await f.call('member/me',undefined,headers)).status,401);
+test('retired temporary signup cannot create another room, even on an original unpublished draft',async t=>{
+  const f=fixture(t);
+  f.env.DRAFT_SIGNUP_ENABLED='1';
+  assert.equal((await f.call('bid/session')).data.registration.previewAvailable,undefined);
+  assert.equal((await f.call('bid/preview-register',{kind:'brand',legalType:'individual'})).status,404);
+  f.publish();
+  assert.equal((await f.call('bid/preview-register',{kind:'packaging',legalType:'corporate'})).status,404);
+  assert.equal(f.rooms.size,0);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,0);
-  assert.equal(f.raw.prepare('SELECT count(*) n FROM market_accounts').get().n,0);
-  assert.equal(f.raw.prepare('SELECT count(*) n FROM policy_versions').get().n,0);
-  assert.equal((await create({...input,turnstileToken:'wrong'})).status,400);
-  assert.equal((await create({...input,turnstileToken:'wrong'})).status,400);
-  assert.equal((await create({...input,turnstileToken:'proof'})).status,429);
-  assert.equal(f.rooms.size,6);
-  f.publish();assert.equal(await ready(),false);assert.equal((await create()).status,503);
-  f.raw.exec('UPDATE policy_versions SET published=0');assert.equal(await ready(),false);
+});
+
+test('an already issued preview login can still reach only its original room',async t=>{
+  const f=fixture(t),email='test-'+'b'.repeat(24)+'@preview.factner.invalid',password='previously-issued-password';
+  const key=await digest(`factner-preview-signup-v1\n${email}\n${password}`);
+  await f.call('bid/login',{email:'brand1@gmail.com',password:reviewPassword},{'X-Factner-Review':key});
+  await f.rooms.get(key).DB.prepare("INSERT INTO market_accounts VALUES('preview-account',?,'테스트 업체','packaging',?)").bind(email,await passwordHash(password)).run();
+  const login=await f.call('bid/login',{email,password},{'X-Factner-Review':'a'.repeat(64)});
+  assert.equal(login.status,200);assert.equal(login.data.reviewRoom,key);assert.equal(login.data.user.kind,'packaging');
+  const headers={Authorization:'Bearer '+login.data.token,'X-Factner-Review':key};
+  assert.equal((await f.call('bid/session',undefined,headers)).data.mode,'review');
+  assert.equal((await f.call('member/me',undefined,headers)).status,401);
+  assert.equal((await f.call('bid/login',{email,password:'wrong-password'})).status,401);
+  assert.equal(f.rooms.size,1);assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,0);
 });
 
 test('official signup fails closed, validates reviewed consent, business proof and pending approval',async t=>{
@@ -154,6 +134,56 @@ test('reopened member intake accepts all brand and packaging application types b
   assert.equal((await f.call('bid/register',{...design,role:'supplier'})).status,403);
   assert.equal((await f.call('bid/register',{...design,kind:'both'})).status,400);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,6);
+});
+
+test('a published customer trial accepts permanent accounts and only the supplied sample business document',async t=>{
+  const f=fixture(t);
+  const trialMode=async()=>(await f.call('bid/session')).data.registration.trial;
+  assert.equal(await trialMode(),false);f.publish(customerTrialVersion);assert.equal(await trialMode(),true);
+  const business={...account('trial-buyer'),consentVersion:customerTrialVersion,legalType:'sole',businessNumber:'1234567890',files:[trialCertificate]};
+  for(const files of [[],[null],[{...trialCertificate,name:'private.pdf'}],[{...trialCertificate,data:'JVBERi1wcml2YXRl'}],
+    [{...trialCertificate,kind:'workplace'}],[trialCertificate,trialCertificate]]){
+    assert.equal((await f.call('bid/register',{...business,files})).status,400);
+  }
+  assert.equal((await f.call('bid/register',{...business,legalType:'individual'})).status,400);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,0);
+  const saved=await f.call('bid/register',business);
+  assert.equal(saved.status,201);assert.equal(saved.data.status,'pending');
+  const file=f.raw.prepare('SELECT name,content FROM member_files WHERE member_id=?').get(saved.data.id);
+  assert.equal(file.name,trialCertificate.name);assert.equal(Buffer.from(file.content).toString('base64'),trialCertificate.data);
+  const credentials={email:business.email,password:business.password};
+  assert.equal((await f.call('bid/login',credentials)).data.status,'pending');
+  await f.approve(saved.data.id);
+  const login=await f.call('bid/login',credentials);
+  assert.equal(login.status,200);assert.ok(login.cookie);assert.equal(login.data.user.legacyOnly,false);
+  assert.equal((await f.call('bid/posts',job,{Cookie:login.cookie})).status,201);
+  const individual={...account('trial-individual','packaging'),consentVersion:customerTrialVersion};
+  assert.equal((await f.call('bid/register',individual)).status,201);
+  f.publish();assert.equal(await trialMode(),false);
+  const normal=await f.call('bid/register',{...business,email:'normal@example.test',consentVersion:'accepted-version',files:[{...trialCertificate,name:'normal.pdf'}]});
+  assert.equal(normal.status,201);
+});
+
+test('trial document republication preserves sample-only intake until formal publication with new operator details',async t=>{
+  const f=fixture(t);f.publish(customerTrialVersion);
+  async function save(published){
+    const url=new URL('https://admin.example.test/api/admin/policy');
+    const input={...await policy(f.env),customerTrial:false,reviewed:true,published};
+    return (await policyApi(new Request(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}),f.env,url,f.owner)).json();
+  }
+  const updated=await save(true);
+  assert.notEqual(updated.version,customerTrialVersion);assert.equal(updated.customerTrial,true);
+  f.raw.exec("UPDATE settings SET value=json_set(value,'$.memberAccepting',1) WHERE key='service'");
+  assert.equal((await f.call('bid/session')).data.registration.trial,true);
+  const fields={...account('trial-republish'),consentVersion:updated.version,legalType:'corporate',businessNumber:'1234567890',trial:false};
+  assert.equal((await f.call('bid/register',{...fields,files:[{...trialCertificate,name:'private.pdf'}]})).status,400);
+  assert.equal((await f.call('bid/register',{...fields,files:[trialCertificate]})).status,201);
+  f.raw.exec("UPDATE settings SET value=json_set(value,'$.operator','New operator') WHERE key='service'");
+  assert.equal((await save(true)).customerTrial,true);
+  f.raw.exec("UPDATE settings SET value=json_set(value,'$.contactEmail','support@company.example') WHERE key='service'");
+  assert.equal((await save(false)).customerTrial,true);
+  assert.equal((await save(true)).customerTrial,false);
+  assert.equal((await f.call('bid/session')).data.registration.trial,false);
 });
 
 test('approved accounts share real posts across logins; one selected offer reaches the existing admin connection workflow',async t=>{

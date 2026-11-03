@@ -74,10 +74,10 @@ export class BidRoom {
   async fetch(req) {
     const url = new URL(req.url);
     const internal=url.origin==='https://factner-review.internal'&&url.pathname.startsWith('/internal/post-review/');
-    if (!internal&&(!url.pathname.startsWith('/api/bid/') || url.pathname === '/api/bid/events')) return json({ error: '없는 경로입니다.' }, 404);
+    if (!internal&&(!url.pathname.startsWith('/api/bid/') || ['/api/bid/events','/api/bid/preview-register'].includes(url.pathname))) return json({ error: '없는 경로입니다.' }, 404);
     if (req.method !== 'GET' && req.method !== 'POST') return json({ error: '허용되지 않은 요청입니다.' }, 405);
     if (req.method === 'POST' && req.headers.get('Origin') !== url.origin) return json({ error: '허용되지 않은 출처입니다.' }, 403);
-    const creating=req.method==='POST' && ['/api/bid/login','/api/bid/preview-register'].includes(url.pathname);
+    const creating=req.method==='POST' && url.pathname==='/api/bid/login';
     const expiry=await this.#initialize(creating);
     if(internal&&(expiry===null||Date.now()>=expiry))return json({error:'공유한 공고를 찾을 수 없습니다.'},404);
     if(expiry===null)return json({error:'다시 로그인해주세요.'},401);

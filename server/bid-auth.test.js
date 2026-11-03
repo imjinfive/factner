@@ -7,7 +7,7 @@ import { BidRoom } from './bid-room.js';
 import { HttpError } from './http.js';
 import { insertReviewFixtures,seedReview,reviewPassword } from '../scripts/bid-seed.mjs';
 import worker from './worker.js';
-import {digest,randomToken} from './security.js';
+import {digest,passwordHash,randomToken} from './security.js';
 
 function fixture(t) {
   const raw = new DatabaseSync(':memory:');
@@ -130,7 +130,10 @@ test('a preview login never initializes an unknown or expired room',async t=>{
   assert.equal((await roomCall(room,'preview-login',{input})).status,401);
   assert.equal(ctx.storage.getAlarm(),null);
   assert.equal(ctx.storage.sql.exec('SELECT count(*) n FROM sqlite_master').one().n,0);
-  assert.equal((await roomCall(room,'preview-register',{input:{...input,kind:'packaging',legalType:'corporate'}})).status,201);
+  assert.equal((await roomCall(room,'preview-register',{input:{...input,kind:'packaging',legalType:'corporate'}})).status,404);
+  assert.equal(ctx.storage.getAlarm(),null);
+  await roomCall(room,'login',{input:{email:'brand1@gmail.com',password:reviewPassword}});
+  ctx.storage.sql.exec("INSERT INTO market_accounts VALUES('preview-account',?,'테스트 업체','packaging',?)",input.email,await passwordHash(input.password));
   const expiry=ctx.storage.getAlarm();assert.ok(expiry>Date.now());
   const resumed=new BidRoom(ctx,roomSchema,reviewSchema);
   assert.equal((await roomCall(resumed,'preview-login',{input})).status,200);

@@ -30,7 +30,7 @@ function activeRoom(){
 function hasSavedSession(){try{return Boolean(readToken()||sessionStorage.getItem('factner-account-active'));}catch{return false;}}
 async function request(path,payload,token=readToken()){
   const headers={};
-  if(token&&!['/login','/register','/preview-register'].includes(path))headers.Authorization='Bearer '+token;
+  if(token&&path!=='/login'&&path!=='/register')headers.Authorization='Bearer '+token;
   const room=path==='/login'?savedRoom():headers.Authorization?activeRoom():'';
   if(room)headers['X-Factner-Review']=room;
   if(payload!==undefined)headers['Content-Type']='application/json';
@@ -153,7 +153,7 @@ export default function BidApp({surface='market'}){
   }
   const authenticate=async(path,body)=>{
     const data=await request(path,body);
-    if(path==='/register'||path==='/preview-register')return data;
+    if(path==='/register')return data;
     ++seq.current;++authRevision.current;
     if(data.token){
       if(!roomFormat.test(data.reviewRoom))throw new Error('로그인 세션을 확인하지 못했습니다.');

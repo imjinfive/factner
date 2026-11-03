@@ -166,5 +166,5 @@ export default function PartnerAccess({mode,navigationKey,session,posts,partners
       </div>{accountError && <p className="member-error" role="alert">{accountError}</p>}
     </div></section>;
   const accountMode = ['signup','find-id','recover-password','reset-password'].includes(mode) ? mode : 'login';
-  return <CustomerAccount mode={accountMode} session={session} SignupNotice={DesignerSignupNotice} onNavigate={onNavigate} onAuth={onAuth}/>;
+  return <CustomerAccount key={accountMode === 'signup' ? session.registration?.consentVersion : undefined} mode={accountMode} session={session} SignupNotice={DesignerSignupNotice} onNavigate={onNavigate} onAuth={onAuth}/>;
 }

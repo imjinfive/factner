@@ -20,10 +20,6 @@
 .pa-notice-card, .pa-notice-card .pa-role-icon, .pa-soon { color: var(--muted); }
 .pa-soon { margin-inline-start: auto; font-size: 13px; white-space: nowrap; }
 .pa-access .member-auth-heading { text-align: start; margin-bottom: 24px; }
-.pa-preview-complete { text-align: start; }
-.pa-preview-credentials { margin: 0 0 24px; }
-.pa-preview-credentials dt { color: var(--muted); font-size: 14px; }
-.pa-preview-credentials dd { margin: 4px 0 16px; font-weight: 650; overflow-wrap: anywhere; user-select: all; }
 .pa-access .member-steps { margin-bottom: 16px; }
 .pa-access .member-choice-list { gap: 0; border-top: 1px solid var(--line); }
 .pa-access .member-choice {

@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {ArrowRight, Briefcase, Buildings, Factory, FileText, Storefront, UploadSimple, UserCircle, X} from '@phosphor-icons/react';
 import {formatBusinessNumber, formatInput, formatPhone} from '../../admin-ui/input-format.js';
 import {prepareUpload} from '../../shared/image-upload.js';
+import {trialCertificate} from '../../shared/customer-trial.js';
 import {api} from './api';
 
 export const legalTypes = {individual:'개인',sole:'개인사업자',corporate:'법인사업자'};
@@ -58,7 +59,7 @@ export function MemberLegalChoices({onChoose}) {
       <span className="member-symbol"><Icon size={30}/></span><strong>{legalTypes[key]}</strong>
     </button>)}</div>;
 }
-export function MemberRegistrationFields({role, legal, draft, cert, setCert, onCertBusy, photos, setPhotos, onPhotosBusy, passwordRef}) {
+export function MemberRegistrationFields({role, legal, draft, cert, setCert, onCertBusy, photos, setPhotos, onPhotosBusy, passwordRef, trial=false}) {
   return <>
     <p className="member-tag">{role==='brand'?'브랜드':'패키징 제작 업체'} · {legalTypes[legal]}</p>
     <Field label={role==='brand'?'브랜드명':'업체명 / 활동명'} name="name" defaultValue={draft.name||''} maxLength={100} required/>
@@ -67,7 +68,11 @@ export function MemberRegistrationFields({role, legal, draft, cert, setCert, onC
     <Field label="이메일" name="email" defaultValue={draft.email||''} type="email" autoComplete="username" maxLength={254} required/>
     <Field label="비밀번호 · 8자 이상"><input name="password" type="password" ref={passwordRef} defaultValue={draft.password||''} autoComplete="new-password" minLength={8} maxLength={128} required/></Field>
     {legal!=='individual' && <><Field label="사업자등록번호" name="businessNumber" defaultValue={draft.businessNumber||''} inputMode="numeric" onInput={e=>formatInput(e,formatBusinessNumber)} placeholder="000-00-00000" pattern="[0-9]{3}-?[0-9]{2}-?[0-9]{5}" maxLength={12} required/>
-      <Upload label="사업자등록증 첨부" files={cert} onChange={setCert} onBusy={onCertBusy} kind="certificate" max={1}/></>}
-    <Upload label="작업 현장·패키징 사진 첨부" files={photos} onChange={setPhotos} onBusy={onPhotosBusy} kind="workplace" max={4}/>
+      {trial ? (cert.length ? <div className="member-files"><div className="member-file">
+        <Preview file={trialCertificate}/><span>{trialCertificate.name}</span>
+        <button type="button" aria-label="견본 사업자등록증 제거" onClick={()=>setCert([])}><X size={18}/></button>
+      </div></div> : <button type="button" className="button outline" onClick={()=>setCert([trialCertificate])}>견본 사업자등록증 첨부</button>) :
+        <Upload label="사업자등록증 첨부" files={cert} onChange={setCert} onBusy={onCertBusy} kind="certificate" max={1}/>}</>}
+    {!trial && <Upload label="작업 현장·패키징 사진 첨부" files={photos} onChange={setPhotos} onBusy={onPhotosBusy} kind="workplace" max={4}/>}
   </>;
 }

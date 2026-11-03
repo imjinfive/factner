@@ -7,6 +7,7 @@ import {memberSupport,memberWorkspaceApi} from './member-support.js';
 import {isReviewEmail} from '../scripts/bid-seed.mjs';
 import {approvedMarketMember,marketConsent} from './policy.js';
 import {currentMember} from './member-lifecycle.js';
+import {trialCertificate} from '../shared/customer-trial.js';
 
 const consentVersion='member-pilot-2026-10-21';
 const fields='id,email,role,legal_type,name,contact,phone,business_number,status,review_note,created_at,updated_at,version';
@@ -53,7 +54,7 @@ export async function memberFile(req,env,id,user,admin=false){
  const bytes=file.content instanceof ArrayBuffer?file.content:new Uint8Array(file.content);
  return new Response(bytes,{headers:{'Content-Type':file.mime,'Cache-Control':'private, no-store','Content-Security-Policy':"default-src 'none'; sandbox",'Content-Disposition':`${file.mime==='application/pdf'?'attachment':'inline'}; filename*=UTF-8''${encodeURIComponent(file.name).replace(/'/g,'%27')}`}});
 }
-export async function registerMember(req,env,input,{version,live=false,requireCaptcha=false}){
+export async function registerMember(req,env,input,{version,trial=false,live=false,requireCaptcha=false}){
   await rate(env,`signup:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,10,3600);
   const {email,password}=loginInput(input);
   if(isReviewEmail(email))fail(409,'회원가입에 사용할 수 없는 이메일입니다.');
@@ -63,6 +64,14 @@ export async function registerMember(req,env,input,{version,live=false,requireCa
   if(live&&!/^\d{7,15}$/.test(phone.replace(/[^0-9]/g,'')))fail(400,'연락처의 숫자를 확인해주세요.');
   if(input.legalType!=='individual'&&!/^\d{10}$/.test(number))fail(400,'사업자등록번호 10자리를 입력해주세요.');
   if(!Array.isArray(input.files)||input.files.length>5)fail(400,'첨부 파일은 최대 5개입니다.');
+  if(trial){
+    const expectedCount=input.legalType==='individual'?0:1;
+    const fields=Object.entries(trialCertificate);
+    const isSample=file=>file && Object.keys(file).length===fields.length && fields.every(([key,value])=>file[key]===value);
+    if(input.files.length!==expectedCount || !input.files.every(isSample)){
+      fail(400,'테스트 기간에는 사업자 가입 시 제공된 견본 사업자등록증만 첨부할 수 있습니다.');
+    }
+  }
   const files=input.files.map(f=>fileInput(f,['certificate','workplace']));
   if(input.legalType!=='individual'&&!files.some(f=>f.kind==='certificate'))fail(400,'사업자등록증을 첨부해주세요.');
   await verifyQuoteSubmission(req,env,{...input,email},{accepting:requireCaptcha},'signup');

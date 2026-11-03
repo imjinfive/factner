@@ -26,7 +26,6 @@
   },
   "vars": {
     "APP_KIND": "main",
-    "DRAFT_SIGNUP_ENABLED": "1",
     "TURNSTILE_SITE_KEY": "0x4AAAAAAFbVVs9UqZ4yQIFU"
   },
   "durable_objects": { "bindings": [{ "name": "BID_ROOMS", "class_name": "BidRoom" }] },

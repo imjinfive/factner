@@ -2,10 +2,10 @@ import {body,fail,json,now,stmt,text} from './http.js';
 import {owner} from './auth.js';
 import {notificationReadiness} from './operations.js';
 import {currentMember} from './member-lifecycle.js';
+import {customerTrialVersion} from '../shared/customer-trial.js';
 
-export const initialPolicyVersion='draft-2026-10-28';
 const draft = {
- version:initialPolicyVersion,published:false,
+ version:'draft-2026-10-28',published:false,
  privacy:`개인정보 처리방침 초안 — 정식 운영 전 검토 중
 현재는 가상 정보로만 테스트하는 상태입니다. 실제 개인정보와 기밀 자료를 입력하지 마세요.
 
@@ -50,7 +50,9 @@ export async function service(env) {
 export async function policy(env) {
  const row=await stmt(env,'SELECT id,content,published FROM policy_versions ORDER BY created_at DESC,rowid DESC LIMIT 1').first();
  const config=await service(env);
- return row?{...JSON.parse(row.content),version:row.id,published:!!row.published}:{...draft,operator:config.operator,contactEmail:config.contactEmail};
+ if(!row)return {...draft,operator:config.operator,contactEmail:config.contactEmail};
+ const doc=JSON.parse(row.content);
+ return {...doc,version:row.id,published:!!row.published,customerTrial:doc.customerTrial===true || row.id===customerTrialVersion};
 }
 // Callers supply a static SQL alias. A pilot-only consent cannot grant access to the shared market.
 export function marketConsent(alias) {
@@ -97,6 +99,11 @@ export async function policyApi(req,env,url,user) {
    const content={operator:config.operator,contactEmail:config.contactEmail,
     privacy:text(input.privacy,5000,true),terms:text(input.terms,4000,true),collection:text(input.collection,1500,true),transfer:text(input.transfer,1500,true)};
    const published=input.published===true;
+   if(previous.customerTrial){
+    const original=await stmt(env,'SELECT content FROM policy_versions WHERE id=?',customerTrialVersion).first();
+    const trial=original?JSON.parse(original.content):previous;
+    content.customerTrial=!published || config.operator===trial.operator || config.contactEmail===trial.contactEmail;
+   }
    if(published&&(!config.operator||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.contactEmail)||input.reviewed!==true))fail(400,'운영 정보를 먼저 입력하고 문서·위탁·국외 처리 검토를 확인해주세요.');
    const version=crypto.randomUUID();
    await env.DB.batch([
