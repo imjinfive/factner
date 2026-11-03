@@ -92,6 +92,55 @@ test('only the owner sees real submitted work, bounded searchable pages and an o
  assert.doesNotMatch(JSON.stringify([list.data,details]),/@|01012345678|비공개담당자|password|구회원|시연자/);
 });
 
+test('whole inventory paginates every review state and lifecycle without mixing examples into the real total',async t=>{
+ const f=await fixture(t),ids=[];
+ const states=['pending','approved','rejected','withdrawn'];
+ const update=f.raw.prepare('UPDATE market_posts SET review_status=? WHERE id=?');
+ for(let i=0;i<31;i++){
+   const id=f.post(f.brand,`공고 ${i}`,i===1?'2000-01-01':'2099-01-01');
+   ids.push(id);update.run(states[i%4],id);
+ }
+ await f.select(f.offer(ids[5]));
+ const path=base+'?review=all&status=all&includeExamples=1';
+ const a=(await f.api(path)).data,b=(await f.api(path+'&page=2')).data;
+ assert.equal(a.total,31);assert.equal(a.posts.length,25);assert.equal(b.posts.length,6);
+ const posts=[...a.posts,...b.posts];assert.deepEqual(posts.map(p=>p.id).sort(),ids.sort());
+ assert.deepEqual(new Set(posts.map(p=>p.reviewStatus)),new Set(states));
+ assert.deepEqual(new Set(posts.map(p=>p.status)),new Set(['inactive','selected','open','expired']));
+ assert.equal(a.examples.length,6);assert.equal((await f.api(base)).data.examples,undefined);
+});
+
+test('only owners can hide or restore fallback examples; real posts take precedence and no example is a market record',async t=>{
+ const f=await fixture(t),guest=await f.customer(null),member=await f.customer(f.supplier);
+ const path=base+'?includeExamples=1',catalog=async()=>(await f.api(path)).data;
+ const posts=async()=>(await guest('state')).data.posts;
+ const examples=(await catalog()).examples;
+ assert.deepEqual(examples.map(p=>p.id),['example-1','example-3','example-4','example-6','example-8','example-10']);
+ assert.ok(examples.every(p=>p.example&&p.visible));assert.equal((await posts()).length,6);
+ assert.equal((await member('state')).data.posts.length,0);
+ assert.equal((await f.api(path+'&q='+encodeURIComponent('앰플'))).data.examples.length,1);
+ assert.equal((await f.api(path+'&q=unmatched')).data.examples.length,0);
+ const change=(id,visible,token=f.owner,confirmed=true)=>f.api('/api/admin/market/examples/'+id+'/visibility',{visible,confirmed},'POST',token);
+ assert.equal((await f.api(path,undefined,'GET',f.staff)).status,403);
+ assert.equal((await change('example-1',false,f.staff)).status,403);
+ assert.equal((await change('example-1',false,'')).status,401);
+ assert.equal((await change('example-1',false,f.owner,false)).status,400);
+ assert.equal((await change('example-1','false')).status,400);
+ assert.equal((await change('example-2',false)).status,404);
+ for(const example of examples){
+   assert.deepEqual((await change(example.id,false)).data,{id:example.id,visible:false});
+ }
+ assert.deepEqual(await posts(),[]);
+ assert.ok((await catalog()).examples.every(p=>!p.visible));
+ assert.equal((await change('example-1',true)).status,200);
+ assert.equal((await change('example-1',true)).status,200);
+ assert.deepEqual((await posts()).map(p=>p.id),['example-1']);
+ assert.equal(f.raw.prepare('SELECT count(*) n FROM market_posts').get().n,0);
+ const real=f.post();assert.deepEqual((await posts()).map(p=>p.id),[real]);
+ assert.equal((await catalog()).total,1);
+ assert.equal((await change('example-1',false)).status,200);assert.deepEqual((await posts()).map(p=>p.id),[real]);
+});
+
 test('one real partner completes multiple selected posts with separate tier snapshots; retries neither duplicate nor reopen',async t=>{
  const f=await fixture(t),a=f.post(),b=f.post(),offerA=f.offer(a),offerB=f.offer(b);
  const request=await f.select(offerA),shared=await f.select(offerB,1000);assert.equal(request.id,shared.id);

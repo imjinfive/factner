@@ -17,20 +17,20 @@ export const reviewPartnerCards = {
 };
 // Every fixture is fictional, with a different job and no customer identity in its public brief.
 const briefs=[
- ['packaging','앰플 단상자 3,000개 제작',3000,480,'42 × 42 × 118 mm','무광 코팅 백판지, 별색 1도. 유리 앰플을 고정할 종이 받침이 필요합니다.',3],
+ ['packaging','앰플 단상자 3,000개 제작',3000,480,'42 × 42 × 118 mm','무광 코팅 백판지, 별색 1도. 유리 앰플을 고정할 종이 받침이 필요합니다.',3,'example-1'],
  ['design','스페셜티 원두 3종 라벨 디자인',3,280000,'92 × 118 mm','원산지별 라벨 3종. 공통 레이아웃과 인쇄용 원본 파일을 요청합니다.',6],
- ['packaging','드립백 선물용 슬리브 제작',5000,340,'115 × 80 × 145 mm','종이 슬리브, 2도 인쇄. 같은 규격의 두 가지 컬러를 비교합니다.',4],
- ['packaging','냉동 디저트 보냉 배송 박스',1800,2200,'245 × 180 × 125 mm','새벽 배송용 E골 합지. 결로를 고려한 내수 코팅 사양을 제안해 주세요.',7],
+ ['packaging','드립백 선물용 슬리브 제작',5000,340,'115 × 80 × 145 mm','종이 슬리브, 2도 인쇄. 같은 규격의 두 가지 컬러를 비교합니다.',4,'example-3'],
+ ['packaging','냉동 디저트 보냉 배송 박스',1800,2200,'245 × 180 × 125 mm','새벽 배송용 E골 합지. 결로를 고려한 내수 코팅 사양을 제안해 주세요.',7,'example-4'],
  ['design','스킨케어 트래블 키트 패키지 디자인',1,950000,'185 × 130 × 45 mm','3종 세트 외박스의 그래픽과 칼선 적용. 두 시안과 인쇄용 파일이 필요합니다.',5],
- ['packaging','리필 파우치 스탠딩 봉투',8000,265,'125 × 185 mm','무광 파우치, 하단 거싯과 재밀봉 지퍼 포함. 내용물은 분말입니다.',9],
+ ['packaging','리필 파우치 스탠딩 봉투',8000,265,'125 × 185 mm','무광 파우치, 하단 거싯과 재밀봉 지퍼 포함. 내용물은 분말입니다.',9,'example-6'],
  ['design','홈 프래그런스 라인 그래픽 리뉴얼',4,240000,'76 × 105 mm','4종 향별 컬러 체계, 라벨과 단상자에 적용할 디자인을 요청합니다.',8],
- ['packaging','수제 양갱 6입 종이 트레이',2500,570,'160 × 95 × 28 mm','식품 접촉용 종이 트레이와 칸막이. 샘플 후 양산할 예정입니다.',8],
+ ['packaging','수제 양갱 6입 종이 트레이',2500,570,'160 × 95 × 28 mm','식품 접촉용 종이 트레이와 칸막이. 샘플 후 양산할 예정입니다.',8,'example-8'],
  ['design','반려동물 간식 파우치 일러스트',2,430000,'155 × 225 mm','강아지·고양이 2종 전면 일러스트와 뒷면 정보 레이아웃입니다.',10],
- ['packaging','유리컵 이중 골판지 우편 박스',4000,690,'110 × 110 × 145 mm','유리컵 1개입. 완충 구조, 단색 인쇄, 접착 없는 조립식을 선호합니다.',11]
+ ['packaging','유리컵 이중 골판지 우편 박스',4000,690,'110 × 110 × 145 mm','유리컵 1개입. 완충 구조, 단색 인쇄, 접착 없는 조립식을 선호합니다.',11,'example-10']
 ];
 export function examplePosts() {
-  return briefs.flatMap(([category,title,quantity,unitPrice,size,description,days],i)=>category==='packaging'?[{
-    id:'example-'+(i+1), brandAlias:'브랜드 '+String.fromCharCode(65+i), category,title,quantity,unitPrice,size,description,
+  return briefs.flatMap(([category,title,quantity,unitPrice,size,description,days,id],i)=>id?[{
+    id, brandAlias:'브랜드 '+String.fromCharCode(65+i), category,title,quantity,unitPrice,size,description,
     deadline:new Date(Date.now()+days*86400000+9*3600000).toISOString().slice(0,10),
     createdAt:null,status:'open',reviewStatus:'approved',offerCount:0,isMine:false,example:true
   }]:[]);

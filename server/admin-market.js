@@ -3,6 +3,7 @@ import {owner} from './auth.js';
 import {marketConsent} from './policy.js';
 import {createPartner} from './partners.js';
 import {reviewPost} from './market-review.js';
+import {marketExamples,setExampleVisibility} from './market-examples.js';
 
 const pageSize=25;
 const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10);
@@ -63,10 +64,13 @@ async function list(env,url,page,date){
    where+=' AND p.review_status=?';args.push(review);
  }
  if(q){where+=" AND (instr(lower(p.title),lower(?)) OR instr(lower(b.name),lower(?)) OR p.id=?)";args.push(q,q,q);}
- const [rows,total,summary]=await Promise.all([
+ const includeExamples=url.searchParams.get('includeExamples')==='1';
+ const [rows,total,summary,examples]=await Promise.all([
    stmt(env,`SELECT ${postFields} ${postRows}${where} ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`,...args,pageSize,(page-1)*pageSize).all(),
-   stmt(env,`SELECT count(*) AS n ${postRows}${where}`,...args).first(),counts(env,date)]);
- return json({posts:rows.results.map(p=>postView(p,date)),total:total.n,page,pageSize,counts:summary});
+   stmt(env,`SELECT count(*) AS n ${postRows}${where}`,...args).first(),counts(env,date),includeExamples?marketExamples(env,true):null]);
+ const result={posts:rows.results.map(p=>postView(p,date)),total:total.n,page,pageSize,counts:summary};
+ if(examples)result.examples=examples.filter(post=>!q || post.id===q || [post.title,post.brandAlias].some(value=>value.toLowerCase().includes(q.toLowerCase())));
+ return json(result);
 }
 async function detail(env,id,page,date){
  const p=await stmt(env,`SELECT ${postFields} ${postRows} WHERE p.id=?`,id).first();
@@ -93,6 +97,13 @@ async function connect(req,env,user,id){
 }
 
 export async function adminMarketApi(req,env,url,user){
+ const example=url.pathname.match(/^\/api\/admin\/market\/examples\/(example-\d+)\/visibility$/);
+ if(example){
+   owner(user);
+   if(req.method!=='POST')fail(405,'지원하지 않는 공고 요청입니다.');
+   await rate(env,'market-admin:'+user.id,60,3600);
+   return json(await setExampleVisibility(env,example[1],await body(req)));
+ }
  const match=url.pathname.match(/^\/api\/admin\/market\/posts(?:\/([a-f0-9-]{36})(\/(?:connect|review))?)?$/);
  if(!match)return null;
  owner(user);

@@ -1,6 +1,7 @@
 import { BID_TERMS } from '../shared/bid-terms.js';
 import { designerNotice, isPackagingPartner } from '../shared/partner-roles.js';
-import { examplePosts, reviewPartnerCards } from '../scripts/bid-seed.mjs';
+import { reviewPartnerCards } from '../scripts/bid-seed.mjs';
+import {marketExamples} from './market-examples.js';
 import { body, fail, json, now, stmt, text } from './http.js';
 import { approvedMarketMember } from './policy.js';
 import { authorIdentity,reviewPost,validateAnonymous } from './market-review.js';
@@ -91,7 +92,7 @@ async function getState(env, user, live=false) {
     });
     if(!state.partners.length)state.partners=Object.values(reviewPartnerCards).map(p=>({...p,kind:'packaging',example:true}));
     state.posts=state.posts.filter(p=>p.status==='open'&&p.category==='packaging'&&p.deadline>=today());
-    if(!state.posts.length)state.posts=examplePosts();
+    if(!state.posts.length)state.posts=await marketExamples(env);
   }
   return state;
 }

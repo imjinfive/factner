@@ -18,12 +18,12 @@ function pager(total,page,pageSize,unit) {
 }
 const price = (quantity,unitPrice) => `${count(quantity)}개 × ${count(unitPrice)}원`;
 
-export async function marketView({api,send,shell,esc,notice,isActive=()=>true,initialStatus='all',initialReview,initialPostId,openMatching,testReview,onExitTest}) {
+export async function marketView({api,send,shell,esc,notice,isActive=()=>true,inventory=false,initialStatus='all',initialReview,initialPostId,openMatching,testReview,onExitTest}) {
   shell('<section class="admin-market" id="admin-market"></section>');
   const screen = document.getElementById('admin-market');
   if (!screen || !isActive()) return;
   let sequence=0, query='', status=Object.hasOwn(filters,initialStatus)?initialStatus:'all', listPage=1;
-  let review=Object.hasOwn(reviewLabels,initialReview)?initialReview:status==='all'?'pending':'approved';
+  let review=inventory?'all':Object.hasOwn(reviewLabels,initialReview)?initialReview:status==='all'?'pending':'approved';
   let draft={};
   const active = id => screen.isConnected && isActive() && id===sequence;
   const at = selector => screen.querySelector(selector);
@@ -38,18 +38,23 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
     target.innerHTML=`<p class="error" role="alert">${esc(error.message || '자료를 불러오지 못했습니다. 다시 조회해주세요.')}</p>`;
   }
   function showList() {
-    screen.innerHTML=`<header><div><h1>공고 심사</h1><p class="muted">브랜드가 제출한 공고를 읽고 게시 여부를 결정하세요.</p></div>
+    screen.innerHTML=`<header><div><h1>${inventory?'전체 공고':'공고 심사'}</h1><p class="muted">${inventory?'브랜드가 제출한 공고와 비회원에게 보이는 예시 공고를 관리합니다.':'브랜드가 제출한 공고를 읽고 게시 여부를 결정하세요.'}</p></div>
       <button type="button" data-refresh class="secondary">새로고침</button></header>
-      <div class="am-queues" role="group" aria-label="공고 심사 상태">${Object.entries(reviewLabels).map(([key,label])=>`<button type="button" data-review="${key}" aria-pressed="${key===review}">${label}${key==='pending'?' <span data-queue-count></span>':''}</button>`).join('')}</div>
-      <section class="panel"><form class="filters" aria-label="공고 검색">
+      ${inventory?'':`<div class="am-queues" role="group" aria-label="공고 심사 상태">${Object.entries(reviewLabels).map(([key,label])=>`<button type="button" data-review="${key}" aria-pressed="${key===review}">${label}${key==='pending'?' <span data-queue-count></span>':''}</button>`).join('')}</div>`}
+      <section class="panel">${inventory?'<div class="am-list-heading"><h2>회원 공고</h2><span data-result-count aria-live="polite"></span></div>':''}<form class="filters" aria-label="공고 검색">
         <input type="search" name="q" aria-label="공고명 또는 브랜드명" placeholder="공고명 또는 브랜드명" value="${esc(query)}" maxlength="100">
+        ${inventory?`<select name="review" aria-label="회원 공고 심사 상태"><option value="all">모든 심사 상태</option>${Object.entries(reviewLabels).map(([key,label])=>`<option value="${key}" ${key===review?'selected':''}>${label}</option>`).join('')}</select>`:''}
         ${review==='approved'?`<select name="status" aria-label="공고 및 연결 상태">${options()}</select>`:''}<button type="submit">검색</button>
-      </form><div data-results></div></section>`;
+      </form><div data-results></div></section>
+      ${inventory?`<section class="panel am-examples"><div class="am-list-heading"><h2>사이트 예시 공고</h2></div><p class="muted">공개할 회원 공고가 없을 때 비회원에게 표시되는 예시입니다.</p><div data-examples></div></section>`:''}`;
     const form=at('form');
     screen.querySelectorAll('[data-review]').forEach(button=>button.onclick=()=>{
       review=button.dataset.review;status='all';query='';listPage=1;showList();
     });
     form.onsubmit=event=>{event.preventDefault();query=form.elements.q.value.trim();status=form.elements.status?.value||'all';listPage=1;loadList();};
+    if(form.elements.review)form.elements.review.onchange=()=>{
+      review=form.elements.review.value;query=form.elements.q.value.trim();status='all';listPage=1;showList();at('[name="review"]').focus();
+    };
     if(form.elements.status)form.elements.status.onchange=()=>form.requestSubmit();
     at('[data-refresh]').onclick=()=>loadList();
     return loadList();
@@ -57,30 +62,64 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
   async function loadList() {
     const id=++sequence,target=at('[data-results]');
     target.setAttribute('aria-busy','true');target.innerHTML='<p class="muted" role="status">공고를 불러오고 있습니다.</p>';
+    if(inventory){at('[data-examples]').replaceChildren();at('[data-result-count]').textContent='';}
     try {
       const params=new URLSearchParams({q:query,status,review,page:String(listPage)});
+      if(inventory)params.set('includeExamples','1');
       const data=await api('admin/market/posts?'+params);
       if (!active(id)) return;
       const last=Math.max(1,Math.ceil(data.total/data.pageSize));
       if(data.page>last){listPage=last;return loadList();}
       listPage=data.page;target.setAttribute('aria-busy','false');
-      if(Number.isSafeInteger(data.counts?.pendingPosts))at('[data-queue-count]').textContent=count(data.counts.pendingPosts);
+      if(inventory){
+        at('[data-result-count]').textContent=count(data.total)+'건';
+        showExamples(data.examples,id);
+      } else if(Number.isSafeInteger(data.counts?.pendingPosts))at('[data-queue-count]').textContent=count(data.counts.pendingPosts);
       if (!data.posts.length) {
-        const filtered=Boolean(query||status!=='all');
-        const empty={pending:'심사할 공고가 없습니다.',approved:'승인된 공고가 없습니다.',rejected:'반려된 공고가 없습니다.',withdrawn:'삭제된 공고가 없습니다.'};
-        target.innerHTML=`<div class="empty"><strong>${filtered?'조건에 맞는 공고가 없습니다.':empty[review]}</strong><p>${filtered?'검색어나 상태를 바꿔 확인하세요.':review==='pending'?'브랜드가 공고를 제출하면 이곳에 표시됩니다.':''}</p>
+        const filtered=Boolean(query||status!=='all'||(inventory&&review!=='all'));
+        const empty={all:'등록된 회원 공고가 없습니다.',pending:'심사할 공고가 없습니다.',approved:'승인된 공고가 없습니다.',rejected:'반려된 공고가 없습니다.',withdrawn:'삭제된 공고가 없습니다.'};
+        target.innerHTML=`<div class="empty"><strong>${filtered?'조건에 맞는 공고가 없습니다.':empty[review]}</strong>${filtered?'<p>검색어나 상태를 바꿔 확인하세요.</p>':review==='pending'?'<p>브랜드가 공고를 제출하면 이곳에 표시됩니다.</p>':''}
           ${filtered?'<button type="button" class="secondary" data-reset>검색 조건 지우기</button>':''}</div>`;
-        const reset=at('[data-reset]');if(reset)reset.onclick=()=>{query='';status='all';listPage=1;showList();};
+        const reset=at('[data-reset]');if(reset)reset.onclick=()=>{query='';status='all';if(inventory)review='all';listPage=1;showList();};
         return;
       }
       target.innerHTML=`<div class="table-scroll"><table class="am-posts ${review==='pending'?'am-queue-table':''}"><thead><tr><th scope="col">공고 · 브랜드</th><th scope="col">요청 수량 · 희망 단가</th><th scope="col">${review==='pending'?'제출일':'받은 제안'}</th><th scope="col">마감일</th><th scope="col">상태</th></tr></thead>
         <tbody>${data.posts.map(post=>`<tr><td><button type="button" class="link-button am-title" data-post="${esc(post.id)}">${esc(post.title)}</button><small>${esc(post.brandName)} · ${category(post.category)}</small></td>
           <td>${count(post.quantity)}개<small>${count(post.unitPrice)}원/개</small></td><td>${review==='pending'?date(post.createdAt):count(post.offerCount)+'건'}</td><td>${date(post.deadline)}</td>
-          <td><span class="badge">${review==='approved'?(filters[post.status]||'확인 필요'):reviewLabels[review]}</span>${post.connection?`<small>연결 요청 · ${requestStates[post.connection.status]||'확인 필요'}</small>`:''}${!post.eligible?'<small>브랜드 승인 상태 확인</small>':''}</td></tr>`).join('')}
+          <td><span class="badge am-status" data-state="${esc(post.reviewStatus)}">${review==='approved'?(filters[post.status]||'확인 필요'):reviewLabels[post.reviewStatus]}</span>${review==='all'&&post.reviewStatus==='approved'?`<small>${filters[post.status]||'확인 필요'}</small>`:''}${post.connection?`<small>연결 요청 · ${requestStates[post.connection.status]||'확인 필요'}</small>`:''}${!post.eligible?'<small>브랜드 승인 상태 확인</small>':''}</td></tr>`).join('')}
         </tbody></table></div>${pager(data.total,data.page,data.pageSize,'건')}`;
       target.querySelectorAll('[data-post]').forEach(button=>button.onclick=()=>showDetail(button.dataset.post));
       pages(target,next=>{listPage=next;loadList();});
     } catch(error) {if(active(id))loadError(target,error);}
+  }
+  function showExamples(examples,id) {
+    const target=at('[data-examples]');
+    if(!examples.length){target.innerHTML='<p class="empty">조건에 맞는 예시 공고가 없습니다.</p>';return;}
+    target.innerHTML=`<ul class="am-example-list">${examples.map(post=>`<li>
+      <details><summary>${esc(post.title)}</summary><p>${esc(post.description)}</p><small>${esc(post.brandAlias)} · ${price(post.quantity,post.unitPrice)} · ${esc(post.size)}</small></details>
+      <span class="am-example-state">${post.visible?'표시 허용':'숨김'}</span>
+      <button type="button" class="secondary" data-example="${esc(post.id)}" aria-label="${esc(post.title)} ${post.visible?'숨기기':'표시하기'}">${post.visible?'숨기기':'표시하기'}</button>
+    </li>`).join('')}</ul>`;
+    target.querySelectorAll('[data-example]').forEach(button=>button.onclick=async()=>{
+      const post=examples.find(item=>item.id===button.dataset.example);
+      const action=post.visible?'숨기기':'표시하기';
+      try{
+        const ok=await reviewBeforeSave({title:'예시 공고 '+action,rows:[['공고',post.title]],action,
+          message:post.visible?'이 예시를 고객 화면에서 숨깁니다.':'공개할 회원 공고가 없으면 고객 화면에 이 예시를 표시합니다.'});
+        if(!ok||!active(id))return;
+        button.disabled=true;
+        await send('admin/market/examples/'+encodeURIComponent(post.id)+'/visibility',{visible:!post.visible,confirmed:true});
+        if(screen.isConnected && isActive()){
+          notice('예시 공고 표시 설정을 저장했습니다.');
+          if(at('[data-results]')){
+            const restoreFocus=active(id);
+            await loadList();
+            if(restoreFocus && document.activeElement===document.body)at(`[data-example="${post.id}"]`)?.focus();
+          }
+        }
+      }catch(error){if(screen.isConnected && isActive())notice(error.message);}
+      finally{if(button.isConnected)button.disabled=false;}
+    });
   }
   function tierTable(offer,selected) {
     return `<div class="table-scroll"><table class="am-tiers"><thead><tr><th scope="col">제안 수량</th><th scope="col">개당 단가</th><th scope="col">수량 × 단가</th></tr></thead><tbody>
@@ -169,7 +208,7 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
   async function showDetail(postId,offerPage=1) {
     const id=++sequence;
     if(draft.id!==postId)draft={id:postId};
-    screen.innerHTML=`<header><div><button type="button" class="quiet am-back" data-back>← 공고 목록</button><h1>공고 상세</h1></div><button type="button" class="secondary" data-refresh>새로고침</button></header><div data-detail aria-busy="true"><p class="muted" role="status">공고와 제안을 불러오고 있습니다.</p></div>`;
+    screen.innerHTML=`<header><div><button type="button" class="quiet am-back" data-back>${inventory?'← 전체 공고':'← 공고 목록'}</button><h1>공고 상세</h1></div><button type="button" class="secondary" data-refresh>새로고침</button></header><div data-detail aria-busy="true"><p class="muted" role="status">공고와 제안을 불러오고 있습니다.</p></div>`;
     at('[data-back]').onclick=testReview?onExitTest:showList;
     if(testReview){
       at('[data-back]').textContent='← 운영 공고 목록';
@@ -187,7 +226,7 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
       const post=testReview?{...data.post,eligible:true}:data.post;
       const pending=post.reviewStatus==='pending',showOffers=!testReview&&(post.reviewStatus==='approved'||data.total>0||post.connection);
       at('h1').textContent=pending?'공고 심사':post.title;target.setAttribute('aria-busy','false');
-      target.innerHTML=`<section class="panel am-preview">${pending?`<p class="am-kicker">게시할 공고 내용</p><h2>${esc(post.title)}</h2>`:'<h2>공고 내용</h2>'}
+      target.innerHTML=`<section class="panel am-preview">${pending?`<h2>${esc(post.title)}</h2>`:'<h2>공고 내용</h2>'}
         <dl><dt>요청 브랜드</dt><dd>${esc(post.brandName)} <small>관리자에게만 표시</small>${!post.eligible?' · 가입 승인 상태 확인':''}</dd><dt>분야</dt><dd>${category(post.category)}</dd>
         <dt>요청 수량</dt><dd>${count(post.quantity)}개</dd><dt>희망 단가</dt><dd>${count(post.unitPrice)}원/개</dd><dt>규격</dt><dd>${esc(post.size)||'미기재'}</dd>
         <dt>제출일</dt><dd>${date(post.createdAt)}</dd><dt>제안 마감</dt><dd>${date(post.deadline)}</dd></dl>
