@@ -20,16 +20,15 @@
 [data-bid-start="account"] .bl-boot-access { display:block; }
 [data-bid-start="other"] .bl-boot-work .bl-cover { display:none; }
 .bl-access { max-width:640px; padding:60px 24px 0; }
-.bl-access-title { margin:0 auto 32px; width:min(70%,310px); height:72px; background:var(--soft); border-radius:14px; }
+.bl-access-title { margin:0 0 24px; width:min(50%,190px); height:44px; background:var(--soft); border-radius:8px; }
 .bl-access-card { height:325px; border:1px solid var(--line); background:var(--surface); border-radius:20px; }
 .bl-discovery { width:min(1040px,calc(100% - 64px)); margin-inline:auto; padding:64px 0 100px; }
 :root:has(.bl-discovery:not(.bl-boot-discovery)),:root[data-bid-start="discovery"]:has(.bx-bootstrap) { scrollbar-gutter:stable; }
-.bl-discovery::before { display:block; content:""; width:64px; height:27px; margin-bottom:8px; background:var(--soft); border-radius:8px; }
 .bl-discovery-title,.bl-discovery-line { background:var(--soft); border-radius:8px; }
 .bl-discovery-title { width:min(280px,70%); height:clamp(38px,5.12vw,51px); }
 .bl-discovery-line { margin-top:9px; width:min(370px,90%); height:27px; }
-.bl-discovery-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:22px; }
-.bl-discovery-options i { min-height:157px; border:1px solid var(--line); border-radius:20px; background:var(--surface); }
+.bl-discovery-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:24px; border-block:1px solid var(--line); }
+.bl-discovery-options i { min-height:88px; }
 .bl-cover { height:clamp(190px,17vw,250px); border-radius:28px; background:var(--hero,#eef5ee); }
 .bl-rows {
   margin-top:26px; height:230px; border-top:1px solid var(--line,#e8ece9);
@@ -49,9 +48,9 @@
 }
 @media (max-width:640px) {
   .bl-discovery { width:calc(100% - 40px); padding:23px 0 64px; }
-  .bl-discovery-options { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:15px; }
-  .bl-discovery-options i { min-height:106px; border-radius:16px; }
-  .bl-discovery-options i:last-child { grid-column:1/-1; min-height:66px; }
+  .bl-discovery-options { grid-template-columns:1fr; margin-top:16px; }
+  .bl-discovery-options i { min-height:68px; }
+  .bl-discovery-options i + i { border-top:1px solid var(--line); }
 }
 @media (max-width:420px) {
   .bl-discovery-line { height:54px; background:linear-gradient(var(--soft) 43%,transparent 43% 56%,var(--soft) 56%); }

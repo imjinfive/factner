@@ -1,6 +1,6 @@
 import { body, fail, json, rate, stmt, text } from './http.js';
 import { isReviewEmail } from '../scripts/bid-seed.mjs';
-import { digest, memberPassword, randomToken, verifyPassword } from './security.js';
+import { digest, memberPassword, passwordHash, randomToken, verifyPassword } from './security.js';
 import { marketApi } from './bid-market.js';
 import { designerNotice, isPackagingPartner, isDesignerTestAccount } from '../shared/partner-roles.js';
 
@@ -15,6 +15,12 @@ function isIsolatedReview(env) {
   return Boolean(env[roomDatabase] && env[roomDatabase] === env.DB);
 }
 const asUser = ({id, email, name, kind}) => ({id, email, name, kind});
+export const isPreviewEmail=email=>typeof email==='string' && /^test-[a-f0-9]{24}@preview\.factner\.invalid$/.test(email.trim().toLowerCase());
+function isRoomAccount(row){
+  if(!row)return false;
+  if(row.id==='preview-account')return isPreviewEmail(row.email) && ['brand','packaging'].includes(row.kind);
+  return row.id.startsWith('seed-') && isReviewEmail(row.email);
+}
 function canSignIn(account) {
   return account.kind !== 'design' || isDesignerTestAccount(account);
 }
@@ -23,7 +29,7 @@ async function current(req, env) {
   if (!token) return null;
   const hash = await digest(token);
   const user = await stmt(env, 'SELECT a.id,a.email,a.name,a.kind FROM market_accounts a JOIN market_sessions s ON s.account_id=a.id WHERE s.token_hash=? AND s.expires_at>?',hash,Date.now()).first();
-  return user && user.id.startsWith('seed-') && isReviewEmail(user.email) && canSignIn(user) ? {...user, hash} : null;
+  return isRoomAccount(user) && canSignIn(user) ? {...user, hash} : null;
 }
 async function issue(env,user) {
   if(!canSignIn(user))fail(403,designerNotice);
@@ -41,18 +47,29 @@ export async function bidApi(req,env,url) {
   const path=url.pathname.slice('/api/bid'.length);
   const user=await current(req,env);
   if(path==='/register'||path==='/demo')fail(404,'없는 페이지입니다.');
-  if(!user && path!=='/login')fail(401,'다시 로그인해주세요.');
+  if(path==='/preview-register' && hosted && req.method==='POST'){
+    const input=await body(req), types={individual:'개인',sole:'개인사업자',corporate:'법인사업자'};
+    if(!isPreviewEmail(input.email)||!['brand','packaging'].includes(input.kind)||!Object.hasOwn(types,input.legalType))fail(400,'가입 유형을 확인해주세요.');
+    const name=`테스트 ${input.kind==='brand'?'브랜드':'제작업체'} (${types[input.legalType]})`;
+    const result=await stmt(env,"INSERT OR IGNORE INTO market_accounts VALUES('preview-account',?,?,?,?)",input.email,name,input.kind,await passwordHash(memberPassword(input.password))).run();
+    if(!result.meta.changes)fail(409,'이미 발급한 테스트 계정입니다.');
+    return json({status:'preview',email:input.email,password:input.password},201);
+  }
+  const previewLogin=path==='/preview-login' && hosted;
+  if(!user && path!=='/login' && !previewLogin)fail(401,'다시 로그인해주세요.');
   if(path==='/session' && req.method==='GET')return json({user:asUser(user),mode:'review',demo:true,hosted,accounts:[]});
   if(path==='/logout' && req.method==='POST'){
     await stmt(env,'DELETE FROM market_sessions WHERE token_hash=?',user.hash).run();
     return json({ok:true});
   }
-  if(path==='/login' && req.method==='POST'){
+  if((path==='/login'||previewLogin) && req.method==='POST'){
     const data=await body(req), email=text(data.email,254,true).toLowerCase(), pw=memberPassword(data.password);
     await rate(env,'bid-auth:'+await digest(req.headers.get('CF-Connecting-IP')||'local'),25,600);
-    if(!isReviewEmail(email))fail(401,'이메일 또는 비밀번호를 확인해 주세요.');
+    const expectedEmail=previewLogin?isPreviewEmail(email):isReviewEmail(email);
+    if(!expectedEmail)fail(401,'이메일 또는 비밀번호를 확인해 주세요.');
+    if(!previewLogin && await stmt(env,"SELECT id FROM market_accounts WHERE id='preview-account'").first())fail(401,'이메일 또는 비밀번호를 확인해 주세요.');
     const row=await stmt(env,'SELECT * FROM market_accounts WHERE email=?',email).first();
-    if(!await verifyPassword(pw,row?.password_hash||'0'.repeat(64)+':'+'0'.repeat(64))||!row||!row.id.startsWith('seed-'))fail(401,'이메일 또는 비밀번호를 확인해 주세요.');
+    if(!await verifyPassword(pw,row?.password_hash||'0'.repeat(64)+':'+'0'.repeat(64))||!isRoomAccount(row))fail(401,'이메일 또는 비밀번호를 확인해 주세요.');
     if(!canSignIn(row))fail(403,designerNotice);
     const loginRole=isPackagingPartner(row.kind)?'packaging':row.kind;
     if(data.role!==undefined && data.role!==loginRole)fail(403,'선택한 회원 유형과 계정이 일치하지 않습니다.');

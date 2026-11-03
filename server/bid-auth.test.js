@@ -124,6 +124,22 @@ async function roomCall(room, path, { input, token, origin = 'https://review.exa
   return { status: response.status, data: await response.json() };
 }
 
+test('a preview login never initializes an unknown or expired room',async t=>{
+  const ctx=roomContext(t),room=new BidRoom(ctx,roomSchema,reviewSchema);
+  const input={email:'test-'+'a'.repeat(24)+'@preview.factner.invalid',password:'a-generated-password-for-preview'};
+  assert.equal((await roomCall(room,'preview-login',{input})).status,401);
+  assert.equal(ctx.storage.getAlarm(),null);
+  assert.equal(ctx.storage.sql.exec('SELECT count(*) n FROM sqlite_master').one().n,0);
+  assert.equal((await roomCall(room,'preview-register',{input:{...input,kind:'packaging',legalType:'corporate'}})).status,201);
+  const expiry=ctx.storage.getAlarm();assert.ok(expiry>Date.now());
+  const resumed=new BidRoom(ctx,roomSchema,reviewSchema);
+  assert.equal((await roomCall(resumed,'preview-login',{input})).status,200);
+  ctx.storage.sql.exec('UPDATE review_room SET expires_at=?',Date.now()-1);
+  assert.equal((await roomCall(new BidRoom(ctx,roomSchema,reviewSchema),'preview-login',{input})).status,410);
+  await room.alarm();assert.equal((await roomCall(room,'preview-login',{input})).status,401);
+  assert.equal(ctx.storage.getAlarm(),null);
+});
+
 test('review logins, activity and sessions are independent per room, survive eviction and expire',async t=>{
   const ctx=roomContext(t),one=new BidRoom(ctx,roomSchema,reviewSchema),two=new BidRoom(roomContext(t),roomSchema,reviewSchema);
   const fields={email:'brand1@gmail.com',password:reviewPassword,role:'brand'};

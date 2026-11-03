@@ -2,12 +2,12 @@ import {membersView} from './members.js';
 import {partnersView} from './partners.js';
 import {ordersView} from './orders.js';
 import {createSecurity} from './security.js';
-import {policyView} from './policy.js';
+import {policyView,memberIntakeView} from './policy.js';
 import {marketView} from './market.js';
 
 const root=document.querySelector('#app');
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const settingsLabels={password:'비밀번호 변경',users:'관리자 계정',policy:'운영 문서'};
+const settingsLabels={password:'비밀번호 변경',users:'관리자 계정',policy:'운영 문서',intake:'회원가입 접수'};
 function sharedReview(){
   const match=location.hash.match(/^#review-room\/([a-f0-9]{64})\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/);
   if(match)history.replaceState({reviewLink:{room:match[1],id:match[2]}},'',location.pathname);
@@ -46,7 +46,7 @@ function shell(content) {
       <div class="account-actions"><button type="button" id="logout" class="quiet">로그아웃</button>
         <button type="button" class="settings-button ${inSettings?'selected':''}" data-nav="settings" aria-label="설정" title="설정" aria-pressed="${inSettings}">${gearIcon}</button></div>
     </div></aside><main class="content">
-      ${Object.hasOwn(settingsLabels,view)?'<button type="button" class="quiet settings-back" data-nav="settings">← 설정</button>':''}
+      ${view==='intake'?'<button type="button" class="quiet settings-back" data-nav="policy">← 운영 문서</button>':Object.hasOwn(settingsLabels,view)?'<button type="button" class="quiet settings-back" data-nav="settings">← 설정</button>':''}
       ${content}</main></div>`;
   root.querySelectorAll('[data-nav]').forEach(button=>button.onclick=()=>{
     if(!dirty||confirm('저장하지 않은 내용이 있습니다. 이동할까요?'))navigate(button.dataset.nav);
@@ -90,6 +90,7 @@ async function navigate(next,options={}) {
       case 'password':security.password(render);break;
       case 'users':if(user.role==='owner')await users(render,active);break;
       case 'policy':if(user.role==='owner')await policyView(context);break;
+      case 'intake':if(user.role==='owner')await memberIntakeView(context);break;
     }
   }catch(error){
     if(!active())return;

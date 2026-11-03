@@ -47,7 +47,7 @@ export function MemberLoginFields({Button, email, passwordRef, onEmailChange, on
 export function MemberActivityChoices({onChoose,children}) {
   return <div className="member-choice-list">{[
     ['brand',Storefront,'브랜드','우리 제품에 맞는 패키징을 찾아요'],
-    ['supplier',Factory,'박스·패키징 제작 업체','제작할 수 있는 브랜드를 만나요']
+    ['supplier',Factory,'박스·패키징 제작 업체','브랜드의 패키징 제작 의뢰를 찾아요']
   ].map(([key,Icon,title,copy]) => <button type="button" className="member-choice" key={key} onClick={()=>onChoose(key)}>
     <span className="member-symbol"><Icon size={32}/></span><span><strong>{title}</strong><small>{copy}</small></span>
   </button>)}{children}</div>;

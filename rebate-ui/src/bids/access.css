@@ -1,29 +1,46 @@
-.pa-heading { margin-bottom: 30px; }
-.pa-heading h1 { font-size: clamp(30px,4vw,40px); line-height: 1.28; margin: 8px 0; }
+/* Hallmark · built: the project · redesign: polish · scope: app · brand: Factner */
+.pa-heading { margin-bottom: 24px; }
+.pa-heading h1 { font-size: clamp(30px,4vw,40px); line-height: 1.28; margin: 0 0 8px; }
+.pa-heading h1, .pa-access h1 { text-wrap: balance; min-width: 0; overflow-wrap: break-word; }
 .pa-heading p, .pa-result-copy > span { color: var(--muted); }
 :root:has(.pa-discovery) { scrollbar-gutter: stable; }
-.pa-discovery .pa-heading { margin-bottom: 22px; }
-.pa-discovery .pa-role-card { align-content: start; gap: 13px; padding: 20px; }
-.pa-discovery .pa-role-copy > strong { line-height: 1.35; }
-.pa-discovery .pa-role-copy > small { line-height: 1.45; }
-.pa-role-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.pa-role-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-block: 1px solid var(--line); }
 .pa-role-card {
-  display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: start;
-  min-width: 0; padding: 24px; border: 1.5px solid var(--line); border-radius: 20px;
-  background: var(--surface); color: var(--text); text-align: left;
+  display: flex; align-items: center; gap: 12px; min-width: 0; padding: 20px 16px;
+  background: transparent; color: var(--text); text-align: left;
 }
-.pa-role-icon, .pa-result-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: var(--green-dark); background: var(--mint); }
-.pa-role-copy { grid-column: 1 / -1; grid-row: 2; }
+.pa-role-card + .pa-role-card { border-inline-start: 1px solid var(--line); }
+.pa-role-icon { display: inline-flex; flex: none; color: var(--green-dark); }
+.pa-result-icon { display: grid; place-items: center; border-radius: 12px; color: var(--green-dark); background: var(--mint); }
+.pa-role-copy { min-width: 0; }
 .pa-role-copy > strong, .pa-role-copy > small { display: block; }
-.pa-role-copy > strong { font-size: 21px; letter-spacing: -.035em; }
-.pa-role-copy > small { font-size: 15px; color: var(--muted); margin-top: 5px; }
-.pa-soon { grid-column: 2; grid-row: 1; align-self: center; }
-.pa-role-card:not(:disabled):hover, .pa-role-card[aria-pressed=true] { border-color: var(--green); }
-.pa-role-card[aria-pressed=true] { background: var(--mint); }
-.pa-role-card[aria-pressed=true] .pa-role-icon { background: var(--surface); }
-.pa-role-card.pa-notice-card { background: var(--soft); color: var(--muted); }
-.pa-notice-card .pa-role-icon { color: var(--muted); background: var(--surface); }
-.pa-soon { color: var(--muted); font-size: 12px; font-weight: 650; background: var(--surface); border-radius: 8px; padding: 4px 7px; white-space: nowrap; }
+.pa-role-copy > strong { font-size: 18px; line-height: 1.4; }
+.pa-role-copy > small { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.pa-role-card[aria-pressed=true] { color: var(--green-dark); background: var(--mint); box-shadow: inset 0 -2px var(--green-dark); }
+.pa-notice-card, .pa-notice-card .pa-role-icon, .pa-soon { color: var(--muted); }
+.pa-soon { margin-inline-start: auto; font-size: 13px; white-space: nowrap; }
+.pa-access .member-auth-heading { text-align: start; margin-bottom: 24px; }
+.pa-preview-complete { text-align: start; }
+.pa-preview-credentials { margin: 0 0 24px; }
+.pa-preview-credentials dt { color: var(--muted); font-size: 14px; }
+.pa-preview-credentials dd { margin: 4px 0 16px; font-weight: 650; overflow-wrap: anywhere; user-select: all; }
+.pa-access .member-steps { margin-bottom: 16px; }
+.pa-access .member-choice-list { gap: 0; border-top: 1px solid var(--line); }
+.pa-access .member-choice {
+  min-height: 64px; padding: 16px 8px; gap: 16px; background: transparent;
+  border: 0; border-bottom: 1px solid var(--line); border-radius: 0; transform: none;
+}
+.pa-access .member-choice .member-symbol { width: 32px; height: 32px; border-radius: 0; color: var(--green-dark); background: transparent; }
+.pa-access .member-choice .member-symbol svg { width: 24px; height: 24px; }
+.pa-access .member-choice strong { font-size: 18px; }
+.pa-access .member-choice small { margin-top: 2px; }
+.pa-access .pa-designer, .pa-access .pa-designer .member-symbol { color: var(--muted); }
+@media (hover:hover) {
+  .pa-role-card:hover, .pa-access .member-choice:hover { background: var(--soft); }
+  .pa-role-card[aria-pressed=true]:hover { background: var(--mint); }
+}
+.pa-access .member-choice:active, .pa-role-card:active { background: var(--mint); }
+:is(.pa-access,.pa-discovery,.pa-notice) :focus-visible { outline: 2px solid var(--green-dark); outline-offset: 2px; }
 .pa-results { margin-top: 26px; overflow-anchor: none; }
 .pa-results > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; margin-bottom: 10px; }
 .pa-results > header > div { display: flex; align-items: baseline; gap: 7px; }
@@ -59,14 +76,11 @@
   .pa-discovery .pa-heading { margin-bottom: 15px; }
   .pa-discovery .pa-heading h1 { font-size: 30px; line-height: 1.2; }
   .pa-discovery .pa-heading p { font-size: 15px; line-height: 1.5; }
-  .pa-role-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
-  .pa-discovery .pa-role-card { grid-template-columns: minmax(0,1fr); gap: 7px; padding: 11px 12px; border-radius: 16px; }
-  .pa-role-icon { width: 34px; height: 34px; border-radius: 11px; }
+  .pa-role-grid { grid-template-columns: 1fr; }
+  .pa-role-card { padding: 12px; }
+  .pa-role-card + .pa-role-card { border-inline-start: 0; border-top: 1px solid var(--line); }
   .pa-role-icon svg { width: 21px; height: 21px; }
   .pa-role-copy > strong { font-size: 17px; }
-  .pa-discovery .pa-notice-card { grid-column: 1/-1; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; }
-  .pa-notice-card .pa-role-copy { grid-column: 2; grid-row: 1; }
-  .pa-notice-card .pa-soon { grid-column: 3; }
   .pa-discovery .pa-role-copy > small { margin-top: 2px; font-size: 13px; }
   .pa-results { margin-top: 18px; }
   .pa-results h2 { font-size: 18px; }
@@ -77,12 +91,9 @@
 }
 @media(max-width:380px){
   .pa-discovery.match-shell { width: calc(100% - 24px); padding-top: 16px; }
-  .pa-discovery .member-eyebrow { display: none; }
   .pa-discovery .pa-heading { margin-bottom: 10px; }
   .pa-discovery .pa-heading h1 { font-size: 28px; }
-  .pa-discovery .pa-role-card { gap: 5px; padding: 9px; }
   .pa-discovery .pa-role-copy > strong { font-size: 16px; }
-  .pa-discovery .pa-role-icon { width: 30px; height: 30px; }
   .pa-results { margin-top: 12px; }
   .pa-results > header > div { gap: 5px; }
 }

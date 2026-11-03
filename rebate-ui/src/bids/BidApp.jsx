@@ -17,11 +17,21 @@ const roomStorageKey='factner-bid-review-room';
 const roomFormat=/^[0-9a-f]{64}$/;
 function readToken(){try{return sessionStorage.getItem(tokenKey)||'';}catch{return '';}}
 function savedRoom(){try{const room=localStorage.getItem(roomStorageKey);return roomFormat.test(room)?room:'';}catch{return '';}}
+function activeRoom(){
+  try{
+    const room=sessionStorage.getItem(roomStorageKey);
+    if(roomFormat.test(room))return room;
+    // Sessions created by previous versions kept their room only in localStorage.
+    const legacy=readToken() && savedRoom();
+    if(legacy)sessionStorage.setItem(roomStorageKey,legacy);
+    return legacy;
+  }catch{return '';}
+}
 function hasSavedSession(){try{return Boolean(readToken()||sessionStorage.getItem('factner-account-active'));}catch{return false;}}
 async function request(path,payload,token=readToken()){
   const headers={};
-  if(token&&path!=='/login'&&path!=='/register')headers.Authorization='Bearer '+token;
-  const room=(path==='/login'||headers.Authorization)?savedRoom():'';
+  if(token&&!['/login','/register','/preview-register'].includes(path))headers.Authorization='Bearer '+token;
+  const room=path==='/login'?savedRoom():headers.Authorization?activeRoom():'';
   if(room)headers['X-Factner-Review']=room;
   if(payload!==undefined)headers['Content-Type']='application/json';
   const response=await fetch('/api/bid'+path,{method:payload===undefined?'GET':'POST',headers,body:payload===undefined?undefined:JSON.stringify(payload),cache:'no-store',credentials:'same-origin',redirect:'error'});
@@ -65,7 +75,8 @@ export default function BidApp({surface='market'}){
       let values;
       try{values=await load(token,full);}catch(e){
         if(!token||![401,410].includes(e.httpStatus)||token!==readToken()||revision!==authRevision.current)throw e;
-        sessionStorage.removeItem(tokenKey);if(e.httpStatus===410)localStorage.removeItem(roomStorageKey);
+        if(e.httpStatus===410 && activeRoom()===savedRoom())localStorage.removeItem(roomStorageKey);
+        sessionStorage.removeItem(tokenKey);sessionStorage.removeItem(roomStorageKey);
         token='';values=await load(token,true);
       }
       const [data,me]=values;
@@ -93,7 +104,7 @@ export default function BidApp({surface='market'}){
     if(!marketNeeded||access||!session?.demo)return;
     if(session.hosted){
       if(!window.BroadcastChannel)return;
-      const room=savedRoom();if(!room)return;
+      const room=activeRoom();if(!room)return;
       const localChannel=new BroadcastChannel('factner-bid-review-'+room);
       localChannel.onmessage=e=>{if(e.data==='refresh')refresh();};
       channel.current=localChannel;
@@ -142,19 +153,20 @@ export default function BidApp({surface='market'}){
   }
   const authenticate=async(path,body)=>{
     const data=await request(path,body);
-    if(path==='/register')return data;
+    if(path==='/register'||path==='/preview-register')return data;
     ++seq.current;++authRevision.current;
     if(data.token){
       if(!roomFormat.test(data.reviewRoom))throw new Error('로그인 세션을 확인하지 못했습니다.');
-      localStorage.setItem(roomStorageKey,data.reviewRoom);sessionStorage.setItem(tokenKey,data.token);
-    }else{try{sessionStorage.removeItem(tokenKey);}catch{}}
-    setState(null);setError('');setSelect(null);setSession(s=>({...s,user:data.user}));
+      sessionStorage.setItem(roomStorageKey,data.reviewRoom);sessionStorage.setItem(tokenKey,data.token);
+      if(data.user.id.startsWith('seed-'))localStorage.setItem(roomStorageKey,data.reviewRoom);
+    }else{try{sessionStorage.removeItem(tokenKey);sessionStorage.removeItem(roomStorageKey);}catch{}}
+    setState(null);setError('');setSelect(null);setSession(s=>({...s,user:data.user,demo:Boolean(data.token)}));
     if(data.user.legacyOnly){writeSiteEntry('members','account',{replace:true});return;}
     const target=data.user.kind==='admin'?'contracts':data.user.kind==='brand'?'new':'feed';
     go(target,{replace:true,targetSurface:data.user.kind==='admin'?'ops':'market'});
   };
   const logout=async()=>{
-    await request('/logout',{});++seq.current;++authRevision.current;try{sessionStorage.removeItem(tokenKey);sessionStorage.removeItem('factner-account-active');}catch{}
+    await request('/logout',{});++seq.current;++authRevision.current;try{sessionStorage.removeItem(tokenKey);sessionStorage.removeItem(roomStorageKey);sessionStorage.removeItem('factner-account-active');}catch{}
     setState(null);setSelect(null);
     setSession(s=>({...s,user:null}));go(ops?'login':'feed',{replace:true});await refresh(true);
   };
@@ -178,7 +190,10 @@ export default function BidApp({surface='market'}){
     <header className="site-header funnel-header"><div className="header-inner">
       <button className="logo" aria-label="팩트너 홈" onClick={()=>openSection('intro')}><BrandMark/></button>
       <nav aria-label="주 메뉴">{links.map(([key,label])=><button key={key} className={'nav-link '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>openSection(key)}>{label}{view===key&&<motion.span className="nav-indicator" layoutId="partner-navigation"/>}</button>)}</nav>
-      <div className="header-actions bx-account">{!session?<span className="bx-account-placeholder" aria-label="계정 확인 중"/>:session.user?<button className="member-login-link bx-user" onClick={()=>legacyMember?openMembers():go('account')}><span>{session.user.name}</span><CaretDown size={15}/></button>:<button className="member-login-link" onClick={()=>navigate('login')}>로그인</button>}</div>
+      <div className="header-actions bx-account">{!session?<span className="bx-account-placeholder" aria-label="계정 확인 중"/>:session.user?<button className="member-login-link bx-user" onClick={()=>legacyMember?openMembers():go('account')}><span>{session.user.name}</span><CaretDown size={15}/></button>:<>
+        <button className="member-login-link" onClick={()=>navigate('login')}>로그인</button>
+        {!ops && <button className="member-login-link bx-signup" onClick={()=>navigate('signup')}>회원가입</button>}
+      </>}</div>
     </div></header>
     <main id="bid-work" tabIndex={-1}>
       {error&&<div role="alert" className="bx-alert">{error} <button onClick={()=>refresh(true)}>다시 연결</button></div>}
@@ -186,7 +201,7 @@ export default function BidApp({surface='market'}){
         <PartnerAccess key={navRevision} navigationKey={navRevision} mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} onNavigate={navigate} onMembers={openMembers} onAuth={authenticate} onExit={logout}/>:
         view==='contracts'&&(ops?user?.kind!=='admin':!user)?<section className="bx-authgate"><SquaresFour size={35}/><h1>{ops?'계약 운영실':'계약함'}</h1><p>{ops?'계약 운영은 관리자 전용입니다.':'로그인하면 진행 중인 계약을 확인할 수 있어요.'}</p>{!ops&&<Button onClick={()=>navigate('login')}>로그인 <ArrowRight size={16}/></Button>}</section>:
         view==='contracts'?(session.demo?<DealDesk state={state} user={user} mutate={mutate}/>:<Connections connections={state.connections} onMembers={openMembers}/>):
-        <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} isDemo={Boolean(session?.demo)} reviewRoomKey={session?.demo?savedRoom():null} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onDiscoveryBack={backToBrandRequests}/>}
+        <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} isDemo={Boolean(session?.demo)} reviewRoomKey={session?.demo?activeRoom():null} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onDiscoveryBack={backToBrandRequests}/>}
     </main>
     <SiteFooter onHome={()=>go('intro')} onSection={openSection} active={view} theme={theme} onTheme={themeToggle}/>
     {select&&(session?.demo?<SelectDialog {...select} user={user} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>:<ConnectionDialog {...select} mutate={mutate} onClose={()=>setSelect(null)} onComplete={()=>navigate('contracts')}/>)}

@@ -4,6 +4,9 @@ import {digest} from './security.js';
 export async function verifyQuoteSubmission(req,env,input,config,action='quote') {
  if(input.website)fail(400,'요청을 확인해주세요.');
  await rate(env,`${action}-email:${await digest(input.email.trim().toLowerCase())}`,10,86400);
+ return verifyTurnstile(req,env,input,config,action);
+}
+export async function verifyTurnstile(req,env,input,config,action) {
  if(!env.TURNSTILE_SITE_KEY||!env.TURNSTILE_SECRET_KEY) {
   if(config.accepting)fail(503,'접수 준비 중입니다. 잠시 후 다시 시도해주세요.');
   return;

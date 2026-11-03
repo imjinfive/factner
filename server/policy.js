@@ -3,8 +3,9 @@ import {owner} from './auth.js';
 import {notificationReadiness} from './operations.js';
 import {currentMember} from './member-lifecycle.js';
 
+export const initialPolicyVersion='draft-2026-10-28';
 const draft = {
- version:'draft-2026-10-28',published:false,
+ version:initialPolicyVersion,published:false,
  privacy:`개인정보 처리방침 초안 — 정식 운영 전 검토 중
 현재는 가상 정보로만 테스트하는 상태입니다. 실제 개인정보와 기밀 자료를 입력하지 마세요.
 

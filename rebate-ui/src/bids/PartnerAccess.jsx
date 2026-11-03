@@ -53,9 +53,9 @@ function DesignerSignupNotice({ children, defaultOpen = false }) {
     <Dialog.Trigger asChild>{children}</Dialog.Trigger>
     <Dialog.Portal><Dialog.Overlay className="modal-overlay"/>
       <Dialog.Content className="modal pa-notice">
-        <header className="modal-heading"><div><span className="member-eyebrow">FACTNER ACCOUNT</span>
+        <header className="modal-heading"><div>
           <Dialog.Title>디자이너 회원가입은 준비 중입니다</Dialog.Title>
-          <Dialog.Description>신규 디자이너 가입은 준비 중이에요. 이미 가입한 계정은 이메일과 비밀번호로 로그인해주세요.</Dialog.Description>
+          <Dialog.Description>기존 계정은 이메일과 비밀번호로 로그인할 수 있습니다.</Dialog.Description>
         </div><Dialog.Close asChild><button type="button" className="button ghost icon-button" aria-label="닫기">
           <X size={20} aria-hidden="true"/></button></Dialog.Close></header>
         <footer><Dialog.Close asChild><button type="button" className="button primary">확인</button></Dialog.Close></footer>
@@ -71,7 +71,7 @@ function RoleCards({ selected, onSelect, notes }) {
         aria-pressed={notice ? undefined : selected === key} onClick={notice ? undefined : () => onSelect(key)}>
         <span className="pa-role-icon"><Icon size={26} aria-hidden="true"/></span>
         <span className="pa-role-copy"><strong>{label}</strong><small>{notes[key] || note}</small></span>
-        {notice && <span className="pa-soon">가입 준비 중</span>}
+        {notice && <span className="pa-soon">준비 중</span>}
       </button>;
       return notice ? <DesignerSignupNotice key={key}>{button}</DesignerSignupNotice> : button;
     })}
@@ -104,8 +104,8 @@ function Discovery({ pick, save, navigate, partners, posts }) {
     if (role !== next) save({role:next},true);
   }
   return <section ref={section} className="match-shell pa-discovery">
-    <header className="pa-heading"><span className="member-eyebrow">파트너 찾기</span><h1>바로 시작해볼까요?</h1>
-      <p>가입 전에 제작 파트너와 브랜드의 의뢰 수량·희망 단가를 확인하세요.</p></header>
+    <header className="pa-heading"><h1>파트너 찾기</h1>
+      <p>브랜드는 제작업체를, 제작업체는 브랜드의 제작 의뢰를 볼 수 있습니다.</p></header>
     <RoleCards selected={isBrand ? 'brand' : role === 'supplier' ? 'packaging' : ''} onSelect={selectRole} notes={roleNotes}/>
     {role && <section className="pa-results" aria-label={isBrand ? '패키징 제작 파트너' : '브랜드 제작 공고'}>
       <header><div><h2>{isBrand ? '제작 파트너' : '브랜드 의뢰'}</h2>
@@ -157,11 +157,11 @@ export default function PartnerAccess({mode,navigationKey,session,posts,partners
   },[mode,navigationKey]);
   if (mode === 'discovery') return <Discovery pick={pick} save={save} navigate={onNavigate} posts={posts} partners={partners}/>;
   if (mode === 'account' && session.user) return <section className="member-auth pa-access">
-    <header className="member-auth-heading"><span className="member-eyebrow">FACTNER ACCOUNT</span><h1>내 계정</h1></header>
+    <header className="member-auth-heading"><h1>내 계정</h1></header>
     <div className="member-card"><span className="member-tag">{kinds[session.user.kind]?.[0] || '운영팀'}</span>
       <h2 className="pa-section-title">{session.user.name}</h2>{session.user.email && <p className="member-hint">{session.user.email}</p>}
       <div className="pa-account-actions"><Button onClick={()=>onNavigate('contracts')}>계약함으로 이동</Button>
-        {session.user.kind !== 'admin' && !session.user.id.startsWith('seed-') && onMembers && <Button tone="outline" onClick={onMembers}>회원 정보·발주 확인</Button>}
+        {!session.demo && session.user.kind !== 'admin' && onMembers && <Button tone="outline" onClick={onMembers}>회원 정보·발주 확인</Button>}
         <Button tone="ghost" onClick={async()=>{try{await onExit();}catch(e){setAccountError(e.message);}}}>로그아웃</Button>
       </div>{accountError && <p className="member-error" role="alert">{accountError}</p>}
     </div></section>;

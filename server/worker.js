@@ -100,7 +100,7 @@ async function adminApi(req, env, url) {
     if (req.method === 'GET') return json({...configBefore,memberIntake:memberIntake(configBefore,doc,captchaReady),policyVersion:doc.version,readiness:await readiness(env,configBefore)});
     if (req.method === 'PUT') {
       const input = await body(req);
-      const config = {...configBefore,operator:text(input.operator,100),contactEmail:text(input.contactEmail,254),accepting:input.accepting === true,
+      const config = {...configBefore,operator:text(input.operator,100),contactEmail:text(input.contactEmail,254),accepting:input.accepting===undefined?configBefore.accepting:input.accepting===true,
         memberAccepting:input.memberAccepting===undefined?Boolean(configBefore.memberAccepting ?? configBefore.accepting):input.memberAccepting===true};
       if(config.memberAccepting){
         if(input.policyVersion!==undefined && input.policyVersion!==doc.version)fail(409,'운영 문서가 바뀌었습니다. 새로고침 후 다시 확인해주세요.');

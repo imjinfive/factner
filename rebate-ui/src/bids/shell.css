@@ -2,6 +2,7 @@
 .bx-shell > main { flex:1; min-width:0; }
 .bx-shell .footer-right a { font-size:14px; text-decoration:none; }
 .bx-shell .header-actions { gap:16px; }
+.bx-shell .bx-signup { color:var(--green-dark); font-weight:700; }
 .bx-user { display:inline-flex; align-items:center; gap:7px; }
 .bx-alert,.bx-authgate { width:min(920px,calc(100% - 40px)); margin:48px auto; }
 .bx-alert { color:var(--error); }

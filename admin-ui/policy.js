@@ -1,6 +1,30 @@
-export async function policyView({api,send,shell,esc,submit,notice,setDirty}) {
+export async function policyView(context) {
+ const {api,send,shell,esc,submit,notice,setDirty,isActive}=context;
  const doc=await api('admin/policy');
- shell(`<header><div><h1>운영 문서</h1><p class="muted">운영 정보를 확정한 뒤 문서를 검토하고 게시해주세요.</p></div></header><section class="panel"><p class="hint">${doc.published?'게시된 문서':'검토 중인 초안'} · 문서 버전 ${esc(doc.version)}<br>문서를 저장하면 고객이 새 약관을 확인할 수 있도록 정식 접수가 중단됩니다.</p><form id="policy-form">${[['privacy','개인정보 처리방침',5000,14],['terms','이용약관',4000,10],['collection','회원·견적 수집·이용 안내',1500,7],['transfer','거래 상대방 제공 절차',1500,5]].map(([key,label,max,rows])=>`<label>${label}<textarea name="${key}" maxlength="${max}" rows="${rows}" required>${esc(doc[key])}</textarea></label>`).join('')}<label class="check"><input type="checkbox" name="reviewed"> 실제 운영과 일치하도록 문서·위탁·국외 처리 조건을 검토했습니다.</label><label class="check"><input type="checkbox" name="published"> 검토한 문서 게시</label><button type="submit">문서 저장</button></form></section>`);
+ if(!isActive())return;
+ shell(`<header><div><h1>운영 문서</h1><p class="muted">운영 정보를 확정한 뒤 문서를 검토하고 게시해주세요.</p></div><button type="button" class="quiet" data-nav="intake">회원가입 접수 설정</button></header><section class="panel"><p class="hint">${doc.published?'게시된 문서':'검토 중인 초안'} · 문서 버전 ${esc(doc.version)}<br>문서를 저장하면 접수가 닫힙니다. 게시 후 회원가입 접수 설정에서 다시 열어주세요.</p><form id="policy-form">${[['privacy','개인정보 처리방침',5000,14],['terms','이용약관',4000,10],['collection','회원·견적 수집·이용 안내',1500,7],['transfer','거래 상대방 제공 절차',1500,5]].map(([key,label,max,rows])=>`<label>${label}<textarea name="${key}" maxlength="${max}" rows="${rows}" required>${esc(doc[key])}</textarea></label>`).join('')}<label class="check"><input type="checkbox" name="reviewed"> 실제 운영과 일치하도록 문서·위탁·국외 처리 조건을 검토했습니다.</label><label class="check"><input type="checkbox" name="published"> 검토한 문서 게시</label><button type="submit">문서 저장</button></form></section>`);
  const form=document.querySelector('#policy-form');form.addEventListener('input',()=>setDirty(true));
- form.addEventListener('submit',event=>submit(event,async data=>{await send('admin/policy',{...data,version:doc.version,reviewed:data.reviewed==='on',published:data.published==='on'},'PUT');setDirty(false);notice('운영 문서를 저장했습니다.');await policyView({api,send,shell,esc,submit,notice,setDirty});}));
+ form.addEventListener('submit',event=>submit(event,async data=>{await send('admin/policy',{...data,version:doc.version,reviewed:data.reviewed==='on',published:data.published==='on'},'PUT');if(!isActive())return;setDirty(false);notice('운영 문서를 저장했습니다.');await policyView(context);}));
+}
+
+export async function memberIntakeView(context) {
+ const {api,send,shell,esc,submit,notice,setDirty,isActive}=context;
+ const config=await api('admin/settings');
+ if(!isActive())return;
+ const intake=config.memberIntake;
+ const missing=intake.checks.filter(item=>!item.ready);
+ shell(`<header><div><h1>회원가입 접수</h1><p class="muted">브랜드와 패키징 제작업체의 가입 신청을 관리합니다. 현재 ${intake.available?'접수 중':'접수 중단'}입니다.</p></div></header>
+   <section class="panel narrow"><form id="member-intake-form">
+   <label>운영 상호<input name="operator" value="${esc(config.operator)}" maxlength="100" required></label>
+   <label>문의 이메일<input name="contactEmail" type="email" value="${esc(config.contactEmail)}" maxlength="254" required></label>
+   ${missing.length?`<p>접수를 열기 전에 확인해주세요.</p><ul class="readiness">${missing.map(item=>`<li>${esc(item.label)}</li>`).join('')}</ul>`:''}
+   <label class="check"><input type="checkbox" name="memberAccepting" ${intake.enabled?'checked':''} ${missing.length&&!intake.enabled?'disabled':''}>가입 신청 받기</label>
+   <button type="submit">설정 저장</button></form></section>`);
+ const form=document.querySelector('#member-intake-form');
+ form.oninput=()=>setDirty(true);
+ form.onsubmit=event=>submit(event,async data=>{
+   await send('admin/settings',{...data,memberAccepting:data.memberAccepting==='on',policyVersion:config.policyVersion},'PUT');
+   if(!isActive())return;
+   setDirty(false);notice('회원가입 접수 설정을 저장했습니다.');await memberIntakeView(context);
+ });
 }

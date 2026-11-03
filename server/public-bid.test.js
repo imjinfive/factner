@@ -24,6 +24,7 @@ function fixture(t){
   const rooms=new Map();
   const env={DB,APP_KIND:'main',[localMemberPreview]:true,BID_ROOMS:{idFromName:key=>key,get:key=>({fetch:async req=>{
     if(!rooms.has(key)){
+      if(new URL(req.url).pathname==='/api/bid/preview-login')return Response.json({error:'다시 로그인해주세요.'},{status:401});
       const isolate=database(t,['0001_initial.sql','0013_bid_market.sql','0015_market_post_review.sql']);seedReview(isolate.raw);
       rooms.set(key,{DB:isolate.DB,[roomDatabase]:isolate.DB});
     }
@@ -56,6 +57,54 @@ const account=(key,kind='brand')=>({email:key+'@example.test',password,name:key+
 const job={category:'packaging',title:'단상자 신규 제작',quantity:1000,unitPrice:300,size:'50 × 50',description:'코팅 종이 / 택배 납품',deadline:'2099-01-01'};
 const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225}],note:'배송 포함'};
 
+test('draft signup issues only generated credentials in a private room that can be reopened from another browser',async t=>{
+  const f=fixture(t),input={kind:'brand',legalType:'individual'};
+  const create=(fields=input)=>f.call('bid/preview-register',fields);
+  const ready=async()=>(await f.call('bid/session')).data.registration.previewAvailable;
+  assert.equal(await ready(),false);assert.equal((await create()).status,503);
+  f.env.DRAFT_SIGNUP_ENABLED='1';delete f.env[localMemberPreview];
+  assert.equal(await ready(),false);
+  Object.assign(f.env,{TURNSTILE_SITE_KEY:'site-key',TURNSTILE_SECRET_KEY:'secret-key'});
+  assert.equal(await ready(),true);
+  assert.equal((await create()).status,400);
+  assert.equal((await create({...input,kind:'design'})).status,403);
+  assert.equal((await create({...input,kind:'both'})).status,400);
+  assert.equal((await create({...input,legalType:'designer'})).status,400);
+  for(const field of ['email','name','contact','password','files','role'])assert.equal((await create({...input,[field]:'private'})).status,400);
+  assert.equal(f.rooms.size,0);assert.equal((await f.call('bid/register',account('real'))).status,503);
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    assert.equal(url,'https://challenges.cloudflare.com/turnstile/v0/siteverify');
+    const token=JSON.parse(options.body).response;
+    return Response.json({success:token==='proof',hostname:'example.test',action:'signup'});
+  });
+  assert.equal((await create({...input,turnstileToken:'wrong'})).status,400);assert.equal(f.rooms.size,0);
+  let first;
+  for(const kind of ['brand','packaging'])for(const legalType of ['individual','sole','corporate']){
+    const {status,data}=await create({kind,legalType,turnstileToken:'proof'});
+    assert.equal(status,201);assert.equal(data.status,'preview');assert.match(data.email,/^test-[0-9a-f]{24}@preview\.factner\.invalid$/);
+    const login=await f.call('bid/login',{email:data.email.toUpperCase(),password:data.password},{'X-Factner-Review':'a'.repeat(64)});
+    assert.equal(login.status,200);assert.equal(login.data.user.kind,kind);assert.equal(login.data.reviewRoom,data.reviewRoom);
+    first??={...data,token:login.data.token};
+  }
+  assert.equal(f.rooms.size,6);
+  assert.equal((await f.call('bid/login',{email:first.email,password:'incorrect-password'})).status,401);
+  assert.equal(f.rooms.size,6);
+  assert.equal((await f.call('bid/login',{email:'brand1@gmail.com',password:reviewPassword},{'X-Factner-Review':first.reviewRoom})).status,401);
+  const headers={Authorization:'Bearer '+first.token,'X-Factner-Review':first.reviewRoom};
+  assert.equal((await f.call('bid/session',undefined,headers)).data.mode,'review');
+  assert.equal((await f.call('bid/state',undefined,headers)).status,200);
+  assert.equal((await f.call('member/me',undefined,headers)).status,401);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,0);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM market_accounts').get().n,0);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM policy_versions').get().n,0);
+  assert.equal((await create({...input,turnstileToken:'wrong'})).status,400);
+  assert.equal((await create({...input,turnstileToken:'wrong'})).status,400);
+  assert.equal((await create({...input,turnstileToken:'proof'})).status,429);
+  assert.equal(f.rooms.size,6);
+  f.publish();assert.equal(await ready(),false);assert.equal((await create()).status,503);
+  f.raw.exec('UPDATE policy_versions SET published=0');assert.equal(await ready(),false);
+});
+
 test('official signup fails closed, validates reviewed consent, business proof and pending approval',async t=>{
   const f=fixture(t),fields=account('company');
   assert.equal((await f.call('bid/session')).data.registration.available,false);
@@ -83,6 +132,28 @@ test('official signup fails closed, validates reviewed consent, business proof a
   assert.equal((await f.call('bid/register',{...fields,email:'second@example.test',legalType:'corporate',businessNumber:'9876543210',files:[proof]})).status,409);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,1);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM member_files').get().n,1);
+});
+
+test('reopened member intake accepts all brand and packaging application types but no designer signups',async t=>{
+  const f=fixture(t);
+  f.publish();
+  f.raw.prepare("UPDATE settings SET value=json_set(value,'$.accepting',0,'$.memberAccepting',1) WHERE key='service'").run();
+  assert.equal((await f.call('bid/session')).data.registration.available,true);
+  const proof={kind:'certificate',name:'proof.png',mime:'image/png',data:'iVBORw0KGgo='};
+  for(const [kind,role] of [['brand','brand'],['packaging','supplier']]){
+    for(const legalType of ['individual','sole','corporate']){
+      const fields=account(`${kind}-${legalType}`,kind);
+      const business=legalType==='individual'?{}:{businessNumber:'1234567890',files:[proof]};
+      const saved=await f.call('bid/register',{...fields,...business,legalType});
+      assert.equal(saved.status,201);
+      const row=f.raw.prepare('SELECT role,legal_type,status FROM members WHERE id=?').get(saved.data.id);
+      assert.deepEqual({...row},{role,legal_type:legalType,status:'pending'});
+    }
+  }
+  const design=account('designer','design');
+  assert.equal((await f.call('bid/register',{...design,role:'supplier'})).status,403);
+  assert.equal((await f.call('bid/register',{...design,kind:'both'})).status,400);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,6);
 });
 
 test('approved accounts share real posts across logins; one selected offer reaches the existing admin connection workflow',async t=>{

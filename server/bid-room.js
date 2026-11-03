@@ -77,7 +77,8 @@ export class BidRoom {
     if (!internal&&(!url.pathname.startsWith('/api/bid/') || url.pathname === '/api/bid/events')) return json({ error: '없는 경로입니다.' }, 404);
     if (req.method !== 'GET' && req.method !== 'POST') return json({ error: '허용되지 않은 요청입니다.' }, 405);
     if (req.method === 'POST' && req.headers.get('Origin') !== url.origin) return json({ error: '허용되지 않은 출처입니다.' }, 403);
-    const expiry=await this.#initialize(url.pathname==='/api/bid/login' && req.method==='POST');
+    const creating=req.method==='POST' && ['/api/bid/login','/api/bid/preview-register'].includes(url.pathname);
+    const expiry=await this.#initialize(creating);
     if(internal&&(expiry===null||Date.now()>=expiry))return json({error:'공유한 공고를 찾을 수 없습니다.'},404);
     if(expiry===null)return json({error:'다시 로그인해주세요.'},401);
     if (Date.now() >= expiry) return json({ error: '시안 이용 기간이 끝났습니다.' }, 410);

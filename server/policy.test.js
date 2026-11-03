@@ -64,6 +64,11 @@ test('live intake remains blocked until every readiness dependency is configured
  assert.equal((await admin('admin/settings',{...operator,accepting:true},'PUT')).status,200);
  assert.equal((await client(env)('config')).data.mode,'live');
  const published=await policy(env);
+ const memberSettings={operator:operator.operator,contactEmail:operator.contactEmail,memberAccepting:true};
+ assert.equal((await admin('admin/settings',{...memberSettings,policyVersion:'stale'},'PUT')).status,409);
+ assert.equal((await admin('admin/settings',{...memberSettings,policyVersion:published.version},'PUT')).status,200);
+ assert.equal((await admin('admin/settings',{...memberSettings,memberAccepting:false},'PUT')).status,200);
+ assert.equal((await client(env)('config')).data.mode,'live');
  assert.equal((await admin('admin/policy',{...published,published:false},'PUT')).status,200);
  assert.equal((await client(env)('config')).data.mode,'test');
  await admin('admin/policy',{...await policy(env),published:true,reviewed:true},'PUT');
