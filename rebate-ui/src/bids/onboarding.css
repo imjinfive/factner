@@ -19,3 +19,40 @@
 @media(max-width:900px) and (min-width:651px){.ob-role-art{width:150px;right:8px;bottom:0}.ob-role h2{white-space:normal;max-width:220px}.ob-role p{max-width:190px}}
 @media(max-width:650px){.ob-role{min-height:190px}.ob-role-art{width:145px;right:6px;bottom:0}.ob-role h2{font-size:21px;white-space:normal}.ob-role p{max-width:240px}.ob-role-copy{width:100%}.ob-preview-copy dd{overflow-wrap:anywhere}}
 @media(max-width:350px){.ob-home-title h1{font-size:39px}.ob-shell{padding-left:18px;padding-right:18px}.ob-role{padding:21px}.ob-role h2{font-size:19px}.ob-role p{font-size:12px}.ob-request-preview{grid-template-columns:65px 1fr;padding:18px 14px;gap:10px}.ob-preview-copy h2{font-size:19px}}
+
+/* Keep each question, its answers and the next action on one central axis. */
+.ob-home-title,.ob-heading,.ob-home-note,.ob-art-note,.ob-error{text-align:center}
+.ob-home-note,.ob-resume,.ob-experience,.ob-options,.ob-capacity,.ob-recommend{margin-inline:auto}
+.ob-role-panels{max-width:900px;margin-inline:auto}
+.ob-role{min-height:310px;text-align:center}
+.ob-role-copy{align-items:center;width:100%}
+.ob-role h2,.ob-role p{max-width:none;white-space:normal}
+.ob-role-art{width:175px;right:50%;bottom:8px;transform:translateX(50%)}
+.ob-role-arrow{position:absolute;right:0;bottom:0;margin:0}
+.ob-topline{max-width:760px;margin-inline:auto;display:grid;grid-template-columns:1fr minmax(140px,200px) 1fr}
+.ob-back{justify-self:start}.ob-reset{justify-self:end}.ob-progress{width:100%;justify-self:center}
+.ob-choice{position:relative;justify-content:center;text-align:center;padding-inline:45px}
+.ob-choice-check{position:absolute;right:18px}
+.ob-materials,.ob-selected-tags{justify-content:center}
+.ob-product-name{justify-content:center;position:relative;padding-inline:20px;text-align:center}
+.ob-product-check{position:absolute;right:0}.ob-product-detail{text-align:center}
+.ob-recommend{text-align:center}.ob-recommend input{text-align:center}
+.ob-actions{justify-content:center;max-width:760px;margin-inline:auto}
+.ob-conditions{display:block;max-width:650px;margin-inline:auto}
+.ob-condition-main .ob-input-unit{margin-inline:auto}
+.ob-condition-main .ob-check,.ob-size-basis{justify-content:center}
+.ob-budget summary{justify-content:center;gap:12px}
+.ob-chosen-product{display:none}
+.ob-capacity{max-width:760px}.ob-capacity fieldset{width:100%}
+.ob-shell legend{width:100%;text-align:center}
+.ob-result-layout{grid-template-columns:minmax(0,1fr);max-width:600px;margin-inline:auto;gap:32px}
+.ob-request-preview{display:grid;grid-template-columns:120px minmax(0,1fr);align-items:center;gap:24px;padding:28px}
+.ob-preview-art{width:100%;margin:0}.ob-preview-copy{padding:0}.ob-preview-copy h2{text-align:center}
+.ob-result-next{text-align:center;padding:0}.ob-result-mark{margin-inline:auto}
+@media(max-width:650px){
+ .ob-role{min-height:235px}.ob-role-art{width:135px;bottom:0}.ob-role p{margin-bottom:0}
+ .ob-topline{grid-template-columns:1fr 140px 1fr;gap:10px}
+ .ob-conditions .ob-choice{padding-inline:28px}.ob-conditions .ob-choice-check{right:8px}
+ .ob-request-preview{grid-template-columns:85px minmax(0,1fr);gap:16px;padding:22px 18px}
+}
+@media(max-width:350px){.ob-request-preview{grid-template-columns:60px minmax(0,1fr);gap:10px;padding:18px 14px}}
