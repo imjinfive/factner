@@ -137,20 +137,20 @@ export function ConnectionDialog({offer,post,tier,mutate,onClose,onComplete}) {
     }catch(e){setError(e.message);}
     finally{lock.current=false;setBusy(false);}
   }
-  return <ReviewConfirm open busy={busy} error={error} title="이 제안으로 연결을 요청할까요?" confirmLabel="운영팀에 연결 요청" onCancel={onClose} onConfirm={submit}>
+  return <ReviewConfirm open busy={busy} error={error} title="이 입찰로 매칭을 요청할까요?" confirmLabel="매칭 요청" onCancel={onClose} onConfirm={submit}>
     <p><strong>{post.title}</strong> · {offer.alias}</p><PriceSummary {...tier}/>
-    <p>한 공고에서는 한 업체만 선택할 수 있습니다. 운영팀이 양측을 확인한 후 연결합니다. 이 요청으로 결제되거나 제작이 발주되지는 않습니다.</p>
+    <p>한 공고에서는 한 업체만 선택할 수 있습니다. 운영팀이 양측에 전화해 조건과 약관을 안내하고 거래 의사를 확인한 뒤 연결합니다. 이 요청으로 결제되거나 제작이 발주되지는 않습니다.</p>
   </ReviewConfirm>;
 }
 
 const connectionLabels={pending:'연결 요청 접수',reviewing:'운영팀 확인 중',completed:'연결 완료',rejected:'연결되지 않음'};
 export function Connections({connections=[],onMembers}){
-  return <section className="fd-desk" aria-label="거래 진행"><header><span className="fd-kicker">거래 진행</span><h1>계약함</h1>
-    <p>선택한 제안과 운영팀의 연결 진행 상황을 확인하세요.</p></header>
+  return <section className="fd-desk" aria-label="매칭 현황"><header><h1>매칭 현황</h1>
+    <p>선정한 입찰 조건과 운영팀의 확인 상태를 볼 수 있습니다.</p></header>
     {connections.length?connections.map(item=><article key={item.postId} className="fd-card"><span className="fd-kicker">{connectionLabels[item.status]||'상태 확인 중'}</span>
-      <h2>{item.title}</h2>{item.quantity>0&&<p>{number.format(item.quantity)}개{item.unitPrice>0&&' · 개당 '+won(item.unitPrice)}</p>}
+      <h2>{item.title}</h2><p>{item.alias} · {number.format(item.quantity)}개 · 개당 {won(item.unitPrice)}</p>
       {item.status==='completed'&&<button className="button outline" onClick={onMembers}>회원 정보와 발주 내역 보기</button>}
-    </article>):<div className="empty fd-empty"><FileText size={46} aria-hidden="true"/><h2>아직 연결 요청이 없어요.</h2><p>브랜드가 제안을 선택하면 여기서 진행 상황을 볼 수 있어요.</p></div>}
+    </article>):<div className="empty fd-empty"><FileText size={46} aria-hidden="true"/><h2>아직 매칭 요청이 없습니다.</h2><p>브랜드가 입찰을 하나 선택하면 진행 상황이 표시됩니다.</p></div>}
   </section>;
 }
 

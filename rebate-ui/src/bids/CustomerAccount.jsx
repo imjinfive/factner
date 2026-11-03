@@ -36,27 +36,32 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
   const registration = session.registration;
   const available = registration?.available === true && Boolean(registration.consentVersion);
   const {role,legal} = choice;
+  const reached = useRef(choice);
   const step = legal ? 2 : role ? 1 : 0;
 
   useLayoutEffect(() => {
     discardReview();setChoice(progress());setError('');setPending(null);setDone(history.state?.customerSignupComplete === true);
     if (mode === 'signup' && !history.state?.[entryKey]) {
-      draft.current = {};setCert([]);setPhotos([]);setToken('');
+      draft.current = {};reached.current=progress();setCert([]);setPhotos([]);setToken('');
     }
   },[mode]);
   useEffect(() => {
     const restore = () => {
       setChoice(progress());setPending(null);setError('');setDone(history.state?.customerSignupComplete === true);discardReview();
-      if (password.current) password.current.value = '';
+      if (mode!=='signup' && password.current) password.current.value = '';
     };
     window.addEventListener('popstate',restore);
     return () => window.removeEventListener('popstate',restore);
-  },[]);
+  },[mode]);
   function choose(next) {
     const previous = history.state || {};
     if (!previous[entryKey]) history.replaceState({...previous,[entryKey]:choice},'','/');
     history.pushState({...history.state,[entryKey]:next,signupPreviousDistance:1},'','/');
-    if (next.role !== role || next.legal !== legal) {setCert([]);setPhotos([]);delete draft.current.businessNumber;}
+    if (next.role !== reached.current.role || (next.legal && next.legal !== reached.current.legal)) {
+      setCert([]);setPhotos([]);delete draft.current.businessNumber;
+      if(next.role!==reached.current.role)delete draft.current.packagingDesign;
+      reached.current=next;
+    }
     setChoice(next);setError('');
   }
   function startSignup() {
@@ -65,7 +70,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
     const entry={...history.state};
     delete entry[entryKey];delete entry.signupPreviousDistance;delete entry.customerSignupComplete;
     history.pushState(entry,'','/');
-    draft.current={};setChoice(progress());setCert([]);setPhotos([]);setToken('');setError('');setDone(false);
+    draft.current={};reached.current=progress();setChoice(progress());setCert([]);setPhotos([]);setToken('');setError('');setDone(false);
   }
   function previousStep() {
     const distance = Number(history.state?.signupPreviousDistance);
@@ -75,9 +80,20 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       history.replaceState({...history.state,[entryKey]:next},'','/');setChoice(next);
     }
   }
+  function goToStep(index) {
+    if(index===step)return;
+    if(index<step){
+      const distance=Number(history.state?.signupPreviousDistance||1)+step-index-1;
+      if(history.state?.signupPreviousDistance && distance<history.length){history.go(-distance);return;}
+      const next={role:index?role:'',legal:''};
+      history.replaceState({...history.state,[entryKey]:next},'','/');setChoice(next);return;
+    }
+    if(step===0 && index===2)choose({role:reached.current.role,legal:''});
+    choose({role:reached.current.role,legal:index===2?reached.current.legal:''});
+  }
   function rememberDraft(event) {
     const field = event.target;
-    if (['name','contact','phone','email','businessNumber','consent','termsConsent'].includes(field.name)) {
+    if (['name','contact','phone','email','password','businessNumber','packagingDesign','consent','termsConsent'].includes(field.name)) {
       draft.current[field.name] = field.type === 'checkbox' ? field.checked : field.value;
     }
   }
@@ -93,6 +109,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       businessNumber:legal === 'individual' ? '' : fields.get('businessNumber'),
       files:legal === 'individual' ? photos : [...cert,...photos],
       consent:fields.get('consent') === 'on',termsConsent:fields.get('termsConsent') === 'on',
+      ...(role==='supplier'?{packagingDesign:fields.get('packagingDesign')==='yes'}:{}),
       consentVersion:registration.consentVersion,turnstileToken:token
     };
     const entry = {...history.state,[reviewKey]:true};
@@ -121,7 +138,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
   }
   if (signup && done) return <section className="member-auth member-card member-complete">
     <div className="member-symbol"><Clock size={38}/></div><h1>가입 신청을 받았어요</h1>
-    <p>팩트너 운영팀이 자료와 업체 정보를 확인합니다. 가입 승인 후 로그인할 수 있어요.</p>
+    <p>팩트너 운영팀이 자료와 업체 정보를 확인합니다.<br/>가입 승인 후 로그인할 수 있어요.</p>
     <Button onClick={() => onNavigate('login')}>로그인으로 돌아가기</Button>
   </section>;
 
@@ -134,6 +151,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       <button type="button" role="tab" aria-selected={login} disabled={busy} onClick={() => onNavigate('login')}>로그인</button>
       <button type="button" role="tab" aria-selected={signup} disabled={busy} onClick={startSignup}>회원가입</button>
     </div>
+    {login && error && <p className="member-error pa-login-alert" role="alert">{error}</p>}
     {login ? <form className="member-form" onSubmit={e => {
       e.preventDefault();const fields=new FormData(e.currentTarget);
       submit('/login',{email:fields.get('email'),password:fields.get('password')});
@@ -144,7 +162,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       <Recovery key={mode} mode={mode} onMode={onNavigate} Button={Button}/>
     </Suspense> : <>
       <div className="member-steps" aria-label={`회원가입 ${step+1}단계`}>{['활동 선택','가입 유형','정보 입력'].map((label,i)=>
-        <span key={label} aria-current={i === step ? 'step' : undefined} className={i === step ? 'current' : ''}>{i+1}. {label}</span>)}</div>
+        <button type="button" key={label} disabled={busy || (i>step && !(i===1?reached.current.role:reached.current.legal))} aria-current={i === step ? 'step' : undefined} className={i === step ? 'current' : ''} onClick={()=>goToStep(i)}>{i+1}. {label}</button>)}</div>
       {!available && <p className="member-pilot" role="status">현재 가입 접수가 열려 있지 않습니다. 가입에 필요한 정보는 미리 확인할 수 있습니다.</p>}
       {registration?.trial && <p className="member-pilot">테스트 운영 중입니다. 업체명, 담당자, 연락처, 사업자등록번호는 가상 정보로 입력하세요. 실제 서류와 사진은 받지 않습니다.</p>}
       {step === 0 && <MemberActivityChoices onChoose={role=>choose({role,legal:''})}>
@@ -167,12 +185,12 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       </>}
       {step > 0 && <button className="member-back" type="button" disabled={busy} onClick={previousStep}><ArrowLeft size={18}/> 이전 단계</button>}
     </>}
-    {error && !pending && <p className="member-error" role="alert">{error}</p>}
+    {!login && error && !pending && <p className="member-error" role="alert">{error}</p>}
     </div>
     <ReviewConfirm open={Boolean(pending) && signup && available} busy={busy} error={error} title="가입 신청 정보를 확인해주세요" confirmLabel="가입 심사 신청"
       onCancel={() => {setPending(null);setError('');if(history.state?.[reviewKey])history.back();}} onConfirm={()=>submit('/register',pending)}>
       {pending && <dl>{[
-        ['활동',role === 'brand' ? '브랜드' : '패키징 제작업체'],['가입 유형',legalTypes[legal]],['이름',pending.name],['담당자',pending.contact],
+        ['활동',role === 'brand' ? '브랜드' : '패키징 제작업체'],['가입 유형',legalTypes[legal]],['패키징 디자인',role==='supplier'?(pending.packagingDesign?'함께 제공':'제작만 제공'):''],['이름',pending.name],['담당자',pending.contact],
         ['연락처',pending.phone],['이메일',pending.email],['사업자번호',pending.businessNumber],['첨부 자료',pending.files.map(file=>file.name).join('\n')],
         ['신청 후 상태','가입 대기 · 운영팀 검토 후 승인']
       ].filter(([,value])=>value).map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}

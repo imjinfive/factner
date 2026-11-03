@@ -20,13 +20,15 @@ function redirectFromWww() {
 
 function startApp() {
   const root = createRoot(document.getElementById('root'));
+  const freshHome=location.pathname==='/' && !history.state?.factnerRoute && !location.hash;
   let currentSurface;
   async function showSurface() {
     const {surface} = normalizeSiteEntry();
     if (surface === currentSurface) return;
+    const initialHome=freshHome && currentSurface===undefined;
     currentSurface = surface;
     if (surface !== 'members') {
-      root.render(<BidApp key={surface} surface={surface}/>);
+      root.render(<BidApp key={surface} surface={surface} initialHome={initialHome}/>);
       return;
     }
     try {

@@ -59,6 +59,7 @@ export async function registerMember(req,env,input,{version,trial=false,live=fal
   const {email,password}=loginInput(input);
   if(isReviewEmail(email))fail(409,'회원가입에 사용할 수 없는 이메일입니다.');
   if(!['brand','supplier'].includes(input.role)||!['individual','sole','corporate'].includes(input.legalType))fail(400,'가입 유형을 선택해주세요.');
+  if((live&&input.role==='supplier' || input.packagingDesign!=null) && (input.role!=='supplier'||typeof input.packagingDesign!=='boolean'))fail(400,'패키징 디자인 제공 여부를 선택해주세요.');
   const name=text(input.name,100,true),contact=text(input.contact,60,true),phone=text(input.phone,30,true),number=text(input.businessNumber,12).replace(/-/g,'');
   if(!/^[+0-9 ()-]{7,30}$/.test(phone))fail(400,'연락처를 확인해주세요.');
   if(live&&!/^\d{7,15}$/.test(phone.replace(/[^0-9]/g,'')))fail(400,'연락처의 숫자를 확인해주세요.');
@@ -81,7 +82,7 @@ export async function registerMember(req,env,input,{version,trial=false,live=fal
   const allowed = live ? " WHERE (SELECT COALESCE(json_extract(value,'$.memberAccepting'),json_extract(value,'$.accepting')) FROM settings WHERE key='service')=1 AND (SELECT id FROM policy_versions WHERE published=1 ORDER BY created_at DESC,rowid DESC LIMIT 1)=? AND (SELECT id FROM policy_versions ORDER BY created_at DESC,rowid DESC LIMIT 1)=?" : '';
   let saved;
   try{[saved]=await env.DB.batch([
-   stmt(env,`INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,consent_version,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?${allowed}`,id,email,await passwordHash(password),input.role,input.legalType,name,contact,phone,input.legalType==='individual'?'':number,version,date,date,...(live?[version,version]:[])),
+   stmt(env,`INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,consent_version,created_at,updated_at,packaging_design) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?${allowed}`,id,email,await passwordHash(password),input.role,input.legalType,name,contact,phone,input.legalType==='individual'?'':number,version,date,date,input.packagingDesign==null?null:Number(input.packagingDesign),...(live?[version,version]:[])),
    ...files.map(f=>stmt(env,'INSERT INTO member_files SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=?)',f.id,id,f.kind,f.name,f.mime,f.size,f.bytes.buffer,date,id)),
   ]);}catch(error){if(String(error.message).includes('UNIQUE'))fail(409,'이미 접수된 이메일입니다.');throw error;}
   if(!saved.meta.changes)fail(409,'가입 안내가 변경되었습니다. 다시 확인해주세요.');
@@ -98,9 +99,12 @@ export async function loginMember(req,env,input,{bid=false}={}){
   if(bid&&input.role!==undefined&&input.role!==kind)fail(403,'선택한 회원 유형과 계정이 일치하지 않습니다.');
   if(row.status!=='approved')return json({error:labels[row.status],status:row.status,note:row.review_note,support:await memberSupport(env,row.id)},403);
   const token=randomToken();
-  await stmt(env,'INSERT INTO member_sessions VALUES(?,?,?,?)',await digest(token),row.id,Date.now()+8*3600000,row.version).run();
+  const legacyOnly=bid && !await hasMarketConsent(env,row.id);
+  const queries=[stmt(env,'INSERT INTO member_sessions VALUES(?,?,?,?)',await digest(token),row.id,Date.now()+8*3600000,row.version)];
+  if(bid&&!legacyOnly)queries.push(stmt(env,'UPDATE members SET welcomed=1 WHERE id=? AND welcomed=0',row.id));
+  const [,welcome]=await env.DB.batch(queries);
   delete row.password_hash;delete row.consent_version;
-  return json(bid?{user:{id:row.id,email:row.email,name:row.name,kind,legacyOnly:!await hasMarketConsent(env,row.id)}}:{member:row},200,{'Set-Cookie':cookie(req,token,8*3600)});
+  return json(bid?{user:{id:row.id,email:row.email,name:row.name,kind,legacyOnly},firstLogin:Boolean(welcome?.meta.changes)}:{member:row},200,{'Set-Cookie':cookie(req,token,8*3600)});
  }
 export async function memberApi(req,env,url){
  const path=url.pathname;
@@ -167,7 +171,7 @@ export async function memberAdminApi(req,env,url,user){
  }
  const match=path.match(/^\/api\/admin\/members\/([a-f0-9-]{36})$/);
  if(match){
-  const member=await stmt(env,`SELECT ${fields},NOT (${currentMember()}) AS archived FROM members WHERE id=?`,match[1]).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
+  const member=await stmt(env,`SELECT ${fields},packaging_design,NOT (${currentMember()}) AS archived FROM members WHERE id=?`,match[1]).first();if(!member)fail(404,'회원을 찾을 수 없습니다.');
   if(req.method==='GET'){
    const orderCounts=await stmt(env,`SELECT count(*) AS total,COALESCE(SUM(status NOT IN ('received','cancelled')),0) AS active,COALESCE(SUM(status='received'),0) AS received,COALESCE(SUM(status='cancelled'),0) AS cancelled FROM orders WHERE ${member.role==='brand'?'brand_id':'supplier_id'}=?`,member.id).first();
    if(member.archived)return json({member:{id:member.id,name:member.name,role:member.role,status:'archived'},orderCounts});

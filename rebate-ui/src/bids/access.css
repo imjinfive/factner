@@ -97,3 +97,36 @@
   .pa-notice { width: 100%; }
   .pa-notice footer > .button { width: 100%; }
 }
+.pa-discovery .pa-role-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.pa-discovery .pa-role-card { padding:24px 16px; }
+.pa-intent-caret { flex:none; margin-inline-start:auto; color:var(--muted); }
+.pa-discovery .pa-role-copy strong,.pa-heading h1 { word-break:keep-all; }
+.pa-discovery .pa-role-card.pa-notice-card { grid-column:1/-1; border:0; border-top:1px solid var(--line); padding:10px 16px; font-size:14px; }
+.pa-discovery .pa-notice-card .pa-role-copy { display:flex; align-items:baseline; gap:12px; }
+.pa-discovery .pa-notice-card .pa-role-copy strong { font-size:15px; }
+.pa-discovery .pa-notice-card .pa-role-icon svg { width:18px; }
+.pa-result[aria-pressed=true] { border-color:var(--green-dark); background:var(--mint); }
+.pa-join { padding:24px 0; margin-top:24px; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.pa-join p,.pa-searching p,.pa-welcome p { color:var(--muted);margin:8px 0 20px; }
+.pa-searching,.pa-welcome { width:min(420px,calc(100% - 32px)); }
+.pa-searching > svg { color:var(--green-dark); }
+.pa-search-progress { height:3px;background:var(--soft);overflow:hidden; }
+.pa-search-progress::before { content:'';display:block;height:100%;background:var(--green);transform-origin:left;animation:pa-reveal 2s ease-out both; }
+@keyframes pa-reveal { from{transform:scaleX(0)} to{transform:scaleX(1)} }
+@media(prefers-reduced-motion:reduce){.pa-search-progress::before{animation:none}}
+.pa-access .member-steps button { min-height:44px; font:inherit;color:var(--muted); }
+.pa-access .member-steps .current {color:var(--green-dark);font-weight:700}
+.pa-access .member-steps button:disabled {opacity:.65}
+.pa-design-question label {display:flex;align-items:center;gap:8px;padding:6px 0}
+.pa-design-question input {width:auto}
+.pa-login-alert {padding:14px 16px;border:1px solid var(--error);border-radius:10px}
+@media(max-width:640px){
+ :root:has(.pa-discovery){scrollbar-gutter:auto}
+ .pa-discovery .pa-role-grid { grid-template-columns:1fr; }
+ .pa-discovery .pa-role-card {padding:16px 12px}
+ .pa-join {align-items:stretch;flex-direction:column}
+ .pa-welcome .button {width:100%}
+}
+@media(max-width:600px){
+ .pa-searching,.pa-welcome { width:100%; }
+}

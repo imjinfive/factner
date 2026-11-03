@@ -56,7 +56,7 @@ function fixture(t){
 }
 const password='sample-member-password-998';
 const account=(key,kind='brand')=>({email:key+'@example.test',password,name:key+' 업체',contact:'담당자',phone:'010-1234-5678',
-  kind,legalType:'individual',files:[],consent:true,termsConsent:true,consentVersion:'accepted-version'});
+  kind,...(kind==='packaging'?{packagingDesign:false}:{}),legalType:'individual',files:[],consent:true,termsConsent:true,consentVersion:'accepted-version'});
 const job={category:'packaging',title:'단상자 신규 제작',quantity:1000,unitPrice:300,size:'50 × 50',description:'코팅 종이 / 택배 납품',deadline:'2099-01-01'};
 const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225}],note:'배송 포함'};
 
@@ -195,6 +195,7 @@ test('approved accounts share real posts across logins; one selected offer reach
     assert.equal(login.data.token,undefined);users.push({id:saved.data.id,headers:{Cookie:login.cookie}});
   }
   const [brand,a,b,outsider]=users;
+  assert.equal((await f.call('bid/posts',job,a.headers)).status,403);
   const examples=(await f.call('bid/state')).data;assert.ok(examples.posts.every(p=>p.example));assert.ok(examples.partners.every(p=>p.example));
   assert.deepEqual((await f.call('bid/state',undefined,brand.headers)).data.posts,[]);
   const post=(await f.call('bid/posts',job,brand.headers)).data.id;
@@ -204,10 +205,20 @@ test('approved accounts share real posts across logins; one selected offer reach
   const again=await f.call('bid/login',roles[0]);
   assert.equal((await f.call('bid/state',undefined,{Cookie:again.cookie})).data.posts[0].id,post);
   const guest=(await f.call('bid/state')).data;assert.equal(guest.posts.length,1);assert.equal(guest.posts[0].example,undefined);
+  assert.equal((await f.call('bid/posts/'+post+'/offers',pricing,outsider.headers)).status,403);
   const aOffer=(await f.call('bid/posts/'+post+'/offers',pricing,a.headers)).data.id;
   const bOffer=(await f.call('bid/posts/'+post+'/offers',pricing,b.headers)).data.id;
+  const board=async actor=>(await f.call('bid/state',undefined,actor.headers)).data;
+  const bids=(await board(brand)).offers;
+  assert.deepEqual(new Set(bids.map(o=>o.alias)),new Set(['제안사 A','제안사 B']));
+  assert.deepEqual(bids.find(o=>o.id===aOffer).tiers,pricing.tiers);
+  assert.deepEqual((await board(a)).offers.map(o=>o.id),[aOffer]);
+  const otherBrand=await board(outsider);
+  assert.equal(otherBrand.posts[0].brandAlias,'브랜드 A');assert.deepEqual(otherBrand.offers,[]);
+  assert.doesNotMatch(JSON.stringify([otherBrand,bids]),/buyer 업체|factory|example.test|010-1234-5678/);
   const select=(id,actor,quantity=1000)=>f.call('bid/offers/'+id+'/select',{accepted:true,quantity},actor.headers);
   assert.equal((await select(aOffer,outsider)).status,404);
+  assert.equal((await select(aOffer,a)).status,403);
   const attempts=await Promise.all([select(aOffer,brand),select(bOffer,brand)]);
   assert.deepEqual(attempts.map(r=>r.status).sort(),[201,409]);
   const winner=attempts[0].status===201?a:b,winnerOffer=winner===a?aOffer:bOffer;
@@ -216,6 +227,9 @@ test('approved accounts share real posts across logins; one selected offer reach
   assert.equal(f.raw.prepare('SELECT count(*) n FROM matching_requests').get().n,1);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM matching_request_events').get().n,1);
   assert.deepEqual((await f.call('bid/state',undefined,outsider.headers)).data.connections,[]);
+  const match=(await board(winner)).connections[0];
+  assert.equal(match.alias,bids.find(o=>o.id===winnerOffer).alias);
+  assert.deepEqual((await board(winner===a?b:a)).connections,[]);
   assert.equal((await f.call('bid/state',undefined,winner.headers)).data.connections[0].status,'pending');
   const adminURL=new URL('https://admin.example.test/api/admin/partners');
   await partnerApi(new Request(adminURL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brandId:brand.id,supplierId:winner.id,note:'연결 확인'})}),f.env,adminURL,f.owner);
@@ -275,4 +289,22 @@ test('a former pilot consent retains legacy access but cannot read, advertise or
   assert.deepEqual(card,{alias:'27업체',kind:'packaging',items:['box'],title:'패키징 제작업체',description:'수량 협의'});
   f.raw.prepare('UPDATE members SET consent_version=? WHERE id=?').run('member-pilot-2026-10-21',maker.data.user.id);
   assert.ok((await f.call('bid/state')).data.partners.every(p=>p.example));
+});
+test('supplier design capability stays on the application and welcome is issued once after approval',async t=>{
+  const f=fixture(t);f.publish();
+  for(const [idx,packagingDesign] of [true,false].entries()){
+    const fields={...account('onboarding-'+idx,'packaging'),packagingDesign};
+    assert.equal((await f.call('bid/register',{...fields,packagingDesign:null})).status,400);
+    const registered=await f.call('bid/register',fields);
+    assert.equal(registered.status,201);
+    const id=registered.data.id;
+    assert.equal(f.raw.prepare('SELECT packaging_design FROM members WHERE id=?').get(id).packaging_design,Number(packagingDesign));
+    const login=()=>f.call('bid/login',{email:fields.email,password});
+    assert.equal((await login()).status,403);
+    await f.approve(id);
+    const responses=await Promise.all([login(),login()]);
+    assert.deepEqual(responses.map(r=>r.data.firstLogin).sort(),[false,true]);
+    assert.equal((await login()).data.firstLogin,false);
+    assert.equal((await f.call('bid/posts',job,{Cookie:responses[0].cookie})).status,403);
+  }
 });

@@ -49,7 +49,7 @@ async function getState(env, user, live=false) {
   const paymentsQuery = stmt(env, 'SELECT m.* FROM market_payments m JOIN market_contracts c ON c.id=m.contract_id JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id WHERE ?=1 OR p.brand_id=? OR o.supplier_id=? ORDER BY m.created_at,m.id', Number(admin), id, id);
   const queries = [postsQuery, offersQuery];
   if(live){
-    queries.push(stmt(env,`SELECT s.request_id,s.post_id,s.offer_id,s.quantity,s.unit_price,s.created_at,${historyTitle},r.status
+    queries.push(stmt(env,`SELECT s.request_id,s.post_id,s.offer_id,o.alias,s.quantity,s.unit_price,s.created_at,${historyTitle},r.status
       FROM market_connection_requests s JOIN market_posts p ON p.id=s.post_id JOIN market_offers o ON o.id=s.offer_id
       JOIN matching_requests r ON r.id=s.request_id WHERE p.brand_id=? OR o.supplier_id=? ORDER BY s.created_at DESC`,id,id,id));
     if(!user)queries.push(stmt(env,`SELECT c.rowid ordinal,c.profile FROM member_companies c JOIN members m ON m.id=c.member_id
@@ -70,7 +70,7 @@ async function getState(env, user, live=false) {
     paymentGroups.get(payment.contract_id).push(paymentView(payment));
   }
   const state = {
-    connections:live?results[2].results.map(c=>({id:c.request_id,postId:c.post_id,offerId:c.offer_id,title:c.title,
+    connections:live?results[2].results.map(c=>({id:c.request_id,postId:c.post_id,offerId:c.offer_id,alias:c.alias.replace(/^입찰사 /,'제안사 '),title:c.title,
       quantity:c.quantity,unitPrice:c.unit_price,status:c.status,createdAt:c.created_at})):[],
     partners: (publicAccounts?.results ?? []).filter(a=>isPackagingPartner(a.kind)).map(a=>({...reviewPartnerCards[a.id],kind:a.kind})),
     posts: posts.results.map(p => ({ id:p.id, brandAlias:'브랜드 '+(p.ordinal<=26?String.fromCharCode(64+p.ordinal):p.ordinal), category:p.category, title:p.title, quantity:p.quantity, unitPrice:p.unit_price, size:p.size, description:p.description, deadline:p.deadline, createdAt:p.created_at, status:p.awarded?'awarded':'open', offerCount:p.offer_count, isMine:p.brand_id===id,reviewStatus:p.review_status,

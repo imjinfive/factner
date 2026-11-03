@@ -250,7 +250,7 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
           const c=post.connection;
           const rows=[['공고',post.title],['브랜드',post.brandName],['제작업체',selectedOffer.supplierName],['선정 조건',price(c.quantity,c.unitPrice)]];
           if(c.linkedPostCount>1)rows.push(['같은 연결 요청',`${c.linkedPostCount}개 공고에 함께 반영`]);
-          const ok=await reviewBeforeSave({title:'거래 연결 전 양측 확인',rows,action:'거래 연결 확인',message:'양측의 거래 의사를 확인했나요? 연결 후 브랜드가 이 제작업체에 발주할 수 있습니다.'});
+          const ok=await reviewBeforeSave({title:'거래 연결 전 양측 확인',rows,action:'거래 연결 확인',message:'양측에 전화해 거래 조건과 확정 후 변경 제한을 안내하고 동의를 확인했나요? 확인 후 거래를 연결하세요.'});
           if(!ok || !active(id))return;
           await send(`admin/market/posts/${encodeURIComponent(post.id)}/connect`,{version:c.version,confirmed:true,note:''});
           if(active(id)){notice('거래 연결을 확인했습니다.');await showDetail(post.id,data.page);}

@@ -73,18 +73,17 @@ function matchesFilters(post, { category, query, activeOnly }) {
 
 function BoardHeader({ mine, posts, brand, designer, onNew }) {
   const open = posts.filter(acceptsProposals);
-  const title = mine ? (brand ? '내 공고' : '내 제안') : (designer ? '디자인 의뢰' : '파트너 찾기');
+  const title = mine ? (brand ? '내 공고와 받은 입찰' : '내가 입찰한 공고') : (designer ? '디자인 의뢰' : brand ? '공개 공고' : '제작 공고');
   return <header className="bm-cover">
     <div className="bm-cover-main">
-      <span className="bm-live"><i/> 실시간 업데이트</span>
       <h1>{title}</h1>
       {designer ? <p>{mine ? '테스트 계정으로 보낸 디자인 제안과 선정 결과를 확인하세요.' : '디자이너 테스트 계정으로 디자인 의뢰를 미리 보고 있어요.'}</p> :
-        <p>{mine ? (brand ? '공고 심사 결과와 제작업체가 보낸 제안을 확인하세요.' : '보낸 제안과 파트너 선정 결과를 확인하세요.') : '브랜드의 제작 조건을 확인하고 패키징 견적을 제안하세요.'}</p>}
+        <p>{mine ? (brand ? '공고 심사 결과와 제작업체별 입찰 조건을 확인하세요.' : '내가 제출한 수량별 단가와 선정 결과를 확인하세요.') : brand ? '다른 브랜드의 공개된 제작 의뢰를 둘러보세요. 내 공고에서 받은 입찰을 비교할 수 있어요.' : '제작 가능한 공고를 고르고, 수량별로 단가를 제안하세요.'}</p>}
       {brand && <button type="button" className="button primary bm-cover-cta" onClick={onNew}><Plus size={17} /> 공고 등록</button>}
     </div>
     <dl className="bm-stats">
       {mine && brand ? <><div><dt>심사 대기</dt><dd>{number.format(posts.filter(post=>post.reviewStatus==='pending').length)}건</dd></div>
-        <div><dt>제안 접수 중</dt><dd>{number.format(open.length)}건</dd></div></> : designer ? <div><dt>{mine ? '저장된 제안' : '등록된 의뢰'}</dt><dd>{number.format(posts.length)}건</dd></div> : <>
+        <div><dt>입찰 접수 중</dt><dd>{number.format(open.length)}건</dd></div></> : designer ? <div><dt>{mine ? '저장된 제안' : '등록된 의뢰'}</dt><dd>{number.format(posts.length)}건</dd></div> : <>
         <div><dt>접수 중</dt><dd>{number.format(open.length)}건</dd></div>
         <div><dt>오늘 마감</dt><dd>{number.format(open.filter(post => daysLeft(post) === 0).length)}건</dd></div>
       </>}
@@ -134,7 +133,7 @@ function NewPost({ mutate, onDone, onCancel, initialCategory, isDemo }) {
     <div className="bm-two"><label>요청 수량 (개)<input name="quantity" type="number" min="1" max="100000000" step="1" required placeholder="5,000" /></label>
       <label>희망 개당 단가 (원)<input name="unitPrice" type="number" min="1" max="1000000000" step="1" required placeholder="450" /></label></div>
     <div className="bm-two"><label>규격 <small>선택</small><input name="size" maxLength={160} placeholder="예: 60 × 35 × 110 mm" /></label>
-      <label>제안 마감일<input type="date" name="deadline" required min={koreanDay()} /></label></div>
+      <label>입찰 마감일<input type="date" name="deadline" required min={koreanDay()} /></label></div>
     <label>제작 조건<textarea name="description" required rows={5} maxLength={2000} aria-describedby="bm-anonymous-guide" placeholder="희망 납기, 재질, 인쇄·후가공 조건 등을 적어주세요." /></label>
     {error && !draft && <p role="alert" className="bm-error">{error}</p>}
     <div className="bm-actions"><button type="button" onClick={onCancel}>취소</button><button type="submit" className="bm-primary">심사 요청 전 확인 <ArrowRight size={16}/></button></div>
@@ -168,10 +167,10 @@ function QuoteForm({ post, mutate, onDone }) {
     lock.current = true;
     setBusy(true);
     try { await mutate(`/posts/${encodeURIComponent(post.id)}/offers`, draft); onDone(); }
-    catch (err) { setError(err.message?.replaceAll('입찰', '제안') || '제안을 보내지 못했습니다. 다시 시도해 주세요.'); }
+    catch (err) { setError(err.message || '입찰을 보내지 못했습니다. 다시 시도해 주세요.'); }
     finally { lock.current = false; setBusy(false); }
   }
-  return <div className="bm-quote-form"><h3>수량별 견적 제안</h3>
+  return <div className="bm-quote-form"><h3>수량별 입찰 단가</h3>
     <form className="bm-form" onSubmit={preview}>
       <div className="bm-tier-labels" aria-hidden="true"><span>제작 수량 (개)</span><span>개당 단가 (원)</span></div>
       {tiers.map((row, index) => <div className="bm-tier-input" key={row.key}>
@@ -181,22 +180,22 @@ function QuoteForm({ post, mutate, onDone }) {
       </div>)}
       {tiers.length < 8 && <button className="bm-add" type="button" onClick={() => { const key = nextKey.current++; setTiers(rows => [...rows, {key, quantity: '', unitPrice: ''}]); }}><Plus size={15} />수량 조건 추가</button>}
       <label>견적 메모 <small>선택</small><textarea rows={2} value={note} maxLength={1200} onChange={e => setNote(e.target.value)} placeholder="납기, 후가공, 배송·세금 포함 여부" /></label>
-      <p className="bm-hint">업체명과 연락처는 제외해 주세요. 공고마다 한 번 제안할 수 있어요.</p>
+      <p className="bm-hint">한 공고에 여러 수량의 단가를 담아 한 번 입찰할 수 있습니다. 상호와 연락처는 적지 마세요.</p>
       {error && !draft && <p role="alert" className="bm-error">{error}</p>}
-      <button type="submit" className="bm-primary">제안 내용 확인 <ArrowRight size={16} /></button>
+      <button type="submit" className="bm-primary">입찰 내용 확인 <ArrowRight size={16} /></button>
     </form>
-    {draft && <ReviewConfirm open title="이 조건으로 제안을 보낼까요?" busy={busy} error={error} confirmLabel="제안 보내기" onCancel={() => { setDraft(null); setError(''); }} onConfirm={send}>
+    {draft && <ReviewConfirm open title="이 조건으로 입찰할까요?" busy={busy} error={error} confirmLabel="입찰 보내기" onCancel={() => { setDraft(null); setError(''); }} onConfirm={send}>
       <ReviewRows rows={[[ '공고', post.title ], ...draft.tiers.map(t => [`${number.format(t.quantity)}개`, `개당 ${number.format(t.unitPrice)}원 · 총 ${number.format(t.quantity * t.unitPrice)}원`]), ['메모', draft.note || '없음']]} />
     </ReviewConfirm>}
   </div>;
 }
 
-function Offer({ offer, post, onSelect, allowSelect }) {
+function Offer({ offer, post, onSelect, allowSelect, selected }) {
   const [choice, setChoice] = useState(0);
   const tier = offer.tiers[choice];
   const alias = offer.alias;
   return <article className="bm-offer">
-    <div className="bm-offer-head"><strong>{offer.isMine ? '내 제안' : alias}</strong><span>수량 조건 {offer.tiers.length}개</span></div>
+    <div className="bm-offer-head"><strong>{alias}{offer.isMine && ' · 내 입찰'}</strong><span>{selected ? '선정된 입찰' : `수량 조건 ${offer.tiers.length}개`}</span></div>
     <div className="bm-offer-tiers">
       {offer.tiers.map((t, i) => <label key={t.quantity} className={allowSelect && choice === i ? 'chosen' : ''}>
         {allowSelect && <input aria-label={`${alias} ${t.quantity}개 조건 선택`} type="radio" name={`tier-${offer.id}`} checked={choice === i} onChange={() => setChoice(i)} />}
@@ -205,7 +204,7 @@ function Offer({ offer, post, onSelect, allowSelect }) {
       </label>)}
     </div>
     {offer.note && <p className="bm-note">{offer.note}</p>}
-    {allowSelect && tier && <button type="button" className="bm-secondary" onClick={() => onSelect(offer, post, tier)}>이 조건으로 업체 선택 <ArrowUpRight size={15} /></button>}
+    {allowSelect && tier && <button type="button" className="bm-secondary" onClick={() => onSelect(offer, post, tier)}>이 조건으로 매칭 요청 <ArrowUpRight size={15} /></button>}
   </article>;
 }
 
@@ -238,7 +237,7 @@ function WithdrawPost({ post, mutate, onDone }) {
   </div>;
 }
 
-function PostDetail({ post, offers, user, mutate, onSelect, onSignup, onSent, onWithdrawn, isDemo, reviewRoomKey, standalone = false }) {
+function PostDetail({ post, offers, selectedOfferId, user, mutate, onSelect, onSignup, onSent, onWithdrawn, isDemo, reviewRoomKey, standalone = false }) {
   const design = post.category === 'design';
   const designer = user?.kind === 'design';
   const open = acceptsProposals(post);
@@ -253,7 +252,7 @@ function PostDetail({ post, offers, user, mutate, onSelect, onSignup, onSent, on
   const finishWithdrawal = () => { onWithdrawn(); requestAnimationFrame(() => focusAfterRemoval.current?.focus({preventScroll:true})); };
   return <section className="bm-detail" aria-label={standalone ? '브랜드 의뢰 상세' : '선택한 공고 상세'}>
     <div className="bm-detail-head"><span className="bm-kind">{types[post.category]}</span><span className="bm-status">{statusText(post, designer)}</span></div>
-    <div className="bm-detail-title"><div><Heading ref={focusAfterRemoval} tabIndex={-1}>{post.title}</Heading><span>{standalone ? '브랜드 의뢰' : '공고 상세'}</span></div>
+    <div className="bm-detail-title"><div><Heading ref={focusAfterRemoval} tabIndex={-1}>{post.title}</Heading><span>{post.brandAlias || '브랜드'}{owner?' · 내가 올린 공고':''}</span></div>
       <ProductIcon post={post} /></div>
     {owner && !isPublicPost(post) && <div className="bm-review-state">
       <p>{post.reviewStatus==='pending' ? (isDemo ? '관리자 승인 후 같은 테스트 공간의 제작업체가 이 공고를 볼 수 있습니다.' : '운영팀이 공고를 확인하고 있습니다. 승인 후 제작업체에 공개됩니다.') :
@@ -271,12 +270,12 @@ function PostDetail({ post, offers, user, mutate, onSelect, onSignup, onSent, on
     </div>
     {design && <p className="bm-info">{designer ? '새 디자인 제안은 준비 중입니다. 보낸 제안은 내 제안에서, 기존 계약은 계약함에서 확인할 수 있어요.' :
       '디자인 파트너 참여는 준비 중입니다. 현재는 패키징 제작 의뢰에 제안할 수 있어요.'}</p>}
-    {owner && !isPublicPost(post) ? null : owner ? <section className="bm-offer-section"><h3>받은 제안 <span>{offers.length}</span></h3>
-      {offers.length ? offers.map(o => <Offer key={o.id} offer={o} post={post} allowSelect={!design && post.status === 'open'} onSelect={onSelect} />) : <p className="bm-hint">아직 들어온 제안이 없습니다.</p>}
-    </section> : ownOffer ? <Offer offer={ownOffer} post={post} /> : design ? null : !user && (open || post.example === true) ?
-      <button className="bm-primary" type="button" onClick={onSignup}>회원가입</button> :
+    {owner && !isPublicPost(post) ? null : owner ? <section className="bm-offer-section"><h3>받은 입찰 <span>{offers.length}</span></h3>
+      {offers.length ? offers.map(o => <Offer key={o.id} offer={o} post={post} selected={o.id===selectedOfferId} allowSelect={!design && post.status === 'open'} onSelect={onSelect} />) : <p className="bm-hint">아직 들어온 입찰이 없습니다.</p>}
+    </section> : ownOffer ? <Offer offer={ownOffer} post={post} selected={ownOffer.id===selectedOfferId} /> : design ? null : !user && (open || post.example === true) ?
+      <div className="pa-join"><div><strong>이 공고에 입찰하고 싶으세요?</strong><p>가입 승인 후 수량과 단가를 입력해 입찰할 수 있어요.</p></div><button className="bm-primary" type="button" onClick={onSignup}>회원가입 신청</button></div> :
       open && canBid ? <QuoteForm post={post} mutate={mutate} onDone={onSent} /> :
-      <div className="bm-info">{!open ? '제안 접수가 끝났습니다.' : '이 공고는 패키징 제작업체의 제안을 받고 있어요.'}</div>}
+      <div className="bm-info">{user?.kind==='brand' ? '다른 브랜드의 공고는 열람만 가능합니다. 받은 입찰은 내 공고에서 확인하세요.' : !open ? '입찰 접수가 끝났습니다.' : '패키징 제작업체가 입찰할 수 있는 공고입니다.'}</div>}
     </>}
     {owner && onWithdrawn && !withdrawn && !post.example && Number.isSafeInteger(post.reviewVersion) && <WithdrawPost post={post} mutate={mutate} onDone={finishWithdrawal}/>}
   </section>;
@@ -308,7 +307,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   const defaultFilters = view === 'feed' && isPackagingPartner(user?.kind) ? packagingFilters : allFilters;
   const [filters, setFilters] = useState(() => historyFilters(defaultFilters));
   const [historyVisit, setHistoryVisit] = useState(0);
-  const { category, query, activeOnly } = filters;
+  const {query,activeOnly} = filters;
   const [notice, setNotice] = useState('');
   const known = useRef(null);
   const detail = useRef(null);
@@ -338,10 +337,11 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   }, [notice]);
   const mineIds = new Set(offers.filter(o => o.isMine).map(o => o.postId));
   const scope = mine ? (brand ? posts.filter(p => p.isMine) : publicPosts.filter(p => mineIds.has(p.id))) : publicPosts;
-  const visibleFilters = designer ? { ...filters, category:'design', activeOnly:false } : filters;
+  const visibleFilters = { ...filters, category:designer?'design':'packaging', activeOnly:!designer&&activeOnly };
   const rowTime = post => mine ? post.createdAt : post.reviewedAt || post.createdAt;
   const rows = scope.filter(post => (post.reviewStatus!=='withdrawn'||filters.includeRemoved) && matchesFilters(post, visibleFilters)).sort((a,b) => Date.parse(rowTime(b)) - Date.parse(rowTime(a)));
   const selected = postId ? scope.find(post => post.id === postId) : rows[0];
+  const selectedAward = (isDemo ? state?.contracts : state?.connections)?.find(item => item.postId === selected?.id);
   useLayoutEffect(() => {
     const saved = historyFilters(defaultFilters);
     const restored = designer ? { ...saved, category:'design', activeOnly:false } : saved;
@@ -392,35 +392,33 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   }
   const afterPost = id => { setNotice(isDemo ? '테스트 공고 심사를 요청했습니다.' : '공고 심사를 요청했습니다. 승인 후 공개됩니다.'); onView('mine/' + id); };
   const afterWithdraw = () => { setNotice('공고를 삭제했습니다.'); if (!mine && selected) onView('mine/' + selected.id); };
-  const sent = () => setNotice('제안을 보냈습니다. 내 제안에서 다시 확인할 수 있어요.');
+  const sent = () => setNotice('입찰을 보냈습니다. 내 입찰에서 다시 확인할 수 있어요.');
   if (view === 'new' && brand) return <section className="bm"><NewPost key={initialCategory} initialCategory={initialCategory} isDemo={isDemo} mutate={mutate} onDone={afterPost} onCancel={() => onView('feed')} /></section>;
   if ((mine && !user) || (view === 'new' && !brand)) return <section className="bm"><div className="bm-empty">
     <h1>{view === 'new' ? '브랜드 회원 전용입니다' : '로그인이 필요합니다'}</h1>
     <button type="button" className="bm-primary" onClick={user ? () => onView('feed') : onLogin}>{user ? '파트너 찾기' : '로그인'} <ArrowRight size={15} /></button></div></section>;
   return <section className={postId ? 'bm bm-reading' : 'bm'}>
     <BoardHeader mine={mine} posts={scope} brand={brand} designer={designer} onNew={() => onView('new')} />
-    <div className="bm-toolbar">{designer ? <span className="bm-kind">디자인 · 열람 전용</span> : <div className="bm-tabs" aria-label="공고 분야">
-      {Object.entries({all:'전체 공고', packaging:types.packaging, design:'디자인 · 준비 중'}).map(([key,label]) => <button type="button" key={key} aria-pressed={category === key} onClick={() => { if (key !== category) updateFilters({category:key}); }}>{label}</button>)}
-    </div>}<label className="bm-search"><MagnifyingGlass size={16}/><input aria-label="공고 검색" value={query} onChange={e => updateFilters({query:e.target.value})} placeholder="공고명·제작 조건 검색" />{query && <button type="button" onClick={() => updateFilters({query:''})} aria-label="검색어 지우기"><X size={14}/></button>}</label></div>
+    <div className="bm-toolbar">{designer ? <span className="bm-kind">디자인 · 열람 전용</span> : <span className="bm-kind">패키징 제작</span>}<label className="bm-search"><MagnifyingGlass size={16}/><input aria-label="공고 검색" value={query} onChange={e => updateFilters({query:e.target.value})} placeholder="공고명·제작 조건 검색" />{query && <button type="button" onClick={() => updateFilters({query:''})} aria-label="검색어 지우기"><X size={14}/></button>}</label></div>
     <div className="bm-layout">
       <section className="bm-ledger" aria-label="공고 목록" ref={list}>
-        <div className="bm-ledger-head"><h2>{mine ? (brand ? '내 발주 공고' : '제안을 보낸 공고') : '공고 목록'} <span>{rows.length}</span></h2><div>
+        <div className="bm-ledger-head"><h2>{mine ? (brand ? '내 발주 공고' : '입찰한 공고') : '공고 목록'} <span>{rows.length}</span></h2><div>
           {!designer && <label className="bm-active-toggle"><input type="checkbox" checked={activeOnly} onChange={e => updateFilters({activeOnly:e.target.checked})} />접수 중만</label>}
           {mine && brand && scope.some(p=>p.reviewStatus==='withdrawn') && <label className="bm-active-toggle"><input type="checkbox" checked={Boolean(filters.includeRemoved)} onChange={e => updateFilters({includeRemoved:e.target.checked})} />삭제한 공고 포함</label>}
           <span className="bm-sort"><ArrowDown size={12}/>최신순</span></div></div>
         {rows.length > 0 ? <div className="bm-rows">{rows.map(post => <button className={`bm-row ${selected?.id === post.id ? 'is-current' : ''}`} type="button" key={post.id}
           data-post={post.id} aria-current={post.id === postId ? 'true' : undefined} onClick={() => choose(post.id)}>
-          <ProductIcon post={post} /><span className="bm-row-text"><span className="bm-row-meta">{types[post.category]}{rowTime(post) && <><i/> {elapsed(rowTime(post))}</>}</span>
+          <ProductIcon post={post} /><span className="bm-row-text"><span className="bm-row-meta">{post.brandAlias || types[post.category]}{rowTime(post) && <><i/> {elapsed(rowTime(post))}</>}</span>
           <strong>{post.title}</strong>{post.reviewStatus!=='withdrawn' && <span className="bm-row-figures">{number.format(post.quantity)}개 <i/> 희망 {number.format(post.unitPrice)}원/개</span>}</span>
-          <span className="bm-row-right"><span className={acceptsProposals(post) && daysLeft(post) <= 2 ? 'urgent' : ''}>{statusText(post, designer)}</span>{isPublicPost(post) && <small>제안 {post.offerCount ?? 0}건</small>}</span>
+          <span className="bm-row-right"><span className={acceptsProposals(post) && daysLeft(post) <= 2 ? 'urgent' : ''}>{statusText(post, designer)}</span>{isPublicPost(post) && <small>입찰 {post.offerCount ?? 0}건</small>}</span>
         </button>)}</div> :
-          <div className="bm-empty"><ListMagnifyingGlass size={34} weight="light"/><h3>{scope.length ? '조건에 맞는 공고가 없습니다' : mine ? (brand ? '아직 등록한 공고가 없습니다' : '아직 보낸 제안이 없습니다') : '아직 등록된 공고가 없습니다'}</h3>
+          <div className="bm-empty"><ListMagnifyingGlass size={34} weight="light"/><h3>{scope.length ? '조건에 맞는 공고가 없습니다' : mine ? (brand ? '아직 등록한 공고가 없습니다' : '아직 입찰한 공고가 없습니다') : '아직 등록된 공고가 없습니다'}</h3>
             <p>{scope.length ? '검색어나 분야를 바꾸어 보세요.' : mine ? (brand ? '첫 발주 조건을 등록해 보세요.' : '파트너를 찾는 브랜드의 공고를 살펴보세요.') : '브랜드가 공고를 등록하면 이곳에 표시됩니다.'}</p>
             {scope.length ? <button type="button" className="bm-secondary" onClick={() => updateFilters(allFilters)}>조건 초기화</button> : mine && <button type="button" className="bm-secondary" onClick={() => onView(brand ? 'new' : 'feed')}>{brand ? '공고 등록' : designer ? '디자인 의뢰 보기' : '파트너 찾기'}</button>}</div>}
       </section>
       <aside className="bm-side" tabIndex={-1} ref={detail}>
         {postId && <button type="button" className="bm-back" onClick={returnToList}><ArrowLeft size={15}/> 공고 목록</button>}
-        {selected ? <PostDetail key={selected.id} post={selected} offers={offers.filter(o => o.postId === selected.id)} user={user} mutate={mutate} onSelect={onSelect} onSignup={() => onView('signup')} onSent={sent} onWithdrawn={afterWithdraw} isDemo={isDemo} reviewRoomKey={reviewRoomKey} /> :
+        {selected ? <PostDetail key={selected.id} post={selected} offers={offers.filter(o => o.postId === selected.id)} selectedOfferId={selectedAward?.offerId} user={user} mutate={mutate} onSelect={onSelect} onSignup={() => onView('signup')} onSent={sent} onWithdrawn={afterWithdraw} isDemo={isDemo} reviewRoomKey={reviewRoomKey} /> :
           <div className={postId ? 'bm-idle bm-missing' : 'bm-idle'}><Radio size={31} weight="light"/><strong>{postId ? '공고를 찾을 수 없습니다' : '공고 상세'}</strong><p>목록에서 공고를 선택하면 수량, 단가와 제작 조건을 확인할 수 있어요.</p></div>}
       </aside>
     </div>
