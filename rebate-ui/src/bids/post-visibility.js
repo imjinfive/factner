@@ -1,5 +1,4 @@
-// Built-in examples may predate review metadata. Every real post needs an explicit approval.
-export const isPublicPost=post=>post.reviewStatus==='approved'||(post.example===true&&post.reviewStatus==null);
+export const isPublicPost=post=>post.reviewStatus==='approved';
 
 export function roomReviewUrl(isDemo,user,post,key,hostname) {
   if (!isDemo || user?.kind!=='brand' || !post.isMine || post.reviewStatus!=='pending' ||

@@ -95,7 +95,12 @@ test('signup requires business documents, consent, private review and explicit a
  assert.equal((await admin(`admin/members/${m.id}`,{status:'rejected',version:1,note:'오래된 요청'},'PATCH')).status,409);
  assert.equal((await brand('member/login',{email:'brand@test.test',password})).status,200);
  assert.equal((await brand(`member/files/${cert.id}`)).status,200);
- await approve(admin,supplier,'supplier@test.test','supplier');assert.equal((await supplier(`member/files/${cert.id}`)).status,404);
+ await approve(admin,supplier,'supplier@test.test','supplier');
+ for(const file of detail.data.files){
+  assert.equal((await admin(`admin/members/files/${file.id}`)).status,200);
+  assert.equal((await brand(`member/files/${file.id}`)).status,200);
+  assert.equal((await supplier(`member/files/${file.id}`)).status,404);
+ }
  const invalid=await brand('member/files',{...png,kind:'design',data:btoa('<script>bad</script>')});assert.equal(invalid.status,400);
  assert.equal((await brand('member/files',{...png,kind:'certificate'})).status,400);
  assert.equal((await brand('member/logout',{},'POST',{Origin:'https://evil.test'})).status,403);

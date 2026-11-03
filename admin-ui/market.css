@@ -10,7 +10,7 @@
   --market-danger-tint:#f5eeeb;
 }
 .admin-market { min-width:0; }
-.admin-market header :is(h1,p),.admin-market .am-examples > p { word-break:keep-all; overflow-wrap:anywhere; }
+.admin-market header :is(h1,p) { word-break:keep-all; overflow-wrap:anywhere; }
 .admin-market [data-detail] { display:grid; gap:18px; }
 .admin-market .am-heading,.admin-market .am-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .admin-market .am-heading { justify-content:space-between; margin-bottom:18px; }
@@ -46,17 +46,9 @@
 .admin-market .am-list-heading { display:flex; align-items:baseline; gap:8px; margin-bottom:16px; }
 .admin-market .am-list-heading h2 { margin:0; font-size:21px; }
 .admin-market [data-results] .empty { padding:24px 12px; }
-.admin-market [data-result-count], .admin-market .am-example-state { font-size:14px; color:var(--muted-ink); font-variant-numeric:tabular-nums; }
+.admin-market [data-result-count] { font-size:14px; color:var(--muted-ink); font-variant-numeric:tabular-nums; }
 .admin-market .am-status[data-state="pending"] { background:transparent; color:var(--market-warn); }
 .admin-market .am-status[data-state="withdrawn"],.admin-market .am-status[data-state="rejected"] { background:var(--nav-hover); color:var(--muted-ink); }
-.admin-market .am-examples { margin-top:20px; }
-.admin-market .am-examples .am-list-heading { margin-bottom:4px; }
-.admin-market .am-examples > p { margin:0 0 16px; }
-.admin-market .am-example-list { list-style:none; padding:0; margin:0; }
-.admin-market .am-example-list li { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:12px; align-items:baseline; padding:8px 0; border-top:1px solid var(--market-rule); }
-.admin-market .am-example-list summary { padding:8px 0; cursor:pointer; font-weight:600; overflow-wrap:anywhere; }
-.admin-market .am-example-list details p { margin:4px 0; }
-.admin-market .am-example-list button { min-height:44px; padding:6px 12px; white-space:nowrap; }
 .admin-market :is(button,summary,select,input):focus-visible { outline:2px solid var(--focus-ink); outline-offset:2px; }
 .admin-market .am-title:hover { text-decoration:underline; text-underline-offset:.2em; }
 @media(max-width:750px) {
@@ -77,9 +69,6 @@
   .admin-market .filters input,.admin-market .filters select { width:100%; min-width:0; }
   .admin-market .filters:has(select) input { grid-column:1/-1; }
   .admin-market .filters:has(select+select) select:first-of-type { grid-column:1/-1; }
-  .admin-market .am-example-list li { grid-template-columns:minmax(0,1fr) auto; gap:0 12px; }
-  .admin-market .am-example-list button { grid-column:2; grid-row:1/3; align-self:center; }
-  .admin-market .am-example-state { grid-column:1; }
   .admin-market .pagination { flex-wrap:wrap; }
   .admin-market .pagination button { white-space:nowrap; }
   .admin-market [data-detail] dl { grid-template-columns:minmax(70px,100px) 1fr; gap:9px; }

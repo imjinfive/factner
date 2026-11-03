@@ -100,7 +100,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
   function review(event) {
     event.preventDefault();
     if (lock.current || !available || certBusy || photosBusy) return;
-    if (legal !== 'individual' && !cert.length) {setError(registration.trial ? '견본 사업자등록증을 첨부해주세요.' : '사업자등록증을 첨부해주세요.');return;}
+    if (legal !== 'individual' && !cert.length) {setError('사업자등록증을 첨부해주세요.');return;}
     const fields = new FormData(event.currentTarget);
     const application = {
       kind:role === 'brand' ? 'brand' : 'packaging',legalType:legal,
@@ -164,7 +164,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       <div className="member-steps" aria-label={`회원가입 ${step+1}단계`}>{['활동 선택','가입 유형','정보 입력'].map((label,i)=>
         <button type="button" key={label} disabled={busy || (i>step && !(i===1?reached.current.role:reached.current.legal))} aria-current={i === step ? 'step' : undefined} className={i === step ? 'current' : ''} onClick={()=>goToStep(i)}>{i+1}. {label}</button>)}</div>
       {!available && <p className="member-pilot" role="status">현재 가입 접수가 열려 있지 않습니다. 가입에 필요한 정보는 미리 확인할 수 있습니다.</p>}
-      {registration?.trial && <p className="member-pilot">테스트 운영 중입니다. 업체명, 담당자, 연락처, 사업자등록번호는 가상 정보로 입력하세요. 실제 서류와 사진은 받지 않습니다.</p>}
+      {registration?.trial && <p className="member-pilot">테스트 운영 중입니다. 업체와 담당자 정보는 가상으로 입력하세요. 서류와 사진은 예시 파일이나 개인정보·거래처 정보를 가린 파일을 사용하세요.</p>}
       {step === 0 && <MemberActivityChoices onChoose={role=>choose({role,legal:''})}>
         <SignupNotice><button type="button" className="member-choice pa-designer"><span className="member-symbol"><PenNib size={30}/></span>
           <span><strong>디자이너</strong><small>신규 가입 준비 중</small></span></button></SignupNotice>
@@ -172,7 +172,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
       {step === 1 && <MemberLegalChoices onChoose={legal=>choose({role,legal})}/>}
       {step === 2 && <>
         <form className="member-form" onSubmit={review} onChange={rememberDraft}><fieldset disabled={!available || busy}>
-          <MemberRegistrationFields role={role} legal={legal} trial={registration?.trial} draft={draft.current} cert={cert} setCert={setCert} onCertBusy={setCertBusy}
+          <MemberRegistrationFields role={role} legal={legal} draft={draft.current} cert={cert} setCert={setCert} onCertBusy={setCertBusy}
             photos={photos} setPhotos={setPhotos} onPhotosBusy={setPhotosBusy} passwordRef={password}/>
           {registration?.collection && <details className="member-disclosure"><summary>가입 심사 자료 수집 안내</summary><p>{registration.collection}</p></details>}
           {registration?.privacy && <details className="member-disclosure"><summary>개인정보처리방침</summary><p>{registration.privacy}</p></details>}

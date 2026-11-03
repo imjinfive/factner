@@ -19,14 +19,13 @@ function daysLeft(post) {
 }
 
 function acceptsProposals(post) {
-  return isPublicPost(post) && post.example !== true && post.category === 'packaging' && post.status === 'open' && daysLeft(post) >= 0;
+  return isPublicPost(post) && post.category === 'packaging' && post.status === 'open' && daysLeft(post) >= 0;
 }
 
 function statusText(post, designer = false) {
   if (post.reviewStatus === 'pending') return '심사 대기';
   if (post.reviewStatus === 'rejected') return '심사 반려';
   if (post.reviewStatus === 'withdrawn') return '삭제됨';
-  if (post.example === true) return '예시 의뢰';
   if (post.status === 'awarded') return '선정 완료';
   const days = daysLeft(post);
   if (post.status !== 'open' || days < 0) return '접수 종료';
@@ -266,18 +265,18 @@ function PostDetail({ post, offers, selectedOfferId, user, mutate, onSelect, onS
     <dl className="bm-specs"><div><dt>요청 수량</dt><dd>{number.format(post.quantity)}개</dd></div><div><dt>희망 단가</dt><dd>{number.format(post.unitPrice)}원<span> / 개</span></dd></div>
       <div><dt>규격</dt><dd>{post.size || '미지정'}</dd></div><div><dt>제안 마감</dt><dd>{post.deadline}</dd></div></dl>
     <div className="bm-detail-copy"><Subheading>제작 조건</Subheading><p>{post.description}</p>
-      {post.example === true && <p className="bm-hint">수량·단가·마감일은 의뢰 예시입니다.</p>}
+
     </div>
     {design && <p className="bm-info">{designer ? '새 디자인 제안은 준비 중입니다. 보낸 제안은 내 제안에서, 기존 계약은 계약함에서 확인할 수 있어요.' :
       '디자인 파트너 참여는 준비 중입니다. 현재는 패키징 제작 의뢰에 제안할 수 있어요.'}</p>}
     {owner && !isPublicPost(post) ? null : owner ? <section className="bm-offer-section"><h3>받은 입찰 <span>{offers.length}</span></h3>
       {offers.length ? offers.map(o => <Offer key={o.id} offer={o} post={post} selected={o.id===selectedOfferId} allowSelect={!design && post.status === 'open'} onSelect={onSelect} />) : <p className="bm-hint">아직 들어온 입찰이 없습니다.</p>}
-    </section> : ownOffer ? <Offer offer={ownOffer} post={post} selected={ownOffer.id===selectedOfferId} /> : design ? null : !user && (open || post.example === true) ?
-      <div className="pa-join"><div><strong>이 공고에 입찰하고 싶으세요?</strong><p>가입 승인 후 수량과 단가를 입력해 입찰할 수 있어요.</p></div><button className="bm-primary" type="button" onClick={onSignup}>회원가입 신청</button></div> :
+    </section> : ownOffer ? <Offer offer={ownOffer} post={post} selected={ownOffer.id===selectedOfferId} /> : design ? null : !user && open ?
+      <div className="pa-join"><div><strong>이 공고에 입찰하고 싶으세요?</strong><p>가입 승인 후 모집 중인 의뢰에 수량별 단가를 제안할 수 있어요.</p></div><button className="bm-primary" type="button" onClick={onSignup}>회원가입 신청</button></div> :
       open && canBid ? <QuoteForm post={post} mutate={mutate} onDone={onSent} /> :
       <div className="bm-info">{user?.kind==='brand' ? '다른 브랜드의 공고는 열람만 가능합니다. 받은 입찰은 내 공고에서 확인하세요.' : !open ? '입찰 접수가 끝났습니다.' : '패키징 제작업체가 입찰할 수 있는 공고입니다.'}</div>}
     </>}
-    {owner && onWithdrawn && !withdrawn && !post.example && Number.isSafeInteger(post.reviewVersion) && <WithdrawPost post={post} mutate={mutate} onDone={finishWithdrawal}/>}
+    {owner && onWithdrawn && !withdrawn && Number.isSafeInteger(post.reviewVersion) && <WithdrawPost post={post} mutate={mutate} onDone={finishWithdrawal}/>}
   </section>;
 }
 
@@ -327,7 +326,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
     const previous = known.current;
     known.current = new Set(publicPosts.map(p => p.id));
     if (!previous || view !== 'feed') return;
-    const arrived = publicPosts.filter(p => !previous.has(p.id) && !p.isMine && !p.example);
+    const arrived = publicPosts.filter(p => !previous.has(p.id) && !p.isMine);
     if (arrived.length) setNotice(arrived.length === 1 ? `새 공고 · ${arrived[0].title}` : `새 공고 ${arrived.length}건이 도착했습니다.`);
   }, [state?.posts]);
   useEffect(() => {

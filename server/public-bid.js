@@ -46,13 +46,13 @@ export async function publicBidApi(req,env,url) {
   if(path==='/register' && req.method==='POST'){
     const info=await registration(env);
     if(!info.available)fail(503,'현재 회원가입 접수를 준비하고 있습니다.');
-    const input=await body(req,info.trial?20000:11000000);
+    const input=await body(req,11000000);
     if(input.kind==='design')fail(403,designerNotice);
     if(!['brand','packaging'].includes(input.kind))fail(400,'회원 유형을 확인해주세요.');
     if(isPreviewEmail(input.email))fail(409,'회원가입에 사용할 수 없는 이메일입니다.');
     if(input.consent!==true||input.termsConsent!==true||input.consentVersion!==info.consentVersion)fail(409,'현재 이용약관과 개인정보 수집 내용을 확인해주세요.');
     return registerMember(req,env,{...input,role:input.kind==='brand'?'brand':'supplier'},
-      {version:info.consentVersion,trial:info.trial,live:true,requireCaptcha:!env[localMemberPreview]});
+      {version:info.consentVersion,live:true,requireCaptcha:!env[localMemberPreview]});
   }
   const room=req.headers.get('X-Factner-Review');
   if(path==='/login' && req.method==='POST'){

@@ -2,7 +2,6 @@ import {useEffect, useRef, useState} from 'react';
 import {ArrowRight, Briefcase, Buildings, Factory, FileText, Storefront, UploadSimple, UserCircle, X} from '@phosphor-icons/react';
 import {formatBusinessNumber, formatInput, formatPhone} from '../../admin-ui/input-format.js';
 import {prepareUpload} from '../../shared/image-upload.js';
-import {trialCertificate} from '../../shared/customer-trial.js';
 import {api} from './api';
 
 export const legalTypes = {individual:'개인',sole:'개인사업자',corporate:'법인사업자'};
@@ -12,6 +11,8 @@ export function Preview({file}){
  return file.mime?.startsWith('image/')?<img src={file.data?`data:${file.mime};base64,${file.data}`:`/api/member/files/${file.id}`} alt={file.name}/>:<FileText size={32}/>;
 }
 async function encodeFile(file,kind){
+ if(!file.size)throw new Error('빈 파일은 첨부할 수 없습니다.');
+ if((kind==='workplace' || kind==='sample') && file.type==='application/pdf')throw new Error('사진은 JPG, PNG 또는 WEBP 파일을 선택해주세요.');
  file=await prepareUpload(file);
  const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});
  return {name:file.name,mime:file.type,kind,data};
@@ -20,7 +21,7 @@ export function Upload({files,onChange,kind,label,max=5,remote=false,onBusy}){
  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
  const active=useRef(true);
  useEffect(()=>{active.current=true;return ()=>{active.current=false;onBusy?.(false);};},[onBusy]);
- return <div className="member-upload"><label className="member-drop"><UploadSimple size={28}/><span><strong>{busy?'파일을 준비하고 있어요':label}</strong><small>{kind==='workplace'||kind==='sample'?'JPG · PNG · WEBP':'JPG · PNG · WEBP · PDF'} · 큰 사진은 자동 압축{kind!=='workplace'&&kind!=='sample'?' · PDF 원본 유지 (1.5MB 이하)':''}</small></span><input type="file" aria-label={label} multiple={max>1} disabled={busy} accept={kind==='workplace'||kind==='sample'?'.jpg,.jpeg,.png,.webp':'.jpg,.jpeg,.png,.webp,.pdf'} onChange={async e=>{
+ return <div className="member-upload"><label className="member-drop"><UploadSimple size={28}/><span><strong>{busy?'파일을 준비하고 있어요':label}</strong><small>{kind==='certificate' && '필수 1개 · '}{kind==='workplace' && `선택 최대 ${max}장 · `}{kind==='workplace'||kind==='sample'?'JPG · PNG · WEBP':'JPG · PNG · WEBP · PDF'} · 큰 사진은 자동 압축{kind!=='workplace'&&kind!=='sample'?' · PDF 원본 유지 (1.5MB 이하)':''}</small></span><input type="file" aria-label={label} multiple={max>1} disabled={busy} accept={kind==='workplace'||kind==='sample'?'.jpg,.jpeg,.png,.webp':'.jpg,.jpeg,.png,.webp,.pdf'} onChange={async e=>{
   const selected=[...e.target.files];e.target.value='';setError('');if(selected.length+files.length>max){setError(`최대 ${max}개까지 첨부할 수 있어요.`);return;}setBusy(true);onBusy?.(true);const next=[...files];
   try{
    for(const file of selected){
@@ -59,7 +60,7 @@ export function MemberLegalChoices({onChoose}) {
       <span className="member-symbol"><Icon size={30}/></span><strong>{legalTypes[key]}</strong>
     </button>)}</div>;
 }
-export function MemberRegistrationFields({role, legal, draft, cert, setCert, onCertBusy, photos, setPhotos, onPhotosBusy, passwordRef, trial=false}) {
+export function MemberRegistrationFields({role, legal, draft, cert, setCert, onCertBusy, photos, setPhotos, onPhotosBusy, passwordRef}) {
   return <>
     <p className="member-tag">{role==='brand'?'브랜드':'패키징 제작 업체'} · {legalTypes[legal]}</p>
     {role==='supplier' && <fieldset className="pa-design-question"><legend>패키징 디자인도 함께 제공하시나요?</legend>
@@ -72,11 +73,7 @@ export function MemberRegistrationFields({role, legal, draft, cert, setCert, onC
     <Field label="이메일" name="email" defaultValue={draft.email||''} type="email" autoComplete="username" maxLength={254} required/>
     <Field label="비밀번호 · 8자 이상"><input name="password" type="password" ref={passwordRef} defaultValue={draft.password||''} autoComplete="new-password" minLength={8} maxLength={128} required/></Field>
     {legal!=='individual' && <><Field label="사업자등록번호" name="businessNumber" defaultValue={draft.businessNumber||''} inputMode="numeric" onInput={e=>formatInput(e,formatBusinessNumber)} placeholder="000-00-00000" pattern="[0-9]{3}-?[0-9]{2}-?[0-9]{5}" maxLength={12} required/>
-      {trial ? (cert.length ? <div className="member-files"><div className="member-file">
-        <Preview file={trialCertificate}/><span>{trialCertificate.name}</span>
-        <button type="button" aria-label="견본 사업자등록증 제거" onClick={()=>setCert([])}><X size={18}/></button>
-      </div></div> : <button type="button" className="button outline" onClick={()=>setCert([trialCertificate])}>견본 사업자등록증 첨부</button>) :
-        <Upload label="사업자등록증 첨부" files={cert} onChange={setCert} onBusy={onCertBusy} kind="certificate" max={1}/>}</>}
-    {!trial && <Upload label="작업 현장·패키징 사진 첨부" files={photos} onChange={setPhotos} onBusy={onPhotosBusy} kind="workplace" max={4}/>}
+      <Upload label="사업자등록증 첨부" files={cert} onChange={setCert} onBusy={onCertBusy} kind="certificate" max={1}/></>}
+    <Upload label="작업 현장·패키징 사진 첨부" files={photos} onChange={setPhotos} onBusy={onPhotosBusy} kind="workplace" max={4}/>
   </>;
 }

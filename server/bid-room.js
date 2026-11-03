@@ -1,4 +1,4 @@
-import { approveOriginalRoomFixtures, insertReviewFixtures } from '../scripts/bid-seed.mjs';
+import { retireOriginalRoomPosts, insertReviewFixtures } from '../scripts/bid-seed.mjs';
 import { bidApi, roomDatabase } from './bid-auth.js';
 import { HttpError, json } from './http.js';
 import {isolatedPostReview} from './room-post-review.js';
@@ -53,15 +53,15 @@ export class BidRoom {
         if (existing) {
           if(!sql.exec('PRAGMA table_info(market_posts)').toArray().some(row=>row.name==='review_status')){
             sql.exec(this.#reviewSchema);
-            approveOriginalRoomFixtures(prepare,existing.expires_at-lifetime);
           }
+          retireOriginalRoomPosts(prepare,existing.expires_at-lifetime);
           return existing.expires_at;
         }
         const start = Date.now();
         sql.exec(this.#schema);
         sql.exec(this.#reviewSchema);
         sql.exec('CREATE TABLE rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)');
-        insertReviewFixtures(prepare, start);
+        insertReviewFixtures(prepare);
         sql.exec('INSERT INTO review_room(id,expires_at) VALUES(1,?)', start + lifetime);
         return start + lifetime;
       });

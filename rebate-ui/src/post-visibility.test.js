@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isPublicPost,roomReviewUrl} from './bids/post-visibility.js';
 
-test('real posts require approval; unreviewed built-in examples remain visible',()=>{
+test('public posts require explicit approval',()=>{
   assert.equal(isPublicPost({reviewStatus:'approved'}),true);
-  assert.equal(isPublicPost({example:true}),true);
+  assert.equal(isPublicPost({example:true}),false);
   for (const reviewStatus of ['pending','rejected','withdrawn','unknown',undefined]) {
     assert.equal(isPublicPost({isMine:true,reviewStatus}),false);
     if (reviewStatus!==undefined) assert.equal(isPublicPost({example:true,reviewStatus}),false);

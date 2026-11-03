@@ -101,7 +101,7 @@ function Discovery({ pick, save, navigate, partners, posts }) {
   const allSuppliers = (partners || []).filter(partner => /^(?:[A-Z]|[1-9]\d*)업체$/.test(partner.alias) && isPackagingPartner(partner.kind));
   const suppliers = item ? allSuppliers.filter(partner => partner.items?.includes(item)) : allSuppliers;
   const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0,10);
-  const briefs = (posts || []).filter(post => isPublicPost(post) && post.category === 'packaging' && (post.example === true || (post.status === 'open' && post.deadline >= today)));
+  const briefs = (posts || []).filter(post => isPublicPost(post) && post.category === 'packaging' && post.status === 'open' && post.deadline >= today);
   function selectRole(key,button) {
     const next = key === 'brand' ? 'brand' : 'supplier';
     if(role===next || loading)return;
@@ -134,7 +134,7 @@ function Discovery({ pick, save, navigate, partners, posts }) {
         : briefs.length ? <div className="pa-list">{briefs.map(post =>
           <button type="button" key={post.id} data-brief={post.id} className="pa-result" onClick={() => navigate('feed/'+post.id)}>
             <span className="pa-result-icon"><Storefront size={23} aria-hidden="true"/></span>
-            <span className="pa-result-copy"><small>{post.brandAlias || '브랜드'} · 패키징 제작{post.example === true && <span className="pa-example">예시 의뢰</span>}</small><strong>{post.title}</strong>
+            <span className="pa-result-copy"><small>{post.brandAlias || '브랜드'} · 패키징 제작</small><strong>{post.title}</strong>
               <span>{number.format(post.quantity)}개 · 희망 {number.format(post.unitPrice)}원/개</span></span>
             <span className="pa-result-action">의뢰 보기</span>
           </button>)}</div> : <div className="pa-empty"><p>현재 모집 중인 패키징 제작 공고가 없습니다.</p></div>}

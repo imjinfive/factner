@@ -67,12 +67,15 @@ test('every bid endpoint is closed outside a local demo even with a plausible be
 
 test('only fixture passwords grant a review session; signup, account lists, quick login and admin impersonation stay closed',async t=>{
   const {raw,call}=fixture(t);await seedReview(raw);await seedReview(raw);
-  assert.equal(raw.prepare('SELECT COUNT(*) n FROM market_accounts').get().n,14);
+  assert.equal(raw.prepare('SELECT COUNT(*) n FROM market_accounts').get().n,4);
+  assert.equal(raw.prepare('SELECT COUNT(*) n FROM market_posts').get().n,0);
+  assert.equal(raw.prepare('SELECT COUNT(*) n FROM market_offers').get().n,0);
+  for(let n=1;n<=10;n++)assert.equal((await call('login',{input:{email:`brand${n}@gmail.com`,password:reviewPassword}})).status,401);
   assert.equal((await call('state')).status,401);
   assert.equal((await call('register',{input:registration})).status,404);
   assert.equal((await call('demo',{input:{role:'admin'}})).status,404);
   assert.equal((await call('login',{input:registration})).status,401);
-  for(const [key,role] of [['brand1','brand'],['package1','packaging'],['design1','design'],['design2','design'],['packagedesign1','packaging']]){
+  for(const [key,role] of [['package1','packaging'],['design1','design'],['design2','design'],['packagedesign1','packaging']]){
     const fields={email:key+'@gmail.com',password:reviewPassword,role};
     assert.equal((await call('login',{input:{...fields,password:'wrong-password'}})).status,401);
     const login=await call('login',{input:fields});assert.equal(login.status,200);
@@ -132,7 +135,7 @@ test('a preview login never initializes an unknown or expired room',async t=>{
   assert.equal(ctx.storage.sql.exec('SELECT count(*) n FROM sqlite_master').one().n,0);
   assert.equal((await roomCall(room,'preview-register',{input:{...input,kind:'packaging',legalType:'corporate'}})).status,404);
   assert.equal(ctx.storage.getAlarm(),null);
-  await roomCall(room,'login',{input:{email:'brand1@gmail.com',password:reviewPassword}});
+  await roomCall(room,'login',{input:{email:'package1@gmail.com',password:reviewPassword}});
   ctx.storage.sql.exec("INSERT INTO market_accounts VALUES('preview-account',?,'테스트 업체','packaging',?)",input.email,await passwordHash(input.password));
   const expiry=ctx.storage.getAlarm();assert.ok(expiry>Date.now());
   const resumed=new BidRoom(ctx,roomSchema,reviewSchema);
@@ -145,11 +148,11 @@ test('a preview login never initializes an unknown or expired room',async t=>{
 
 test('review logins, activity and sessions are independent per room, survive eviction and expire',async t=>{
   const ctx=roomContext(t),one=new BidRoom(ctx,roomSchema,reviewSchema),two=new BidRoom(roomContext(t),roomSchema,reviewSchema);
-  const fields={email:'brand1@gmail.com',password:reviewPassword,role:'brand'};
+  const fields={email:'package1@gmail.com',password:reviewPassword,role:'packaging'};
   assert.equal((await roomCall(one,'login',{input:fields,origin:'https://other.test'})).status,403);
   assert.equal((await roomCall(one,'state')).status,401);assert.equal((await roomCall(one,'events')).status,404);
   const {token}= (await roomCall(one,'login',{input:fields})).data, resumed=new BidRoom(ctx,roomSchema,reviewSchema);
-  assert.equal((await roomCall(resumed,'state',{token})).data.posts.length,10);
+  assert.equal((await roomCall(resumed,'state',{token})).data.posts.length,0);
   assert.equal((await roomCall(two,'state',{token})).status,401);
   assert.equal((await roomCall(resumed,'register',{input:registration})).status,404);
   assert.equal((await roomCall(resumed,'demo',{input:{role:'admin'}})).status,404);
@@ -168,39 +171,41 @@ test('public Worker flags and request-supplied room markers cannot open a bid da
   }, url), error => error instanceof HttpError && error.status === 503);
 });
 
-test('existing rooms approve only unchanged original fixtures, keep private submissions private, and preserve their existing contract',async t=>{
- const ctx=roomContext(t),sql=ctx.storage.sql,at=Date.now(),lifetime=7*86400000;
- sql.exec(roomSchema);
- sql.exec('CREATE TABLE rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL); CREATE TABLE review_room(id INTEGER PRIMARY KEY,expires_at INTEGER NOT NULL);');
- sql.exec('INSERT INTO review_room VALUES(1,?)',at+lifetime);
- // The old release seeded these same briefs without the new review column.
- insertReviewFixtures(query=>(...args)=>sql.exec(query.replace(',review_status)',')').replace(",'approved')",')'),...args),at);
- const old=sql.exec("SELECT * FROM market_posts WHERE brand_id='seed-brand1'").one();
- const clone=crypto.randomUUID(),leak=crypto.randomUUID(),offer=crypto.randomUUID(),deal=crypto.randomUUID();
- sql.exec('INSERT INTO market_posts SELECT ?,brand_id,category,title,quantity,unit_price,size,description,deadline,? FROM market_posts WHERE id=?',clone,new Date(at).toISOString(),old.id);
- sql.exec("INSERT INTO market_posts VALUES(?,'seed-brand1','packaging','등록자 보관 제목',400,200,'이전 규격','외부 비공개 설명','2099-01-01',?)",leak,new Date(at).toISOString());
- sql.exec("INSERT INTO market_offers VALUES(?,?,'seed-package1','제안사 A','[]','비고',?)",offer,leak,new Date(at).toISOString());
- sql.exec("INSERT INTO market_contracts(id,post_id,offer_id,quantity,unit_price,version,terms_json,brand_signature,brand_signed_at) VALUES(?,?,?,400,200,'v','{}','서명',?)",deal,leak,offer,new Date(at).toISOString());
- const room=new BidRoom(ctx,roomSchema,reviewSchema);
- async function login(email){return (await roomCall(room,'login',{input:{email,password:reviewPassword}})).data.token;}
- const supplier=await login('package1@gmail.com'),brand=await login('brand1@gmail.com'),other=await login('brand2@gmail.com');
- const own=(await roomCall(room,'state',{token:brand})).data;
- assert.equal(own.posts.filter(p=>p.reviewStatus==='approved').length,10);
- assert.equal(own.posts.find(p=>p.id===clone).reviewStatus,'pending');assert.equal(own.posts.find(p=>p.id===leak).reviewStatus,'pending');
- for(const token of [supplier,other]){
-   const state=(await roomCall(room,'state',{token})).data;
-   assert.doesNotMatch(JSON.stringify(state),/등록자 보관 제목|외부 비공개 설명/);
-   assert.ok(state.posts.every(p=>p.reviewStatus==='approved'));assert.ok(state.offers.every(o=>o.id!==offer));
-   if(token===supplier){assert.equal(state.contracts[0].id,deal);assert.equal(state.contracts[0].title,'비공개 공고');}
+test('old rooms retire only generated posts, keep handwritten rows and contracts, and reject retired sessions',async t=>{
+ for(const previouslyMigrated of [false,true]){
+  const ctx=roomContext(t),sql=ctx.storage.sql,at=Date.now(),expiry=at+7*86400000;
+  sql.exec(roomSchema);
+  sql.exec('CREATE TABLE rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL); CREATE TABLE review_room(id INTEGER PRIMARY KEY,expires_at INTEGER NOT NULL);');
+  sql.exec('INSERT INTO review_room VALUES(1,?)',expiry);
+  insertReviewFixtures(query=>(...args)=>sql.exec(query,...args));
+  sql.exec("INSERT INTO market_accounts SELECT 'seed-brand1','brand1@gmail.com','브랜드1','brand',password_hash FROM market_accounts WHERE id='seed-package1'");
+  const original=crypto.randomUUID(),handwritten=crypto.randomUUID(),privatePost=crypto.randomUUID(),offer=crypto.randomUUID(),deal=crypto.randomUUID(),token=randomToken();
+  sql.exec("INSERT INTO market_posts VALUES(?,'seed-brand1','packaging','앰플 단상자 3,000개 제작',3000,480,'42 × 42 × 118 mm','무광 코팅 백판지, 별색 1도. 유리 앰플을 고정할 종이 받침이 필요합니다.',?,?)",
+    original,new Date(at+3*86400000+9*3600000).toISOString().slice(0,10),new Date(at-9*60000).toISOString());
+  sql.exec('INSERT INTO market_posts SELECT ?,brand_id,category,title,quantity,unit_price,size,description,deadline,? FROM market_posts WHERE id=?',handwritten,new Date(at).toISOString(),original);
+  sql.exec("INSERT INTO market_posts VALUES(?,'seed-brand1','packaging','등록자 보관 제목',400,200,'이전 규격','외부 비공개 설명','2099-01-01',?)",privatePost,new Date(at).toISOString());
+  sql.exec("INSERT INTO market_offers VALUES(?,?,'seed-package1','제안사 A','[]','비고',?)",offer,original,new Date(at).toISOString());
+  sql.exec("INSERT INTO market_contracts(id,post_id,offer_id,quantity,unit_price,version,terms_json,brand_signature,brand_signed_at) VALUES(?,?,?,400,200,'v','{}','서명',?)",deal,original,offer,new Date(at).toISOString());
+  sql.exec("INSERT INTO market_sessions VALUES(?,'seed-brand1',?)",await digest(token),expiry);
+  if(previouslyMigrated){
+   sql.exec(reviewSchema);
+   sql.exec("UPDATE market_posts SET review_status='approved' WHERE id IN (?,?)",original,handwritten);
+  }
+  const room=new BidRoom(ctx,roomSchema,reviewSchema);
+  const supplier=(await roomCall(room,'login',{input:{email:'package1@gmail.com',password:reviewPassword}})).data.token;
+  const state=(await roomCall(room,'state',{token:supplier})).data;
+  assert.deepEqual(state.posts.map(p=>p.id),previouslyMigrated?[handwritten]:[]);
+  const review=id=>sql.exec('SELECT review_status,review_version FROM market_posts WHERE id=?',id).one();
+  assert.equal(review(original).review_status,'withdrawn');
+  assert.equal(review(handwritten).review_status,previouslyMigrated?'approved':'pending');
+  assert.equal(review(privatePost).review_status,'pending');
+  assert.equal(state.contracts[0].id,deal);assert.equal(state.contracts[0].title,'비공개 공고');
+  assert.equal(sql.exec('SELECT count(*) n FROM market_offers WHERE id=?',offer).one().n,1);
+  assert.equal((await roomCall(room,'login',{input:{email:'brand1@gmail.com',password:reviewPassword}})).status,401);
+  assert.equal((await roomCall(room,'state',{token})).status,401);
+  await roomCall(new BidRoom(ctx,roomSchema,reviewSchema),'state',{token:supplier});
+  assert.equal(review(original).review_version,2);assert.equal(ctx.storage.getAlarm(),expiry);
  }
- const job={category:'packaging',title:'새 종이 포장',quantity:10,unitPrice:2,size:'작은 종이',description:'두 가지 색',deadline:'2099-01-01'};
- const fresh=await roomCall(room,'posts',{token:brand,input:job});assert.equal(fresh.data.reviewStatus,'pending');
- assert.equal((await roomCall(room,'posts/'+fresh.data.id+'/offers',{token:supplier,input:{tiers:[{quantity:10,unitPrice:2}]}})).status,404);
- assert.equal((await roomCall(room,'posts/'+fresh.data.id+'/withdraw',{token:other,input:{version:1,confirmed:true}})).status,404);
- assert.equal((await roomCall(room,'posts/'+fresh.data.id+'/withdraw',{token:brand,input:{version:1,confirmed:true}})).data.reviewStatus,'withdrawn');
- const resumed=new BidRoom(ctx,roomSchema,reviewSchema);
- assert.equal((await roomCall(resumed,'state',{token:brand})).data.posts.find(p=>p.id===fresh.data.id).reviewStatus,'withdrawn');
- assert.equal(sql.exec('SELECT count(*) n FROM market_contracts').one().n,1);
 });
 
 test('only an actual owner can review a specifically shared post inside its original room',async t=>{
@@ -223,9 +228,10 @@ test('only an actual owner can review a specifically shared post inside its orig
    forwarded.push({url:req.url,cookie:req.headers.get('Cookie'),bearer:req.headers.get('Authorization'),actor:req.headers.get('X-Factner-Reviewer'),key:req.headers.get('X-Factner-Review')});
    return rooms.get(key).fetch(req);
  }})}};
- const a=await signIn(roomA,'brand1@gmail.com'),s=await signIn(roomA,'package1@gmail.com'),other=await signIn(roomB,'package1@gmail.com');
- const post=(await roomCall(rooms.get(roomA),'posts',{token:a,input:{category:'packaging',title:'공유 시안',description:'원목색 종이',quantity:150,unitPrice:220,size:'90 × 40',deadline:'2099-01-01'}})).data.id;
- assert.ok(post);
+ const s=await signIn(roomA,'package1@gmail.com'),other=await signIn(roomB,'package1@gmail.com');
+ const post=crypto.randomUUID(),sql=contexts.get(roomA).storage.sql;
+ sql.exec("INSERT INTO market_accounts VALUES('seed-brand1','brand1@gmail.com','이전 브랜드','brand','!')");
+ sql.exec("INSERT INTO market_posts(id,brand_id,category,title,description,quantity,unit_price,size,deadline,created_at) VALUES(?,'seed-brand1','packaging','공유 시안','원목색 종이',150,220,'90 × 40','2099-01-01',?)",post,new Date().toISOString());
  const path='/api/admin/review-room/posts/'+post,approval={action:'approve',version:1,confirmed:true};
  async function check(key,token,data,kind='admin',target=path){
    const origin='https://'+kind+'.example.test',req=new Request(origin+target,{method:data?'POST':'GET',
@@ -239,7 +245,7 @@ test('only an actual owner can review a specifically shared post inside its orig
  assert.equal((await check(missing,owner.token)).status,404);assert.equal(contexts.get(missing).storage.sql.exec("SELECT count(*) AS n FROM sqlite_master WHERE type='table'").one().n,0);
  assert.equal((await check(roomB,owner.token)).status,404);
  const scoped=await check(roomA,owner.token);assert.equal(scoped.data.post.title,'공유 시안');assert.equal(scoped.data.post.reviewStatus,'pending');
- assert.ok(!Object.hasOwn(scoped.data.post,'email'));assert.equal((await roomCall(rooms.get(roomA),'internal/post-review/'+post,{token:a,input:approval})).status,404);
+ assert.ok(!Object.hasOwn(scoped.data.post,'email'));assert.equal((await roomCall(rooms.get(roomA),'internal/post-review/'+post,{token:s,input:approval})).status,404);
  assert.equal((await roomCall(rooms.get(roomA),'state',{token:s})).data.posts.some(p=>p.id===post),false);
  assert.equal((await check(roomA,owner.token,approval)).data.reviewStatus,'approved');
  assert.equal((await check(roomA,owner.token,approval)).status,409);

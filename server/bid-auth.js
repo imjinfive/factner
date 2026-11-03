@@ -19,7 +19,7 @@ export const isPreviewEmail=email=>typeof email==='string' && /^test-[a-f0-9]{24
 function isRoomAccount(row){
   if(!row)return false;
   if(row.id==='preview-account')return isPreviewEmail(row.email) && ['brand','packaging'].includes(row.kind);
-  return row.id.startsWith('seed-') && isReviewEmail(row.email);
+  return isReviewEmail(row.email) && row.id==='seed-'+row.email.split('@')[0] && row.kind!=='brand';
 }
 function canSignIn(account) {
   return account.kind !== 'design' || isDesignerTestAccount(account);

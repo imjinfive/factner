@@ -74,7 +74,7 @@ test('retired temporary signup cannot create another room, even on an original u
 test('an already issued preview login can still reach only its original room',async t=>{
   const f=fixture(t),email='test-'+'b'.repeat(24)+'@preview.factner.invalid',password='previously-issued-password';
   const key=await digest(`factner-preview-signup-v1\n${email}\n${password}`);
-  await f.call('bid/login',{email:'brand1@gmail.com',password:reviewPassword},{'X-Factner-Review':key});
+  await f.call('bid/login',{email:'package1@gmail.com',password:reviewPassword},{'X-Factner-Review':key});
   await f.rooms.get(key).DB.prepare("INSERT INTO market_accounts VALUES('preview-account',?,'테스트 업체','packaging',?)").bind(email,await passwordHash(password)).run();
   const login=await f.call('bid/login',{email,password},{'X-Factner-Review':'a'.repeat(64)});
   assert.equal(login.status,200);assert.equal(login.data.reviewRoom,key);assert.equal(login.data.user.kind,'packaging');
@@ -136,35 +136,39 @@ test('reopened member intake accepts all brand and packaging application types b
   assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,6);
 });
 
-test('a published customer trial accepts permanent accounts and only the supplied sample business document',async t=>{
+test('customer trial accepts chosen business proof and optional photos under ordinary signup limits',async t=>{
   const f=fixture(t);
   const trialMode=async()=>(await f.call('bid/session')).data.registration.trial;
   assert.equal(await trialMode(),false);f.publish(customerTrialVersion);assert.equal(await trialMode(),true);
-  const business={...account('trial-buyer'),consentVersion:customerTrialVersion,legalType:'sole',businessNumber:'1234567890',files:[trialCertificate]};
-  for(const files of [[],[null],[{...trialCertificate,name:'private.pdf'}],[{...trialCertificate,data:'JVBERi1wcml2YXRl'}],
-    [{...trialCertificate,kind:'workplace'}],[trialCertificate,trialCertificate]]){
-    assert.equal((await f.call('bid/register',{...business,files})).status,400);
+  const text=Buffer.from(trialCertificate.data,'base64').toString('ascii').replace('startxref','% synthetic test padding\n'.repeat(1000)+'startxref');
+  const certificate={...trialCertificate,name:'가상 사업자 확인서.pdf',data:Buffer.from(text).toString('base64')};
+  const photo={kind:'workplace',name:'가상 작업 현장.png',mime:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGPQzXQFAAGiANzRTMslAAAAAElFTkSuQmCC'};
+  const business={...account('trial-buyer'),consentVersion:customerTrialVersion,legalType:'sole',businessNumber:'1234567890',files:[certificate,photo]};
+  assert.equal((await f.call('bid/register',{...business,files:[{...certificate,data:'x'.repeat(11000000)}]})).status,413);
+  for(const files of [[],[null],[{...certificate,mime:'image/png'}],[{...certificate,data:'x'.repeat(2097153)}],
+    [{...certificate,kind:'workplace'}],[certificate,certificate],[certificate,...Array(5).fill(photo)]]){
+    assert.equal((await f.call('bid/register',{...business,files},{'CF-Connecting-IP':'192.0.2.5'})).status,400);
   }
   assert.equal((await f.call('bid/register',{...business,legalType:'individual'})).status,400);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,0);
   const saved=await f.call('bid/register',business);
   assert.equal(saved.status,201);assert.equal(saved.data.status,'pending');
-  const file=f.raw.prepare('SELECT name,content FROM member_files WHERE member_id=?').get(saved.data.id);
-  assert.equal(file.name,trialCertificate.name);assert.equal(Buffer.from(file.content).toString('base64'),trialCertificate.data);
+  const files=f.raw.prepare('SELECT name,content FROM member_files WHERE member_id=? ORDER BY kind').all(saved.data.id);
+  assert.deepEqual(files.map(file=>[file.name,Buffer.from(file.content).toString('base64')]),business.files.map(file=>[file.name,file.data]));
   const credentials={email:business.email,password:business.password};
   assert.equal((await f.call('bid/login',credentials)).data.status,'pending');
   await f.approve(saved.data.id);
   const login=await f.call('bid/login',credentials);
   assert.equal(login.status,200);assert.ok(login.cookie);assert.equal(login.data.user.legacyOnly,false);
   assert.equal((await f.call('bid/posts',job,{Cookie:login.cookie})).status,201);
-  const individual={...account('trial-individual','packaging'),consentVersion:customerTrialVersion};
+  const individual={...account('trial-individual','packaging'),consentVersion:customerTrialVersion,files:[photo]};
   assert.equal((await f.call('bid/register',individual)).status,201);
   f.publish();assert.equal(await trialMode(),false);
   const normal=await f.call('bid/register',{...business,email:'normal@example.test',consentVersion:'accepted-version',files:[{...trialCertificate,name:'normal.pdf'}]});
   assert.equal(normal.status,201);
 });
 
-test('trial document republication preserves sample-only intake until formal publication with new operator details',async t=>{
+test('trial republication preserves the trial notice and ordinary upload safeguards',async t=>{
   const f=fixture(t);f.publish(customerTrialVersion);
   async function save(published){
     const url=new URL('https://admin.example.test/api/admin/policy');
@@ -176,7 +180,7 @@ test('trial document republication preserves sample-only intake until formal pub
   f.raw.exec("UPDATE settings SET value=json_set(value,'$.memberAccepting',1) WHERE key='service'");
   assert.equal((await f.call('bid/session')).data.registration.trial,true);
   const fields={...account('trial-republish'),consentVersion:updated.version,legalType:'corporate',businessNumber:'1234567890',trial:false};
-  assert.equal((await f.call('bid/register',{...fields,files:[{...trialCertificate,name:'private.pdf'}]})).status,400);
+  assert.equal((await f.call('bid/register',{...fields,files:[{...trialCertificate,data:'aW52YWxpZA=='}]})).status,400);
   assert.equal((await f.call('bid/register',{...fields,files:[trialCertificate]})).status,201);
   f.raw.exec("UPDATE settings SET value=json_set(value,'$.operator','New operator') WHERE key='service'");
   assert.equal((await save(true)).customerTrial,true);
@@ -196,10 +200,10 @@ test('approved accounts share real posts across logins; one selected offer reach
   }
   const [brand,a,b,outsider]=users;
   assert.equal((await f.call('bid/posts',job,a.headers)).status,403);
-  const examples=(await f.call('bid/state')).data;assert.ok(examples.posts.every(p=>p.example));assert.ok(examples.partners.every(p=>p.example));
-  assert.deepEqual((await f.call('bid/state',undefined,brand.headers)).data.posts,[]);
+  const examples=(await f.call('bid/state')).data;assert.deepEqual(examples.posts,[]);assert.ok(examples.partners.every(p=>p.example));
+  assert.deepEqual((await f.call('bid/state',undefined,brand.headers)).data.posts,examples.posts);
   const post=(await f.call('bid/posts',job,brand.headers)).data.id;
-  assert.ok((await f.call('bid/state')).data.posts.every(p=>p.example));
+  assert.deepEqual((await f.call('bid/state')).data.posts,[]);
   assert.equal((await f.call('bid/posts/'+post+'/offers',pricing,a.headers)).status,404);
   f.raw.prepare("UPDATE market_posts SET review_status='approved' WHERE id=?").run(post);
   const again=await f.call('bid/login',roles[0]);
@@ -245,17 +249,17 @@ test('seed credentials never cross into live storage, room switching revokes the
   const saved=await f.call('bid/register',member);await f.approve(saved.data.id);
   const live=await f.call('bid/login',member);
   const livePost=(await f.call('bid/posts',job,{Cookie:live.cookie})).data.id;
-  assert.equal((await f.call('bid/register',{...member,email:'brand1@gmail.com'})).status,409);
+  assert.equal((await f.call('bid/register',{...member,email:'package1@gmail.com'})).status,409);
   assert.equal((await f.call('bid/demo',{role:'admin'})).status,404);
-  const test=await f.call('bid/login',{email:'brand1@gmail.com',password:reviewPassword,role:'brand'},{Cookie:live.cookie});
+  const test=await f.call('bid/login',{email:'package1@gmail.com',password:reviewPassword,role:'packaging'},{Cookie:live.cookie});
   assert.equal(test.status,200);assert.match(test.data.reviewRoom,/^[a-f0-9]{64}$/);assert.equal(test.cookie,'factner_member=');
   assert.equal((await f.call('bid/session',undefined,{Cookie:live.cookie})).data.user,null);
   const headers={Authorization:'Bearer '+test.data.token,'X-Factner-Review':test.data.reviewRoom};
   assert.equal((await f.call('bid/session',undefined,headers)).data.mode,'review');
-  const board=(await f.call('bid/state',undefined,headers)).data;assert.equal(board.posts.length,10);assert.ok(!board.posts.some(p=>p.id===livePost));
+  const board=(await f.call('bid/state',undefined,headers)).data;assert.equal(board.posts.length,0);assert.ok(!board.posts.some(p=>p.id===livePost));
   assert.equal((await f.call('bid/state',undefined,{...headers,'X-Factner-Review':'f'.repeat(64)})).status,401);
-  const testPost=(await f.call('bid/posts',{...job,title:'격리된 공고'},headers)).data.id;
-  assert.ok(testPost);assert.ok(!(await f.call('bid/state')).data.posts.some(p=>p.id===testPost));
+  assert.equal((await f.call('bid/posts',{...job,title:'격리된 공고'},headers)).status,403);
+  assert.equal((await f.call('bid/login',{email:'brand1@gmail.com',password:reviewPassword})).status,401);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM market_posts').get().n,1);
   assert.equal(f.raw.prepare("SELECT count(*) n FROM market_accounts WHERE id LIKE 'seed-%'").get().n,0);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM market_sessions').get().n,0);
@@ -279,9 +283,9 @@ test('a former pilot consent retains legacy access but cannot read, advertise or
   assert.deepEqual((await f.call('bid/state',undefined,{Cookie:legacy.cookie})).data,{partners:[],posts:[],offers:[],contracts:[],connections:[]});
   assert.equal((await f.call('bid/offers/'+proposal.data.id+'/select',{quantity:1000,accepted:true},{Cookie:legacy.cookie})).status,403);
   assert.equal((await f.call('bid/posts',job,{Cookie:legacy.cookie})).status,403);
-  assert.ok((await f.call('bid/state')).data.posts.every(p=>p.example));
+  assert.deepEqual((await f.call('bid/state')).data.posts,[]);
   const own=(await f.call('bid/state',undefined,{Cookie:maker.cookie})).data;
-  assert.deepEqual(own.posts,[]);assert.deepEqual(own.offers,[]);
+  assert.deepEqual(own.posts,(await f.call('bid/state')).data.posts);assert.deepEqual(own.offers,[]);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM matching_requests').get().n,0);
   f.raw.prepare('INSERT INTO member_companies(rowid,member_id,profile,listed,created_at,updated_at) VALUES(27,?,?,1,?,?)')
     .run(maker.data.user.id,JSON.stringify({categories:['box','private-id'],quantity:'010-5555-1111',internalNote:'secret',summary:'secret'}),'now','now');

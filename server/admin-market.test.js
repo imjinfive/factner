@@ -101,44 +101,31 @@ test('whole inventory paginates every review state and lifecycle without mixing 
    ids.push(id);update.run(states[i%4],id);
  }
  await f.select(f.offer(ids[5]));
- const path=base+'?review=all&status=all&includeExamples=1';
+ const path=base+'?review=all&status=all';
  const a=(await f.api(path)).data,b=(await f.api(path+'&page=2')).data;
  assert.equal(a.total,31);assert.equal(a.posts.length,25);assert.equal(b.posts.length,6);
  const posts=[...a.posts,...b.posts];assert.deepEqual(posts.map(p=>p.id).sort(),ids.sort());
  assert.deepEqual(new Set(posts.map(p=>p.reviewStatus)),new Set(states));
  assert.deepEqual(new Set(posts.map(p=>p.status)),new Set(['inactive','selected','open','expired']));
- assert.equal(a.examples.length,6);assert.equal((await f.api(base)).data.examples,undefined);
+ assert.equal(a.examples,undefined);
 });
 
-test('only owners can hide or restore fallback examples; real posts take precedence and no example is a market record',async t=>{
- const f=await fixture(t),guest=await f.customer(null),member=await f.customer(f.supplier);
- const path=base+'?includeExamples=1',catalog=async()=>(await f.api(path)).data;
- const posts=async()=>(await guest('state')).data.posts;
- const examples=(await catalog()).examples;
- assert.deepEqual(examples.map(p=>p.id),['example-1','example-3','example-4','example-6','example-8','example-10']);
- assert.ok(examples.every(p=>p.example&&p.visible));assert.equal((await posts()).length,6);
- assert.equal((await member('state')).data.posts.length,0);
- assert.equal((await f.api(path+'&q='+encodeURIComponent('앰플'))).data.examples.length,1);
- assert.equal((await f.api(path+'&q=unmatched')).data.examples.length,0);
- const change=(id,visible,token=f.owner,confirmed=true)=>f.api('/api/admin/market/examples/'+id+'/visibility',{visible,confirmed},'POST',token);
- assert.equal((await f.api(path,undefined,'GET',f.staff)).status,403);
- assert.equal((await change('example-1',false,f.staff)).status,403);
- assert.equal((await change('example-1',false,'')).status,401);
- assert.equal((await change('example-1',false,f.owner,false)).status,400);
- assert.equal((await change('example-1','false')).status,400);
- assert.equal((await change('example-2',false)).status,404);
- for(const example of examples){
-   assert.deepEqual((await change(example.id,false)).data,{id:example.id,visible:false});
- }
- assert.deepEqual(await posts(),[]);
- assert.ok((await catalog()).examples.every(p=>!p.visible));
- assert.equal((await change('example-1',true)).status,200);
- assert.equal((await change('example-1',true)).status,200);
- assert.deepEqual((await posts()).map(p=>p.id),['example-1']);
- assert.equal(f.raw.prepare('SELECT count(*) n FROM market_posts').get().n,0);
- const real=f.post();assert.deepEqual((await posts()).map(p=>p.id),[real]);
- assert.equal((await catalog()).total,1);
- assert.equal((await change('example-1',false)).status,200);assert.deepEqual((await posts()).map(p=>p.id),[real]);
+test('the guest board shows only manually submitted, approved packaging requests open for bidding',async t=>{
+ const f=await fixture(t), guest=await f.customer(null), supplier=await f.customer(f.supplier);
+ const visible=async caller=>(await caller('state')).data.posts.map(post=>post.id);
+ assert.deepEqual(await visible(guest),[]);
+ assert.deepEqual(await visible(supplier),[]);
+ const brand=await f.customer(f.brand);
+ const saved=await brand('posts',{category:'packaging',title:'수기 입력 주문',quantity:100,unitPrice:800,size:'10 x 10',description:'인쇄 조건 협의',deadline:'2099-01-01'});
+ assert.equal(saved.status,201);
+ const id=saved.data.id;
+ assert.deepEqual(await visible(guest),[]);
+ assert.deepEqual(await visible(supplier),[]);
+ const review=(action,version)=>f.api(base+'/'+id+'/review',{action,version,confirmed:true,reason:action==='withdraw'?'종료':''},'POST');
+ assert.equal((await review('approve',1)).status,200);
+ assert.deepEqual(await visible(guest),[id]);assert.deepEqual(await visible(supplier),[id]);
+ assert.equal((await review('withdraw',2)).status,200);
+ assert.deepEqual(await visible(guest),[]);assert.deepEqual(await visible(supplier),[]);
 });
 
 test('one real partner completes multiple selected posts with separate tier snapshots; retries neither duplicate nor reopen',async t=>{
@@ -215,13 +202,13 @@ test('submission is private until an owner reviews it; withdrawal hides it while
  assert.equal((await brand('posts/'+id+'/withdraw',confirm)).status,409);
  const withdrawn=await brand('posts/'+id+'/withdraw',{confirmed:true,version:2});assert.equal(withdrawn.status,200);assert.equal(withdrawn.data.reviewStatus,'withdrawn');
  const state=(await supplier('state')).data;
- assert.equal(state.posts.length,0);assert.equal(state.offers.length,0);assert.equal(state.connections[0].id,picked.data.id);assert.equal(state.connections[0].title,'비공개 공고');
+ assert.deepEqual(state.posts,[]);assert.equal(state.offers.length,0);assert.equal(state.connections[0].id,picked.data.id);assert.equal(state.connections[0].title,'비공개 공고');
  assert.doesNotMatch(JSON.stringify(state),new RegExp(job.title+'|'+job.description));
  assert.equal((await f.api(base+'/'+id+'/connect',confirm)).status,409);assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier})).status,409);
  assert.equal((await f.api(base+'?review=withdrawn')).data.total,1);
  const events=(await f.api(base+'/'+id)).data.reviewEvents;
  assert.deepEqual(events.map(e=>[e.action,e.actor,e.version]),[['withdraw','author',3],['approve','admin',2]]);
- assert.ok((await guest('state')).data.posts.every(p=>p.example));assert.equal((await brand('state')).data.posts[0].reviewStatus,'withdrawn');
+ assert.deepEqual((await guest('state')).data.posts,[]);assert.equal((await brand('state')).data.posts[0].reviewStatus,'withdrawn');
 });
 
 test('private identity checks cover every brief field; approval validates migrated content and handles races',async t=>{

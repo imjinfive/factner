@@ -1,7 +1,6 @@
 import { BID_TERMS } from '../shared/bid-terms.js';
 import { designerNotice, isPackagingPartner } from '../shared/partner-roles.js';
 import { reviewPartnerCards } from '../scripts/bid-seed.mjs';
-import {marketExamples} from './market-examples.js';
 import { body, fail, json, now, stmt, text } from './http.js';
 import { approvedMarketMember } from './policy.js';
 import { authorIdentity,reviewPost,validateAnonymous } from './market-review.js';
@@ -91,8 +90,8 @@ async function getState(env, user, live=false) {
         title:'패키징 제작업체',description:quantity?'최소 제작 수량 '+quantity.toLocaleString('ko-KR')+'개':'수량 협의'};
     });
     if(!state.partners.length)state.partners=Object.values(reviewPartnerCards).map(p=>({...p,kind:'packaging',example:true}));
-    state.posts=state.posts.filter(p=>p.status==='open'&&p.category==='packaging'&&p.deadline>=today());
-    if(!state.posts.length)state.posts=await marketExamples(env);
+    const day=today();
+    state.posts=state.posts.filter(p=>p.reviewStatus==='approved'&&p.status==='open'&&p.category==='packaging'&&p.deadline>=day);
   }
   return state;
 }
