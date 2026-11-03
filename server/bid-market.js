@@ -113,13 +113,21 @@ async function createPost(env, user, input,live) {
   if(quantity != null && unitPrice != null && quantity * unitPrice > 1e12) fail(400,'수량과 단가를 확인해주세요.');
   const signed=submissionSignature(input.agreement),time=now(),deadline=biddingDeadline(time);
   const id = crypto.randomUUID();
-  const check=live?` WHERE EXISTS(SELECT 1 FROM members m WHERE m.id=? AND m.role='brand' AND ${approvedMarketMember('m')})`:'';
+  const awards=live?'market_connection_requests':'market_contracts';
+  const duplicate=`p.brand_id=? AND p.category=? AND p.title=? AND p.quantity IS ? AND p.unit_price IS ? AND p.size=? AND p.description=?
+    AND (p.review_status='pending' OR (p.review_status='approved' AND p.deadline>=? AND NOT EXISTS(SELECT 1 FROM ${awards} a WHERE a.post_id=p.id)))`;
+  const duplicateArgs=[user.id,input.category,title,quantity,unitPrice,size,description,today()];
+  const check=` WHERE NOT EXISTS(SELECT 1 FROM market_posts p WHERE ${duplicate})`+
+    (live?` AND EXISTS(SELECT 1 FROM members m WHERE m.id=? AND m.role='brand' AND ${approvedMarketMember('m')})`:'');
   const [saved]=await env.DB.batch([
-    stmt(env, 'INSERT INTO market_posts(id,brand_id,category,title,quantity,unit_price,size,description,deadline,created_at) SELECT ?,?,?,?,?,?,?,?,?,?'+check, id,user.id,input.category,title,quantity,unitPrice,size,description,deadline,time,...(live?[user.id]:[])),
+    stmt(env, 'INSERT INTO market_posts(id,brand_id,category,title,quantity,unit_price,size,description,deadline,created_at) SELECT ?,?,?,?,?,?,?,?,?,?'+check, id,user.id,input.category,title,quantity,unitPrice,size,description,deadline,time,...duplicateArgs,...(live?[user.id]:[])),
     agreementStatement(env,{memberId:user.id,purpose:'post',resourceId:id,signature:signed,time,
       submission:{category:input.category,title,quantity,unitPrice,size,description,biddingPeriodDays:7}})
   ]);
-  if(!saved.meta.changes)fail(409,'승인된 회원 상태를 다시 확인해주세요.');
+  if(!saved.meta.changes){
+    if(await stmt(env,`SELECT p.id FROM market_posts p WHERE ${duplicate} LIMIT 1`,...duplicateArgs).first())fail(409,'같은 조건의 공고가 이미 심사 또는 모집 중입니다. 내 공고에서 확인해 주세요.');
+    fail(409,'승인된 회원 상태를 다시 확인해주세요.');
+  }
   return json({ id,reviewStatus:'pending',reviewVersion:1 }, 201);
 }
 

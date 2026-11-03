@@ -5,14 +5,15 @@ import PackagingArt from './PackagingArt';
 import PackagingPicker from './PackagingPicker';
 import NumericInput from './NumericInput';
 import {restoreSurveyEntry} from './onboarding-history';
-import {complaints,supplierGoals,productInfo,selectedProductInfo,productOptions,selectedProductOptions,emptyOnboardingDraft,readOnboardingDraft,saveOnboardingDraft,surveySteps,onboardingResumeStep,matchingSurveyPosts} from './onboarding-data';
+import {complaints,supplierGoals,productInfo,selectedProductInfo,productOptions,selectedProductOptions,emptyOnboardingDraft,normalizeOnboardingDraft,readOnboardingDraft,saveOnboardingDraft,surveySteps,onboardingResumeStep,matchingSurveyPosts} from './onboarding-data';
 import './onboarding.css';
 
 const spring={type:'spring',stiffness:380,damping:31,mass:.85};
 const timeOptions=['2주 이내','한 달 이내','일정 협의 가능','아직 알아보는 중'];
 const capacityOptions=[['small','소량 주문도 받아요'],['medium','중간 규모가 적합해요'],['large','대량·반복 주문을 원해요'],['discuss','품목에 따라 달라요']];
 const availabilityOptions=[['now','지금 상담 가능해요'],['discuss','일정 협의가 필요해요'],['later','앞으로 받을 의뢰를 찾아요']];
-function initialState(){
+function initialState(requestMode,initialDraft){
+ if(requestMode){const saved=history.state?.postSurvey;return {draft:normalizeOnboardingDraft(saved?.draft||initialDraft||{...emptyOnboardingDraft(),role:'brand'}),step:saved?.step==='conditions'?'conditions':'packaging',index:saved?.index||0};}
  return restoreSurveyEntry(history.state?.onboardingSurvey,readOnboardingDraft());
 }
 function Choice({children,selected,onClick,large=false}){
@@ -22,14 +23,15 @@ function Choice({children,selected,onClick,large=false}){
  </motion.button>;
 }
 function PickGrid({options,value,onChange,multiple=false}){return <div className="ob-options">{options.map(option=>{const [id,label]=Array.isArray(option)?option:[option,option];return <Choice key={id} selected={multiple?value.includes(id):value===id} onClick={()=>onChange(id)}>{label}</Choice>;})}</div>;}
-export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogin}){
- const [state,setState]=useState(initialState),[error,setError]=useState(''),[direction,setDirection]=useState(1);
+export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogin,requestMode=false,initialDraft,onCancel}){
+ const [state,setState]=useState(()=>initialState(requestMode,initialDraft)),[error,setError]=useState(''),[direction,setDirection]=useState(1);
  const {draft,step,index}=state,brand=draft.role==='brand',reduce=useReducedMotion(),heading=useRef(null),mounted=useRef(false);
- const steps=surveySteps(draft),position=steps.indexOf(step),selectedProduct=selectedProductInfo(draft);
+ const steps=requestMode?['packaging','conditions']:surveySteps(draft),position=steps.indexOf(step),selectedProduct=selectedProductInfo(draft),historyKey=requestMode?'postSurvey':'onboardingSurvey';
+ const persist=requestMode?normalizeOnboardingDraft:saveOnboardingDraft;
  useEffect(()=>{
-  const restore=()=>{const saved=history.state?.onboardingSurvey;if(saved){const restored=restoreSurveyEntry(saved);setDirection(-1);setState(restored);saveOnboardingDraft(restored.draft);setError('');}};
+  const restore=()=>{const saved=history.state?.[historyKey];if(saved){const restored=requestMode?{draft:normalizeOnboardingDraft(saved.draft),step:saved.step==='conditions'?'conditions':'packaging',index:saved.index||0}:restoreSurveyEntry(saved);setDirection(-1);setState(restored);persist(restored.draft);setError('');}};
   window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore);
- },[]);
+ },[requestMode]);
  useEffect(()=>{
   if(!mounted.current){mounted.current=true;return;}
   heading.current?.focus({preventScroll:true});
@@ -37,14 +39,14 @@ export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogi
  },[step]);
  function update(patch){
   const next={...draft,...patch};
-  saveOnboardingDraft(next);setState({draft:next,step,index});setError('');
-  history.replaceState({...history.state,onboardingSurvey:{draft:next,step,index}},'');
+  persist(next);setState({draft:next,step,index});setError('');
+  history.replaceState({...history.state,[historyKey]:{draft:next,step,index}},'');
  }
  function move(nextStep,nextDraft=draft){
-  const clean=saveOnboardingDraft(nextDraft);
-  history.replaceState({...history.state,onboardingSurvey:{draft,step,index}},'');
-  history.pushState({...history.state,onboardingSurvey:{draft:clean,step:nextStep,index:index+1}},'');
-  setDirection(surveySteps(clean).indexOf(nextStep)>position?1:-1);setState({draft:clean,step:nextStep,index:index+1});setError('');
+  const clean=persist(nextDraft);
+  history.replaceState({...history.state,[historyKey]:{draft,step,index}},'');
+  history.pushState({...history.state,[historyKey]:{draft:clean,step:nextStep,index:index+1}},'');
+  setDirection((requestMode?steps:surveySteps(clean)).indexOf(nextStep)>position?1:-1);setState({draft:clean,step:nextStep,index:index+1});setError('');
  }
  function rolePick(role){
   const next={...emptyOnboardingDraft(),role};
@@ -66,6 +68,7 @@ export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogi
    if(!draft.budgetUnknown&&draft.budget&&(!/^\d+$/.test(draft.budget)||Number(draft.budget)<1||Number(draft.budget)>1000000000))return setError('희망 단가는 1원부터 10억 원까지 입력해 주세요. 모르면 비워두셔도 괜찮아요.');
   }
   if(step==='capacity'&&(!draft.quantityRange||!draft.availability))return setError('수량과 상담 가능 여부를 선택해 주세요.');
+  if(requestMode&&step==='conditions'){onContinue(persist(draft));return;}
   move(steps[position+1]);
  }
  function continueSignup(){const clean=saveOnboardingDraft(draft);onContinue(clean);}
@@ -81,7 +84,7 @@ export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogi
    <p className="ob-home-note">몇 가지 선택으로 시작해요. 어려운 사양은 몰라도 괜찮아요.</p>
    {draft.role&&<button type="button" className="ob-resume" onClick={()=>move(onboardingResumeStep(draft))}>작성한 내용 이어보기 <ArrowRight size={16}/></button>}
   </>:<>
-   <div className="ob-topline"><button type="button" className="ob-back" onClick={()=>index>0?history.back():move(steps[Math.max(0,position-1)])}><ArrowLeft size={19}/><span>이전</span></button><div className="ob-progress" aria-label={`${position} / ${steps.length-1} 단계`}>{steps.slice(1).map((s,i)=><span key={s} className={i<position?'is-done':''}/>)}</div><span aria-hidden="true"/></div>
+   <div className="ob-topline"><button type="button" className="ob-back" onClick={()=>requestMode&&step==='packaging'?onCancel?.():index>0?history.back():move(steps[Math.max(0,position-1)])}><ArrowLeft size={19}/><span>이전</span></button><div className="ob-progress" aria-label={`${requestMode?position+1:position} / ${requestMode?steps.length:steps.length-1} 단계`}>{(requestMode?steps:steps.slice(1)).map((s,i)=><span key={s} className={i<(requestMode?position+1:position)?'is-done':''}/>)}</div><span aria-hidden="true"/></div>
    <AnimatePresence mode="wait" initial={false}><motion.div key={step} className="ob-stage" initial={reduce?{opacity:0}:{opacity:0,x:direction*22}} animate={{opacity:1,x:0}} exit={reduce?{opacity:0}:{opacity:0,x:-direction*15}} transition={reduce?{duration:.1}:spring} onAnimationComplete={()=>heading.current?.focus({preventScroll:true})}>
     <header className="ob-heading"><h1 ref={heading} tabIndex={-1}>{title}</h1>
      {step==='complaints'&&<p>해당하는 항목을 모두 골라주세요.<br/>건너뛰어도 괜찮아요.</p>}
@@ -93,7 +96,7 @@ export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogi
     {step==='complaints'&&<PickGrid options={complaints} value={draft.complaints} multiple onChange={id=>toggle('complaints',id)}/>}
     {step==='packaging'&&<PackagingPicker draft={draft} onUpdate={update} onToggle={toggle}/>}
     {step==='conditions'&&<div className="ob-conditions">
-     <div className="ob-selected-product"><PackagingArt kind={draft.product||draft.material}/><div><strong>{selectedProduct?.name||'형태 추천받기'}</strong><span>{selectedProduct?.label||draft.productUse||'상담하며 함께 정해요'}</span></div><button type="button" onClick={()=>move('packaging')}>제품 변경</button></div>
+     <div className="ob-selected-product"><PackagingArt kind={draft.variant||draft.product||draft.material}/><div><strong>{selectedProduct?.name||'형태 추천받기'}</strong><span>{selectedProduct?.label||draft.productUse||'상담하며 함께 정해요'}</span></div><button type="button" onClick={()=>move('packaging')}>제품 변경</button></div>
      <div className="ob-condition-main">
      <fieldset><legend>제작 수량</legend><div className="ob-input-unit"><NumericInput aria-label="예상 수량" value={draft.quantity} disabled={draft.quantityUnknown} maxLength={9} onValueChange={quantity=>update({quantity})} placeholder="예: 1,000"/><span>개</span></div><label className="ob-check"><input type="checkbox" checked={draft.quantityUnknown} onChange={e=>update({quantityUnknown:e.target.checked,...(e.target.checked?{quantity:''}:{})})}/>아직 모르겠어요</label></fieldset>
      <fieldset><legend>크기</legend><div className="ob-size-basis"><button type="button" aria-pressed={draft.sizeBasis==='package'} onClick={()=>update({sizeBasis:'package'})}>포장 크기</button><button type="button" aria-pressed={draft.sizeBasis==='product'} onClick={()=>update({sizeBasis:'product'})}>담을 제품 크기</button></div><div className="ob-dimensions">{[['width','가로'],['depth','세로'],['height','높이']].map(([key,label])=><label key={key}>{label}{key==='height'&&<span className="ob-optional">선택</span>}<span className="ob-input-unit"><NumericInput aria-label={label} allowDecimal value={draft[key]} disabled={draft.sizeUnknown} maxLength={10} onValueChange={value=>update({[key]:value})} placeholder="0"/><span>mm</span></span></label>)}</div><p className="ob-field-hint">정확하지 않아도 괜찮아요. 납작한 포장은 높이를 비워두세요.</p><label className="ob-check"><input type="checkbox" checked={draft.sizeUnknown} onChange={e=>update({sizeUnknown:e.target.checked,...(e.target.checked?{width:'',depth:'',height:''}:{})})}/>크기를 아직 모르겠어요</label></fieldset>
@@ -104,7 +107,7 @@ export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogi
     </div></div>}
     {step==='capacity'&&<div className="ob-capacity"><fieldset><legend>주로 받는 주문 수량</legend><PickGrid options={capacityOptions} value={draft.quantityRange} onChange={id=>update({quantityRange:id})}/></fieldset><fieldset><legend>새로운 의뢰, 받을 수 있나요?</legend><PickGrid options={availabilityOptions} value={draft.availability} onChange={id=>update({availability:id})}/></fieldset></div>}
     {step==='goals'&&<PickGrid options={supplierGoals} value={draft.goals} multiple onChange={id=>toggle('goals',id)}/>}
-    {step==='result'&&<div className="ob-result-layout"><div className="ob-request-preview"><div className="ob-preview-art"><PackagingArt kind={draft.product||draft.supplierProducts[0]||draft.material}/></div><div className="ob-preview-copy"><h2>{brand?selectedProduct?.name||(draft.productUse?`${draft.productUse} 포장`:'패키징 추천받기'):draft.supplierProducts.map(id=>productInfo(id)?.label).filter(Boolean).slice(0,3).join(' · ')}</h2><dl>{brand?<><div><dt>수량</dt><dd>{draft.quantity?Number(draft.quantity).toLocaleString('ko-KR')+'개':'상담 후 결정'}</dd></div><div><dt>{draft.sizeBasis==='product'?'제품 크기':'포장 크기'}</dt><dd>{draft.sizeUnknown||!draft.width?'상담 후 결정':[draft.width,draft.depth,draft.height].filter(Boolean).map(value=>Number(value).toLocaleString('ko-KR')).join(' × ')+' mm'}</dd></div><div><dt>희망 일정</dt><dd>{draft.timing||'협의 가능'}</dd></div><div><dt>희망 단가</dt><dd>{draft.budgetUnknown||!draft.budget?'업체 제안 받기':Number(draft.budget).toLocaleString('ko-KR')+'원'}</dd></div>{selectedProductOptions(draft).map(option=><div key={option.key}><dt>{option.label}</dt><dd>{option.value}</dd></div>)}</>:<><div><dt>주문 수량</dt><dd>{capacityOptions.find(([id])=>id===draft.quantityRange)?.[1]||'협의 가능'}</dd></div><div><dt>상담</dt><dd>{availabilityOptions.find(([id])=>id===draft.availability)?.[1]||'일정 협의'}</dd></div></>}</dl><button type="button" className="ob-edit" onClick={()=>move(brand?'conditions':'capacity')}>조건 수정하기</button></div></div>
+    {step==='result'&&<div className="ob-result-layout"><div className="ob-request-preview"><div className="ob-preview-art"><PackagingArt kind={draft.variant||draft.product||draft.supplierProducts[0]||draft.material}/></div><div className="ob-preview-copy"><h2>{brand?selectedProduct?.name||(draft.productUse?`${draft.productUse} 포장`:'패키징 추천받기'):draft.supplierProducts.map(id=>productInfo(id)?.label).filter(Boolean).slice(0,3).join(' · ')}</h2><dl>{brand?<><div><dt>수량</dt><dd>{draft.quantity?Number(draft.quantity).toLocaleString('ko-KR')+'개':'상담 후 결정'}</dd></div><div><dt>{draft.sizeBasis==='product'?'제품 크기':'포장 크기'}</dt><dd>{draft.sizeUnknown||!draft.width?'상담 후 결정':[draft.width,draft.depth,draft.height].filter(Boolean).map(value=>Number(value).toLocaleString('ko-KR')).join(' × ')+' mm'}</dd></div><div><dt>희망 일정</dt><dd>{draft.timing||'협의 가능'}</dd></div><div><dt>희망 단가</dt><dd>{draft.budgetUnknown||!draft.budget?'업체 제안 받기':Number(draft.budget).toLocaleString('ko-KR')+'원'}</dd></div>{selectedProductOptions(draft).map(option=><div key={option.key}><dt>{option.label}</dt><dd>{option.value}</dd></div>)}</>:<><div><dt>주문 수량</dt><dd>{capacityOptions.find(([id])=>id===draft.quantityRange)?.[1]||'협의 가능'}</dd></div><div><dt>상담</dt><dd>{availabilityOptions.find(([id])=>id===draft.availability)?.[1]||'일정 협의'}</dd></div></>}</dl><button type="button" className="ob-edit" onClick={()=>move(brand?'conditions':'capacity')}>조건 수정하기</button></div></div>
      <div className="ob-result-next"><h2>{brand?'이 내용으로 견적을 받아보세요.':'할 수 있는 일부터 제안해 보세요.'}</h2><p>{brand?'가입 후 공고 내용을 확인하면 제작업체가 견적을 제안할 수 있어요.':'가입 후 업체 확인을 마치면 제작 의뢰에 입찰할 수 있어요.'}</p>
       {brand&&matchingPartners.length>0&&<div className="ob-related"><strong>{draft.material==='paper'?'박스 분야 등록 업체':'패키징 분야 등록 업체'}</strong>{matchingPartners.map(p=><div key={p.alias}><Package size={17}/><span>{p.alias}</span></div>)}<small>선택한 소재·형태의 제작 가능 여부는 확인이 필요해요.</small></div>}
       {!brand&&briefs.length>0&&<div className="ob-briefs"><strong>모집 중인 관련 의뢰</strong>{briefs.map(post=><button key={post.id} type="button" aria-pressed={draft.selectedPostId===post.id} onClick={()=>update({selectedPostId:post.id})}><span>{post.title}</span><span>{post.quantity?Number(post.quantity).toLocaleString('ko-KR')+'개':'수량 협의'}{draft.selectedPostId===post.id?<Check size={17}/>:<ArrowRight size={17}/>}</span></button>)}</div>}

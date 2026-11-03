@@ -1,17 +1,2 @@
-.packaging-art {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  aspect-ratio: 1;
-  background-color: #fff;
-  flex: 0 0 auto;
-  pointer-events: none;
-  user-select: none;
-}
-.packaging-art-crop {
-  display: block;
-  flex: 0 0 auto;
-  background-image: url('/generated/factner-packaging-atlas.webp');
-  background-repeat: no-repeat;
-}
+.packaging-art{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1;background:#f7f7f7;color:#78877f;flex:0 0 auto;pointer-events:none;user-select:none;overflow:hidden;border-radius:3px}
+.packaging-art img{display:block;width:100%;height:100%;object-fit:contain}

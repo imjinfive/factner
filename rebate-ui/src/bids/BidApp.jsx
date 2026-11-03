@@ -54,7 +54,7 @@ export default function BidApp({surface='market',initialHome=false}){
   const [navRevision,setNavRevision]=useState(0);
   const [view,detail]=route.split('/'), intro=view==='intro', access=accessViews.includes(view);
   const policy=Object.hasOwn(policyTitles,view);
-  const marketNeeded=['intro','feed','mine','contracts'].includes(view);
+  const marketNeeded=['intro','feed','mine','new','contracts'].includes(view);
   const [session,setSession]=useState(null),[state,setState]=useState(null),[error,setError]=useState('');
   const [theme,setTheme]=useState(initialBidTheme),[select,setSelect]=useState(null);
   const [welcome,setWelcome]=useState(null);

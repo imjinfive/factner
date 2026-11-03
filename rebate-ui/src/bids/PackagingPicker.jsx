@@ -5,9 +5,9 @@ import {materials,products,productInfo,productVariants,materialLabel} from './on
 
 const families=Object.entries(products).flatMap(([material,rows])=>rows.map(([id])=>productInfo(`${material}-${id}`)));
 
-function ProductCard({family,name,detail,selected,onClick}){
+function ProductCard({family,variant,name,detail,selected,onClick}){
  return <button type="button" className={'ob-product'+(selected?' is-selected':'')} aria-pressed={selected} onClick={onClick}>
-  <PackagingArt kind={family.id}/>
+  <PackagingArt kind={variant||family.id}/>
   <span className="ob-product-name">{name}<span className="ob-product-check" aria-hidden="true">{selected?<CheckCircle size={21} weight="fill"/>:<ArrowRight size={17}/>}</span></span>
   <span className="ob-product-detail">{detail}</span>
  </button>;
@@ -45,9 +45,9 @@ export default function PackagingPicker({draft,onUpdate,onToggle}){
   </>}
   {brand&&<button type="button" className={'ob-recommend-choice'+(draft.material==='unknown'?' is-selected':'')} aria-pressed={draft.material==='unknown'} onClick={()=>onUpdate({material:'unknown',product:'',variant:'',materialOption:'',appearance:'',woodSpecies:''})}><Question size={20}/><span>어떤 종류인지 모르겠어요. 추천받을게요.</span></button>}
   {brand&&draft.material==='unknown'&&<div className="ob-recommend"><label htmlFor="ob-product-use">무엇을 포장하시나요?</label><input id="ob-product-use" value={draft.productUse} maxLength={80} onChange={e=>onUpdate({productUse:e.target.value})} placeholder="예: 향수, 쿠키, 의류"/></div>}
-  {brand&&(family||search)&&<p className="ob-art-note">분류별 대표 이미지입니다. 세부 제품의 실제 형태는 다를 수 있어요.</p>}
+  <p className="ob-art-note">형태 선택을 돕는 AI 연출 이미지예요.</p>
   <div className="ob-products">
-   {brand&&(family||search)?variants.map(v=><ProductCard key={v.id} family={productInfo(v.product)} name={v.name} detail={productInfo(v.product)?.label} selected={draft.variant===v.id} onClick={()=>chooseVariant(v)}/>):visibleFamilies.map(f=><ProductCard key={f.id} family={f} name={f.label} detail={brand?`${materialLabel(f.material)} · ${productVariants(f.id).length}가지 형태`:materialLabel(f.material)} selected={brand?draft.product===f.id:draft.supplierProducts.includes(f.id)} onClick={()=>chooseFamily(f.id)}/>)}
+   {brand&&(family||search)?variants.map(v=><ProductCard key={v.id} family={productInfo(v.product)} variant={v.id} name={v.name} detail={productInfo(v.product)?.label} selected={draft.variant===v.id} onClick={()=>chooseVariant(v)}/>):visibleFamilies.map(f=><ProductCard key={f.id} family={f} name={f.label} detail={brand?`${materialLabel(f.material)} · ${productVariants(f.id).length}가지 형태`:materialLabel(f.material)} selected={brand?draft.product===f.id:draft.supplierProducts.includes(f.id)} onClick={()=>chooseFamily(f.id)}/>)}
   </div>
   {search&&!variants.length&&<p className="ob-catalog-empty">찾는 제품이 없어요. 다른 이름으로 검색하거나 추천받기를 선택해 주세요.</p>}
   {!brand&&draft.supplierProducts.length>0&&<div className="ob-selected-tags" aria-label="선택한 제작 품목">{draft.supplierProducts.map(id=><button key={id} type="button" onClick={()=>onToggle('supplierProducts',id)}>{productInfo(id)?.label}<X size={14}/></button>)}</div>}

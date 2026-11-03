@@ -5,7 +5,10 @@ import { isPublicPost, roomReviewUrl } from './post-visibility.js';
 import { packagingSize, positiveInteger } from './market-input.js';
 import ElectronicAgreement from '../ElectronicAgreement';
 import ReviewConfirm from '../ReviewConfirm';
-import {readOnboardingDraft,onboardingPostDraft} from './onboarding-data.js';
+import {clearOnboardingDraft,onboardingPostDraft,normalizeOnboardingDraft} from './onboarding-data.js';
+import {initialPostRequest,completedPostRequests,completePostRequest} from './post-request.js';
+import OnboardingSurvey from './OnboardingSurvey';
+import NumericInput from './NumericInput';
 import './market.css';
 
 const types = { design: '이전 의뢰', packaging: '패키징 제작' };
@@ -99,13 +102,36 @@ function ReviewRows({ rows }) {
   return <dl className="bm-review-rows">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
 }
 
-function NewPost({ mutate, onDone, onCancel, user, isDemo }) {
+function NewPostFlow({mutate,onDone,onCancel,user,posts,isDemo}) {
+  function restore() {
+    const entry=history.state||{};
+    const next=initialPostRequest(user,posts,entry,completedPostRequests(user.id));
+    if(entry.postRequest?.id!==next.id)history.replaceState({...entry,postRequest:next,postSurvey:null,onboardingDraft:null},'');
+    return next;
+  }
+  const [flow,setFlow]=useState(restore);
+  useEffect(()=>{
+    const back=()=>setFlow(restore);
+    window.addEventListener('popstate',back);return()=>window.removeEventListener('popstate',back);
+  },[user.id,posts]);
+  function review(draft) {
+    const next={...flow,stage:'review',draft:normalizeOnboardingDraft(draft)};
+    history.pushState({...history.state,postRequest:next},'');setFlow(next);
+    window.scrollTo({top:0,behavior:'instant'});
+  }
+  function done(id) {
+    completePostRequest(user.id,flow.id);clearOnboardingDraft();
+    history.replaceState({...history.state,postRequest:{...flow,submittedId:id,draft:null},postSurvey:null,onboardingDraft:null},'');
+    onDone(id);
+  }
+  return flow.stage==='review'?<section className="bm"><NewPost key={flow.id} prefill={onboardingPostDraft(flow.draft)} mutate={mutate} onDone={done} onCancel={onCancel} isDemo={isDemo}/></section>
+    :<OnboardingSurvey key={flow.id} requestMode initialDraft={flow.draft} onContinue={review} onCancel={onCancel}/>;
+}
+
+function NewPost({ mutate, onDone, onCancel, prefill, isDemo }) {
   const category = 'packaging';
-  const [prefill] = useState(() => {
-    const active=history.state?.onboardingDraft;
-    const saved=active?.role==='brand'?active:user && Object.hasOwn(user,'onboarding')?user.onboarding:readOnboardingDraft();
-    return saved?.role==='brand'?onboardingPostDraft(saved):{};
-  });
+  const [numbers,setNumbers] = useState(prefill);
+  const numberField = name => ({name,value:numbers[name]||'',onValueChange:value=>setNumbers(current=>({...current,[name]:value}))});
   const [quantityUnknown,setQuantityUnknown] = useState(prefill.quantityUnknown===true);
   const [budgetUnknown,setBudgetUnknown] = useState(prefill.budgetUnknown===true);
   const [draft, setDraft] = useState(null);
@@ -118,7 +144,7 @@ function NewPost({ mutate, onDone, onCancel, user, isDemo }) {
     const data = Object.fromEntries(form);
     try {
       const candidate = { title:data.title.trim(), description:data.description.trim(), category,
-        quantity:quantityUnknown?null:positiveInteger(data.quantity, 100000000, '요청 수량'), unitPrice:budgetUnknown?null:positiveInteger(data.unitPrice, 1000000000, '희망 단가'), size:packagingSize(data) };
+        quantity:quantityUnknown?null:positiveInteger(data.quantity, 100000000, '요청 수량'), unitPrice:budgetUnknown?null:positiveInteger(data.unitPrice, 1000000000, '희망 단가'), size:packagingSize(numbers) };
       if (!candidate.title || !candidate.description) throw new Error('제목과 제작 조건을 입력해 주세요.');
       if (candidate.quantity != null && candidate.unitPrice != null && candidate.quantity * candidate.unitPrice > 1e12) throw new Error('수량과 단가의 합계는 1조원 이하여야 합니다.');
       setError('');
@@ -139,14 +165,14 @@ function NewPost({ mutate, onDone, onCancel, user, isDemo }) {
   </div><form className="bm-form bm-post-form" onSubmit={preview}>
     <p className="bm-anonymous-guide" id="bm-anonymous-guide"><strong>공고는 익명으로 공개됩니다.</strong> 제목·규격·제작 조건에는 업체명, 브랜드명, 담당자명, 사업자번호, 전화번호, 이메일, 주소, 외부 링크를 적지 마세요.</p>
     <label>공고 제목<input name="title" defaultValue={prefill.title||''} required maxLength={100} aria-describedby="bm-anonymous-guide" placeholder="예: 화장품 단상자 인쇄·제작" /></label>
-    <div className="bm-two"><div><label>요청 수량 (개)<input name="quantity" type="text" inputMode="numeric" maxLength={12} required={!quantityUnknown} disabled={quantityUnknown} defaultValue={prefill.quantity||''} placeholder="5,000" /></label>
+    <div className="bm-two"><div><label>요청 수량 (개)<NumericInput {...numberField('quantity')} maxLength={9} required={!quantityUnknown} disabled={quantityUnknown} placeholder="5,000" /></label>
       <label className="bm-active-toggle"><input type="checkbox" checked={quantityUnknown} onChange={e=>setQuantityUnknown(e.target.checked)}/>상담 후 정할게요</label></div>
-      <div><label>희망 개당 단가 (원)<input name="unitPrice" type="text" inputMode="numeric" maxLength={13} required={!budgetUnknown} disabled={budgetUnknown} defaultValue={prefill.unitPrice||''} placeholder="450" /></label>
+      <div><label>희망 개당 단가 (원)<NumericInput {...numberField('unitPrice')} maxLength={10} required={!budgetUnknown} disabled={budgetUnknown} placeholder="450" /></label>
       <label className="bm-active-toggle"><input type="checkbox" checked={budgetUnknown} onChange={e=>setBudgetUnknown(e.target.checked)}/>업체의 제안을 받을게요</label></div></div>
     <fieldset className="bm-fieldset bm-dimensions"><legend>규격 (mm) <small>선택</small></legend>
-      <div><label>가로<input name="width" type="text" inputMode="decimal" maxLength={12} defaultValue={prefill.width||''} placeholder="60" /></label>
-        <label>세로<input name="depth" type="text" inputMode="decimal" maxLength={12} defaultValue={prefill.depth||''} placeholder="35" /></label>
-        <label>높이 <small>선택</small><input name="height" type="text" inputMode="decimal" maxLength={12} defaultValue={prefill.height||''} placeholder="110" /></label></div>
+      <div><label>가로<NumericInput {...numberField('width')} allowDecimal maxLength={10} placeholder="60" /></label>
+        <label>세로<NumericInput {...numberField('depth')} allowDecimal maxLength={10} placeholder="35" /></label>
+        <label>높이 <small>선택</small><NumericInput {...numberField('height')} allowDecimal maxLength={10} placeholder="110" /></label></div>
       <p className="bm-hint">숫자만 입력하세요. 봉투·라벨처럼 납작한 제품은 높이를 비워도 됩니다.</p>
     </fieldset>
     <label>제작 조건<textarea name="description" defaultValue={prefill.description||''} required rows={5} maxLength={2000} aria-describedby="bm-anonymous-guide" placeholder="희망 납기, 재질, 인쇄·후가공 조건 등을 적어주세요." /></label>
@@ -267,13 +293,14 @@ function PostDetail({ post, offers, selectedOfferId, user, mutate, onSelect, onS
   const Heading = standalone ? 'h1' : 'h2';
   const Subheading = standalone ? 'h2' : 'h3';
   const owner = user?.kind==='brand' && post.isMine;
+  const registeredAt = post.createdAt || post.reviewedAt;
   const reviewUrl = roomReviewUrl(isDemo,user,post,reviewRoomKey,window.location.hostname);
   const withdrawn = post.reviewStatus==='withdrawn';
   const focusAfterRemoval = useRef(null);
   const finishWithdrawal = () => { onWithdrawn(); requestAnimationFrame(() => focusAfterRemoval.current?.focus({preventScroll:true})); };
   return <section className="bm-detail" aria-label={standalone ? '브랜드 의뢰 상세' : '선택한 공고 상세'}>
     <div className="bm-detail-head"><span className="bm-kind">{types[post.category]}</span><span className="bm-status">{statusText(post, archived)}</span></div>
-    <div className="bm-detail-title"><div><Heading ref={focusAfterRemoval} tabIndex={-1}>{post.title}</Heading><span>{post.brandAlias || '브랜드'}{owner?' · 내가 올린 공고':''}</span></div>
+    <div className="bm-detail-title"><div><Heading ref={focusAfterRemoval} tabIndex={-1}>{post.title}</Heading>{registeredAt && <span><time dateTime={registeredAt}>{elapsed(registeredAt)} 등록</time></span>}</div>
       <ProductIcon post={post} /></div>
     {owner && !isPublicPost(post) && <div className="bm-review-state">
       <p>{post.reviewStatus==='pending' ? (isDemo ? '관리자 승인 후 같은 테스트 공간의 제작업체가 이 공고를 볼 수 있습니다.' : '운영팀이 공고를 확인하고 있습니다. 승인 후 제작업체에 공개됩니다.') :
@@ -357,7 +384,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   const mineIds = new Set(offers.filter(o => o.isMine).map(o => o.postId));
   const scope = mine ? (brand ? posts.filter(p => p.isMine) : publicPosts.filter(p => mineIds.has(p.id))) : publicPosts;
   const visibleFilters = { ...filters, category:archived?'design':'packaging', activeOnly:!archived&&activeOnly };
-  const rowTime = post => mine ? post.createdAt : post.reviewedAt || post.createdAt;
+  const rowTime = post => post.createdAt || post.reviewedAt;
   const rows = scope.filter(post => (post.reviewStatus!=='withdrawn'||filters.includeRemoved) && matchesFilters(post, visibleFilters)).sort((a,b) => Date.parse(rowTime(b)) - Date.parse(rowTime(a)));
   const selected = postId ? scope.find(post => post.id === postId) : rows[0];
   const selectedAward = (isDemo ? state?.contracts : state?.connections)?.find(item => item.postId === selected?.id);
@@ -412,7 +439,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   const afterPost = id => { setNotice(isDemo ? '테스트 공고 심사를 요청했습니다.' : '공고 심사를 요청했습니다. 승인 후 공개됩니다.'); onView('mine/' + id); };
   const afterWithdraw = () => { setNotice('공고를 삭제했습니다.'); if (!mine && selected) onView('mine/' + selected.id); };
   const sent = () => setNotice('입찰 심사를 요청했습니다. 승인 후 브랜드에 전달됩니다.');
-  if (view === 'new' && brand) return <section className="bm"><NewPost key={user.id} user={user} isDemo={isDemo} mutate={mutate} onDone={afterPost} onCancel={() => onView('feed')} /></section>;
+  if (view === 'new' && brand) return <NewPostFlow key={user.id} user={user} posts={posts} isDemo={isDemo} mutate={mutate} onDone={afterPost} onCancel={() => onView('feed')} />;
   if ((mine && !user) || (view === 'new' && !brand)) return <section className="bm"><div className="bm-empty">
     <h1>{view === 'new' ? '브랜드 회원 전용입니다' : '로그인이 필요합니다'}</h1>
     <button type="button" className="bm-primary" onClick={user ? () => onView('feed') : onLogin}>{user ? '제작 공고' : '로그인'} <ArrowRight size={15} /></button></div></section>;
@@ -427,7 +454,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
           <span className="bm-sort"><ArrowDown size={12}/>최신순</span></div></div>
         {rows.length > 0 ? <div className="bm-rows">{rows.map(post => <button className={`bm-row ${selected?.id === post.id ? 'is-current' : ''}`} type="button" key={post.id}
           data-post={post.id} aria-current={post.id === postId ? 'true' : undefined} onClick={() => choose(post.id)}>
-          <ProductIcon post={post} /><span className="bm-row-text"><span className="bm-row-meta">{post.brandAlias || types[post.category]}{rowTime(post) && <><i/> {elapsed(rowTime(post))}</>}</span>
+          <ProductIcon post={post} /><span className="bm-row-text">{rowTime(post) && <span className="bm-row-meta"><time dateTime={rowTime(post)}>{elapsed(rowTime(post))} 등록</time></span>}
           <strong>{post.title}</strong>{post.reviewStatus!=='withdrawn' && <span className="bm-row-figures">{requestedQuantity(post.quantity)} <i/> {requestedPrice(post.unitPrice)}</span>}</span>
           <span className="bm-row-right"><span className={acceptsProposals(post) && daysLeft(post) <= 2 ? 'urgent' : ''}>{statusText(post, archived)}</span>{isPublicPost(post) && <small>입찰 {post.offerCount ?? 0}건</small>}</span>
         </button>)}</div> :

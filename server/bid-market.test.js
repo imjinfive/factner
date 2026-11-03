@@ -54,6 +54,31 @@ const post = { category:'packaging',title:'칼선에 맞춘 상자',quantity:500
 const offer = { tiers:[{quantity:1000,unitPrice:1800},{quantity:500,unitPrice:2000}],note:'운임 별도',agreement };
 const consent = { accepted:true, version:BID_TERMS.version,signature:'비공개 서명자' };
 
+test('concurrent identical posts create one record and one signature while changed requests remain available',async t=>{
+  const f=fixture(t);
+  const attempts=await Promise.all([f.api(f.brand,'posts',post),f.api(f.brand,'posts',post)]);
+  assert.deepEqual(attempts.map(result=>result.status).sort(),[201,409]);
+  assert.match(attempts.find(result=>result.status===409).error,/이미 심사 또는 모집 중/);
+  assert.equal(f.sql.prepare('SELECT count(*) n FROM market_posts').get().n,1);
+  assert.equal(f.sql.prepare('SELECT count(*) n FROM submission_agreements').get().n,1);
+  assert.equal((await f.api(f.brand,'posts',{...post,quantity:750})).status,201);
+  assert.equal((await f.api(f.otherBrand,'posts',post)).status,201);
+});
+
+test('duplicate protection handles unknown quantities and allows reorders after closure or withdrawal',async t=>{
+  const f=fixture(t),unknown={...post,quantity:null,unitPrice:null};
+  const first=(await f.api(f.brand,'posts',unknown)).data.id;
+  assert.equal((await f.api(f.brand,'posts',unknown)).status,409);
+  f.sql.prepare("UPDATE market_posts SET review_status='approved' WHERE id=?").run(first);
+  assert.equal((await f.api(f.brand,'posts',unknown)).status,409);
+  f.sql.prepare("UPDATE market_posts SET deadline='2000-01-01' WHERE id=?").run(first);
+  const reordered=await f.api(f.brand,'posts',unknown);assert.equal(reordered.status,201);
+  f.sql.prepare("UPDATE market_posts SET review_status='withdrawn' WHERE id=?").run(reordered.data.id);
+  const state=(await f.api(f.brand,'state')).data;
+  assert.ok(state.posts.some(row=>row.isMine&&row.id===reordered.data.id&&row.reviewStatus==='withdrawn'));
+  assert.equal((await f.api(f.brand,'posts',unknown)).status,201);
+});
+
 test('consultation migration preserves referenced offers, contracts, reviews and signatures',async t=>{
   const f=fixture(t,false),postId=await approvedPost(f);
   const offerId=(await f.api(f.box,'posts/'+postId+'/offers',offer)).data.id;
@@ -273,7 +298,7 @@ test('signed submissions keep server documents and atomic snapshots, with a fres
  assert.equal((await f.api(f.brand,'offers/'+a+'/select',{...consent,quantity:500})).status,404);
  assert.equal(f.sql.prepare('SELECT count(*) n FROM submission_agreements').get().n,2);
  f.sql.exec("CREATE TRIGGER reject_test_signature BEFORE INSERT ON submission_agreements BEGIN SELECT RAISE(ABORT,'signature unavailable'); END;");
- await assert.rejects(()=>f.api(f.brand,'posts',post),/signature unavailable/);
+ await assert.rejects(()=>f.api(f.brand,'posts',{...post,title:'다른 규격 상자 제작'}),/signature unavailable/);
  assert.equal(f.sql.prepare('SELECT count(*) n FROM market_posts').get().n,1);
  await assert.rejects(()=>f.api(f.both,'posts/'+id+'/offers',offer),/signature unavailable/);
  assert.equal(f.sql.prepare('SELECT count(*) n FROM market_offers').get().n,1);
