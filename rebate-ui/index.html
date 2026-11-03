@@ -1,94 +1,24 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="theme-color" content="#13885b" />
     <meta name="color-scheme" content="light dark" />
-    <link id="opening-photo" rel="preload" as="image" href="/src/assets/service-village.webp" fetchpriority="high" media="not all" />
     <script>
-      (() => {
-        let theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        try {
-          const saved = localStorage.getItem('factner-bid-theme');
-          if (saved === 'light' || saved === 'dark') theme = saved;
-        } catch {}
-        document.documentElement.dataset.theme = theme;
-        const state = history.state || {};
-        const path = location.pathname.replace(/\/+$/, '');
-        const surface = path === '/members' || path === '/members/index.html' ? 'members'
-          : path === '/ops' ? 'ops' : state.factnerSurface || 'market';
-        const savedRoute = surface === 'members' ? state.factnerPage || state.factnerRoute : state.factnerRoute;
-        const fragment = location.hash.slice(1) || (typeof savedRoute === 'string' ? savedRoute : '');
-        const view = fragment.split('/')[0] || (surface === 'members' ? 'account' : 'intro');
-        function feedStart() {
-          try { return sessionStorage.getItem('factner-bid-review-token') || sessionStorage.getItem('factner-account-active') ? 'board' : 'discovery'; }
-          catch { return 'board'; }
-        }
-        let start = 'other';
-        if (surface === 'members') {
-          if (view === 'account') start = 'account';
-          if (view === 'intro') start = 'intro';
-        } else if (surface !== 'ops') {
-          if (view === 'intro') start = 'intro';
-          else if (view === 'feed' || view === 'mine' || view === 'preview') {
-            start = 'board';
-            if (fragment === 'feed' || fragment === 'preview') start = feedStart();
-          }
-          else if (['login','signup','account','demo','find-id','recover-password','reset-password'].includes(view)) start = 'account';
-        }
-        document.documentElement.dataset.bidStart = start;
-        if (start === 'intro') document.getElementById('opening-photo').media = 'all';
-        // The hero link is usable while the application bundle is in flight.
-        document.addEventListener('click', event => {
-          if (!event.target.closest?.('[data-boot-feed]') || event.button !== 0 ||
-              event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-          event.preventDefault();
-          history.pushState({factnerSurface:'market',factnerRoute:'feed'},'', '/');
-          document.documentElement.dataset.bidStart = feedStart();
-          window.dispatchEvent(new Event('factner:navigation'));
-        });
-      })();
+      try { const theme=localStorage.getItem('factner-bid-theme'); if(theme==='dark')document.documentElement.dataset.theme=theme; } catch {}
     </script>
     <link rel="stylesheet" href="/src/bids/loading.css" />
     <link rel="icon" href="/factner.svg" type="image/svg+xml" />
-    <meta
-      name="description"
-      content="브랜드와 디자인·패키징 제작업체가 수량, 가격, 제작 조건을 비교하고 함께 일할 파트너를 찾는 곳입니다."
-    />
-    <title>팩트너 · 파트너 찾기</title>
+    <meta name="description" content="거래의 신뢰는 팩트너부터. 원하는 패키징을 고르고 제작업체의 견적을 비교하세요. 제작업체는 새로운 제작 의뢰를 만나보세요." />
+    <title>거래의 신뢰는 팩트너부터 · factner.</title>
   </head>
   <body>
     <div id="root">
       <div class="bx-bootstrap" role="status" aria-label="팩트너 화면을 불러오는 중">
-        <header class="site-header funnel-header" aria-hidden="true">
-          <div class="header-inner">
-            <span class="logo"><i class="bl-brand-icon"></i><span>factner.</span></span>
-            <nav><span class="nav-link">서비스 소개<i class="nav-indicator bl-intro-indicator"></i></span><span class="nav-link">파트너 찾기<i class="nav-indicator bl-feed-indicator"></i></span></nav>
-            <span class="header-actions bx-account-placeholder"></span>
-          </div>
-        </header>
-        <div class="rb-story bl-boot-intro">
-          <div class="rb-scene rb-opening"><div class="rb-stage"><div class="rb-opening-frame">
-            <div class="rb-opening-image"></div><div class="rb-opening-shade"></div>
-            <div class="rb-opening-title">
-              <h1>브랜드의 가치는<br /><span>패키징부터.</span></h1>
-              <a class="button white rb-opening-cta" href="/" data-boot-feed>파트너 찾기
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h16m-7-7 7 7-7 7" /></svg>
-              </a>
-            </div>
-          </div></div></div>
-        </div>
-        <div class="bl-loading bl-access bl-boot-access" aria-hidden="true">
-          <div class="bl-access-title"></div>
-          <div class="bl-access-card"></div>
-        </div>
-        <div class="bl-discovery bl-boot-discovery" aria-hidden="true">
-          <div class="bl-discovery-title"></div><div class="bl-discovery-line"></div>
-          <div class="bl-discovery-options"><i></i><i></i><i></i></div>
-        </div>
-        <div class="bl-loading bl-boot-work" aria-hidden="true"><div class="bl-cover"></div><div class="bl-rows"></div></div>
+        <header class="site-header funnel-header" aria-hidden="true"><div class="header-inner"><span class="logo"><i class="bl-brand-icon"></i><span>factner.</span></span></div></header>
+        <div class="bl-welcome" aria-hidden="true"><span></span><span></span></div>
       </div>
     </div>
     <script type="module" src="/src/bids/entry.jsx"></script>

@@ -30,7 +30,7 @@ function fixture(t){
   const env={DB,APP_KIND:'main',[localMemberPreview]:true,BID_ROOMS:{idFromName:key=>key,get:key=>({fetch:async req=>{
     if(!rooms.has(key)){
       if(new URL(req.url).pathname==='/api/bid/preview-login')return Response.json({error:'다시 로그인해주세요.'},{status:401});
-      const isolate=database(t,['0001_initial.sql','0013_bid_market.sql','0015_market_post_review.sql','0018_market_offer_review.sql','0019_submission_agreements.sql']);seedReview(isolate.raw);
+      const isolate=database(t,['0001_initial.sql','0013_bid_market.sql','0015_market_post_review.sql','0018_market_offer_review.sql','0019_submission_agreements.sql','0022_post_consultation.sql']);seedReview(isolate.raw);
       rooms.set(key,{DB:isolate.DB,[roomDatabase]:isolate.DB});
     }
     try{return await bidApi(req,rooms.get(key),new URL(req.url));}
@@ -62,6 +62,33 @@ const account=(key,kind='brand')=>({email:key+'@example.test',password,name:key+
   kind,...(kind==='packaging'?{packagingDesign:false}:{}),legalType:'individual',files:[],consent:true,termsConsent:true,consentVersion:'accepted-version',agreement});
 const job={category:'packaging',title:'단상자 신규 제작',quantity:1000,unitPrice:300,size:'50 × 50',description:'코팅 종이 / 택배 납품',agreement};
 const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225}],note:'배송 포함',agreement};
+
+test('survey is privately retained through approval, login on another device and admin review',async t=>{
+  const f=fixture(t);f.publish();
+  const onboarding={version:1,role:'brand',experience:'no',material:'paper',product:'paper-carton',quantityUnknown:true,sizeUnknown:true,budgetUnknown:true,timing:'상담 후 결정',status:'approved',password:'do-not-store'};
+  const fields={...account('survey'),onboarding};
+  for(const invalid of [{...onboarding,role:'supplier'},{...onboarding,version:2},{...onboarding,extra:'x'.repeat(8192)}]){
+    assert.equal((await f.call('bid/register',{...fields,onboarding:invalid})).status,400);
+  }
+  const registered=await f.call('bid/register',fields);assert.equal(registered.status,201);
+  const saved=f.raw.prepare('SELECT status,onboarding_json FROM members WHERE id=?').get(registered.data.id);
+  assert.equal(saved.status,'pending');assert.doesNotMatch(saved.onboarding_json,/do-not-store|approved/);
+  assert.equal(f.raw.prepare('SELECT count(*) n FROM market_posts').get().n,0);
+  assert.equal((await f.call('bid/login',{email:fields.email,password})).status,403);
+  await f.approve(registered.data.id);
+  const login=await f.call('bid/login',{email:fields.email,password});
+  assert.equal(login.data.user.onboarding.product,'paper-carton');
+  assert.equal(login.data.user.onboarding.quantityUnknown,true);
+  const newDevice=await f.call('bid/login',{email:fields.email,password});
+  assert.deepEqual((await f.call('bid/session',undefined,{Cookie:newDevice.cookie})).data.user.onboarding,login.data.user.onboarding);
+  const url=new URL('https://admin.example.test/api/admin/members/'+registered.data.id);
+  assert.deepEqual((await (await memberAdminApi(new Request(url),f.env,url,f.owner)).json()).member.onboarding,login.data.user.onboarding);
+  assert.doesNotMatch(JSON.stringify((await f.call('bid/state')).data),/paper-carton|상담 후 결정/);
+  const supplier={...account('survey-maker','packaging'),packagingDesign:undefined,onboarding:{version:1,role:'supplier',supplierProducts:['paper-carton'],quantityRange:'small',availability:'now',selectedPostId:'public-post'}};
+  const maker=await f.call('bid/register',supplier);assert.equal(maker.status,201);
+  await f.approve(maker.data.id);
+  assert.equal((await f.call('bid/login',{email:supplier.email,password})).data.user.onboarding.selectedPostId,'public-post');
+});
 
 test('signup requires an electronic signature and keeps its immutable document privately with the application',async t=>{
  const f=fixture(t);f.publish();const fields=account('signed');
@@ -265,6 +292,11 @@ test('approved accounts share real posts across logins; one selected offer reach
   assert.equal((await select(winnerOffer,brand,2000)).status,409);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM matching_requests').get().n,1);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM matching_request_events').get().n,1);
+  const preservedTables=['market_posts','market_offers','market_connection_requests','matching_requests','matching_request_events','market_offer_reviews','submission_agreements'];
+  const beforeMigration=preservedTables.map(name=>f.raw.prepare(`SELECT * FROM ${name}`).all());
+  f.raw.exec('BEGIN');f.raw.exec(readFileSync(new URL('0022_post_consultation.sql',migrationDir),'utf8'));f.raw.exec('COMMIT');
+  assert.deepEqual(preservedTables.map(name=>f.raw.prepare(`SELECT * FROM ${name}`).all()),beforeMigration);
+  assert.deepEqual(f.raw.prepare('PRAGMA foreign_key_check').all(),[]);
   assert.deepEqual((await f.call('bid/state',undefined,outsider.headers)).data.connections,[]);
   const match=(await board(winner)).connections[0];
   assert.equal(match.alias,bids.find(o=>o.id===winnerOffer).alias);

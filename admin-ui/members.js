@@ -57,7 +57,7 @@ export async function membersView(context){
 
  async function detail(id,section,drafts=[],compare=false){
   const requestId=++request;
-  const {member:m,files,reviews,orderCounts,profileEvents=[],agreements=[]}=await api(`admin/members/${id}`);
+  const {member:m,files,reviews,orderCounts,profileEvents=[],agreements=[],surveyRows=[]}=await api(`admin/members/${id}`);
   if(requestId!==request||context.isActive&&!context.isActive())return;
   if(m.status==='archived'){
    setDirty(false);
@@ -95,6 +95,7 @@ export async function membersView(context){
    <div class="detail-grid" data-member-editor>
     ${support.html}
     ${workspace.html}
+    ${surveyRows.length?`<details class="panel member-fold" id="member-survey-panel"><summary>가입 전 선택한 조건</summary><dl>${surveyRows.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl></details>`:''}
     <details class="panel member-fold" id="member-profile-panel"><summary>회원 정보 · 수정</summary><dl>${[['담당자',m.contact],['이메일',m.email],['연락처',m.phone],['사업자번호',m.business_number||'해당 없음'],...(m.role==='supplier'?[['패키징 디자인',m.packaging_design==null?'미응답':m.packaging_design?'함께 제공':'제작만 제공']]:[]),['가입일',date(m.created_at)]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl><details class="member-profile-edit"><summary>회원정보 수정</summary><form id="member-profile"><label>업체명 / 브랜드명<input name="name" value="${esc(m.name)}" maxlength="100" required></label><label>담당자<input name="contact" value="${esc(m.contact)}" maxlength="60" required></label><label>연락처<input name="phone" type="tel" value="${esc(m.phone)}" maxlength="30" required></label><button type="submit">회원정보 저장</button></form></details></details>
     <details class="panel member-fold ${reviewing?'pending-member-review':''}" id="member-status-panel" ${reviewing?'open':''}><summary>${reviewing?'가입 심사':'이용 상태 관리'}</summary>
      <form id="member-review"><label>변경할 상태<select name="status" required><option value="">선택해주세요</option>${options(choices,'')}</select></label>

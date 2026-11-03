@@ -1,17 +1,19 @@
-import React,{useCallback,useEffect,useRef,useState} from 'react';
+import React,{lazy,Suspense,useCallback,useEffect,useRef,useState} from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { CaretDown, ArrowRight, SquaresFour } from '@phosphor-icons/react';
 import {MotionConfig,motion} from 'motion/react';
-import {BrandMark,Button,Photo} from '../BrandControls';
-import ServiceIntro from '../ServiceIntro';
+import {BrandMark,Button} from '../BrandControls';
+import OnboardingSurvey from './OnboardingSurvey';
+import {normalizeOnboardingDraft,saveOnboardingDraft} from './onboarding-data.js';
 import PolicyDocument,{policyTitles} from '../PolicyDocument';
 import SiteFooter from '../SiteFooter';
 import {normalizeSiteEntry,siteNavigationEvent,writeSiteEntry} from '../site-history.js';
-import Market from './Market';
-import PartnerAccess from './PartnerAccess';
 import {BidLoading,initialBidTheme,saveBidTheme} from './BidLoading';
 import {Connections,ConnectionDialog,DealDesk,SelectDialog} from './DealDesk';
 import './shell.css';
+
+const Market=lazy(()=>import('./Market'));
+const PartnerAccess=lazy(()=>import('./PartnerAccess'));
 
 const tokenKey='factner-bid-review-token';
 const roomStorageKey='factner-bid-review-room';
@@ -43,7 +45,7 @@ async function request(path,payload,token=readToken()){
 }
 
 const accessViews = ['login','signup','account','find-id','recover-password','reset-password'];
-const titles={intro:'서비스 소개',feed:'파트너 찾기',mine:'내 활동',new:'공고 등록',contracts:'계약함',login:'로그인',signup:'회원가입',account:'내 계정','find-id':'아이디 찾기','recover-password':'비밀번호 찾기','reset-password':'비밀번호 재설정',...policyTitles};
+const titles={intro:'거래의 신뢰는 팩트너부터',feed:'제작 의뢰',mine:'내 활동',new:'공고 등록',contracts:'계약함',login:'로그인',signup:'회원가입',account:'내 계정','find-id':'아이디 찾기','recover-password':'비밀번호 찾기','reset-password':'비밀번호 재설정',...policyTitles};
 
 export default function BidApp({surface='market',initialHome=false}){
   const ops=surface==='ops';
@@ -52,7 +54,7 @@ export default function BidApp({surface='market',initialHome=false}){
   const [navRevision,setNavRevision]=useState(0);
   const [view,detail]=route.split('/'), intro=view==='intro', access=accessViews.includes(view);
   const policy=Object.hasOwn(policyTitles,view);
-  const marketNeeded=['feed','mine','contracts'].includes(view);
+  const marketNeeded=['intro','feed','mine','contracts'].includes(view);
   const [session,setSession]=useState(null),[state,setState]=useState(null),[error,setError]=useState('');
   const [theme,setTheme]=useState(initialBidTheme),[select,setSelect]=useState(null);
   const [welcome,setWelcome]=useState(null);
@@ -173,9 +175,13 @@ export default function BidApp({surface='market',initialHome=false}){
     }else{try{sessionStorage.removeItem(tokenKey);sessionStorage.removeItem(roomStorageKey);}catch{}}
     setState(null);setError('');setSelect(null);setSession(s=>({...s,user:data.user,demo:Boolean(data.token)}));
     if(data.user.legacyOnly){writeSiteEntry('members','account',{replace:true});return;}
-    if(data.firstLogin)setWelcome(data.user.kind);
-    const target=data.user.kind==='admin'?'contracts':data.user.kind==='brand'?'new':'feed';
-    go(target,{replace:true,targetSurface:data.user.kind==='admin'?'ops':'market'});
+    const currentDraft=normalizeOnboardingDraft(history.state?.onboardingDraft);
+    const matchingDraft=currentDraft.role && currentDraft.role===(data.user.kind==='brand'?'brand':['packaging','both'].includes(data.user.kind)?'supplier':'')?currentDraft:null;
+    const resume=matchingDraft||data.user.onboarding;
+    if(data.firstLogin&&!resume?.role)setWelcome(data.user.kind);
+    const selectedPost=resume?.role==='supplier'&&/^[0-9a-f-]{36}$/i.test(resume.selectedPostId||'')?resume.selectedPostId:'';
+    const target=data.user.kind==='admin'?'contracts':data.user.kind==='brand'?'new':selectedPost?'feed/'+selectedPost:'feed';
+    go(target,{replace:true,targetSurface:data.user.kind==='admin'?'ops':'market',entry:matchingDraft?{onboardingDraft:matchingDraft}:{}});
   };
   const logout=async()=>{
     await request('/logout',{});++seq.current;++authRevision.current;try{sessionStorage.removeItem(tokenKey);sessionStorage.removeItem(roomStorageKey);sessionStorage.removeItem('factner-account-active');}catch{}
@@ -194,12 +200,17 @@ export default function BidApp({surface='market',initialHome=false}){
   ]:user?.kind==='packaging'||user?.kind==='both'?[
     ['feed','제작 공고'],['mine','내 입찰'],['contracts','매칭 현황']
   ]:[
-    ['intro','서비스 소개'],['feed','파트너 찾기'],...(user?[['mine',user.kind==='brand'?'내 공고':'내 제안'],['contracts','계약함']]:[])
+    ...(user?[['feed','제작 공고'],['mine','내 제안'],['contracts','계약함']]:[])
   ];
   const missing=!session||(marketNeeded&&!state);
   const discovery = view==='feed'&&!detail&&!user;
   const accessMode = discovery?'discovery':view;
   const loadingView = discovery && (session || !hasSavedSession()) ? 'discovery' : view;
+  const showSurvey = !ops && (intro || discovery);
+  function continueSurvey(draft) {
+    saveOnboardingDraft(draft);
+    go('signup',{entry:{customerSignup:{role:draft.role,legal:''},onboardingDraft:draft}});
+  }
   const themeToggle=()=>{const next=theme==='light'?'dark':'light';saveBidTheme(next);setTheme(next);};
   return <MotionConfig reducedMotion="user"><div className="bx-shell">
     <a className="skip-link" href="#bid-work" onClick={e=>{e.preventDefault();document.getElementById('bid-work')?.focus();}}>본문 바로가기</a>
@@ -211,14 +222,14 @@ export default function BidApp({surface='market',initialHome=false}){
         {!ops && <button className="member-login-link bx-signup" onClick={()=>navigate('signup')}>회원가입</button>}
       </>}</div>
     </div></header>
-    <main id="bid-work" tabIndex={-1}>
+    <main id="bid-work" tabIndex={-1}><Suspense fallback={<BidLoading view={loadingView}/> }>
       {error&&<div role="alert" className="bx-alert">{error} <button onClick={()=>refresh(true)}>다시 연결</button></div>}
-      {intro?<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>navigate('feed')}/>:policy?<article className="shell bx-policy"><span className="member-eyebrow">팩트너 이용 안내</span><h1>{titles[view]}</h1><PolicyDocument key={view} kind={view}/></article>:missing?(error?null:<BidLoading view={loadingView}/>):access||discovery?
+      {showSurvey?<OnboardingSurvey key={navRevision} posts={state?.posts||[]} partners={state?.partners||[]} onContinue={continueSurvey} onLogin={draft=>go('login',{entry:{onboardingDraft:saveOnboardingDraft(draft)}})}/>:policy?<article className="shell bx-policy"><h1>{titles[view]}</h1><PolicyDocument key={view} kind={view}/></article>:missing?(error?null:<BidLoading view={loadingView}/>):access||discovery?
         <PartnerAccess key={navRevision} navigationKey={navRevision} mode={accessMode} session={session} partners={state?.partners||[]} posts={state?.posts||[]} onNavigate={navigate} onMembers={openMembers} onAuth={authenticate} onExit={logout}/>:
         view==='contracts'&&(ops?user?.kind!=='admin':!user)?<section className="bx-authgate"><SquaresFour size={35}/><h1>{ops?'계약 운영실':'계약함'}</h1><p>{ops?'계약 운영은 관리자 전용입니다.':'로그인하면 진행 중인 계약을 확인할 수 있어요.'}</p>{!ops&&<Button onClick={()=>navigate('login')}>로그인 <ArrowRight size={16}/></Button>}</section>:
         view==='contracts'?(session.demo?<DealDesk state={state} user={user} mutate={mutate}/>:<Connections connections={state.connections} onMembers={openMembers}/>):
         <Market key={(user?.id||'guest')+':'+navRevision} state={state} user={user} isDemo={Boolean(session?.demo)} reviewRoomKey={session?.demo?activeRoom():null} view={view} postId={['feed','mine'].includes(view)?detail:null} initialCategory={view==='new'?detail:null} onChoosePost={id=>go(id?view+'/'+id:view,{scroll:false})} onView={navigate} mutate={mutate} onSelect={(offer,post,tier)=>setSelect({offer,post,tier})} onLogin={()=>navigate('login')} onDiscoveryBack={backToBrandRequests}/>}
-    </main>
+    </Suspense></main>
     <Dialog.Root open={Boolean(welcome)} onOpenChange={open=>{if(!open)setWelcome(null);}}>
       <Dialog.Portal><Dialog.Overlay className="modal-overlay"/><Dialog.Content className="modal pa-welcome">
         <Dialog.Title>팩트너에 가입하신 걸 축하합니다!</Dialog.Title>

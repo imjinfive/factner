@@ -63,10 +63,6 @@ export function MemberLegalChoices({onChoose}) {
 export function MemberRegistrationFields({role, legal, draft, cert, setCert, onCertBusy, photos, setPhotos, onPhotosBusy, passwordRef}) {
   return <>
     <p className="member-tag">{role==='brand'?'브랜드':'패키징 제작 업체'} · {legalTypes[legal]}</p>
-    {role==='supplier' && <fieldset className="pa-design-question"><legend>패키징 디자인도 함께 제공하시나요?</legend>
-      <label><input name="packagingDesign" type="radio" value="yes" required defaultChecked={draft.packagingDesign==='yes'}/> 디자인과 제작을 함께 해요</label>
-      <label><input name="packagingDesign" type="radio" value="no" required defaultChecked={draft.packagingDesign==='no'}/> 제작만 해요</label>
-    </fieldset>}
     <Field label={role==='brand'?'브랜드명':'업체명 / 활동명'} name="name" defaultValue={draft.name||''} maxLength={100} required/>
     <div className="member-form-grid"><Field label="담당자" name="contact" defaultValue={draft.contact||''} maxLength={60} required/>
       <Field label="연락처" name="phone" defaultValue={draft.phone||''} type="tel" inputMode="tel" maxLength={30} onInput={e=>formatInput(e,formatPhone)} required/></div>

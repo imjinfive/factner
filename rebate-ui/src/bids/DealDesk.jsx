@@ -227,7 +227,7 @@ function ContractCard({ contract, post, offer, user, mutate }) {
     <details className="fd-contract-copy"><summary>계약 내용과 문서 버전</summary><p>서명 버전 {contract.version}</p>
       {terms ? <Terms terms={terms}/> : <p>계약 내용을 불러올 수 없습니다. 운영자에게 확인해주세요.</p>}
     </details>
-    {designPaused && <p className="fd-note">디자이너 서비스 준비 중 · 기존 계약 기록만 확인할 수 있어요.</p>}
+    {designPaused && <p className="fd-note">기존 계약 기록을 확인할 수 있어요.</p>}
     {!designPaused && supplier && status === 'awaiting_supplier' && <button className="button primary" disabled={!terms} onClick={() => setAction('sign')}>1차 계약 확인·서명</button>}
     {!designPaused && user.kind === 'admin' && status === 'signed' && bothSigned && <button className="button primary" onClick={() => setAction('reveal')}>서명 검토·소개 승인</button>}
     {revealed && <section className="fd-payments"><h3>플랫폼 결제</h3>

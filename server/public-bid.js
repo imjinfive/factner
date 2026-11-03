@@ -73,7 +73,7 @@ export async function publicBidApi(req,env,url) {
   }
   if(path==='/logout'&&req.method==='POST')return memberApi(req,env,new URL('/api/member/logout',url));
   const member=await currentMember(req,env);
-  const user=member?{id:member.id,email:member.email,name:member.name,kind:member.role==='brand'?'brand':'packaging',legacyOnly:!await hasMarketConsent(env,member.id)}:null;
+  const user=member?{id:member.id,email:member.email,name:member.name,kind:member.role==='brand'?'brand':'packaging',legacyOnly:!await hasMarketConsent(env,member.id),onboarding:member.onboarding}:null;
   if(path==='/session'&&req.method==='GET'){
     return json({user,mode:'live',demo:false,hosted:false,accounts:[],registration:await registration(env)});
   }

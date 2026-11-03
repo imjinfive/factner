@@ -1,0 +1,54 @@
+Use case: product-mockup. Asset type: ONE seamless website sprite atlas, precisely 6 columns by 6 rows, 36 equally sized square cells in a square image. Make it 3072x3072 if supported. Pure white #FFFFFF background across the entire atlas, no grid lines, borders, cell backgrounds, labels, numbers, captions or watermark.
+Each cell contains exactly one isolated representative packaging product drawing, centered with at least 16% white margin inside every cell. The object NEVER crosses its cell edge. Every object occupies about 68% of its own square cell. Consistent camera: elegant three-quarter view slightly from above. Style: polished contemporary editorial product illustration with restrained soft dimensional shading, crisp silhouettes, tangible paper folds and subtle materials, sophisticated Korean fintech/Apple product selector aesthetic. NOT a photograph, NOT playful toy art, NOT cartoon characters, NOT an infographic.
+Palette: warm white/cream packaging, forest green #13885B printed accents, occasional natural kraft brown or neutral silver/glass as material requires. Light grounding shadow only. Each product has the SAME small green package/cube brand symbol and exact lowercase wordmark "factner." printed tastefully on its front or on a small green-and-white attached label. No other text. White text on green packages. Keep all products simple and recognizable.
+
+Exact order is left-to-right row by row. Draw ALL 36 different objects in exactly these cells:
+ROW 1:
+1. Tall white folding paper tuck-end carton with open top flap, green lower third, factner. on front.
+2. Natural kraft corrugated G-style hinged mailer box with lid open at 65 degrees, green factner. print on front.
+3. Cream rigid luxury gift box with a slightly lifted separate lid and green factner. on front.
+4. White paper shopping bag with two dark green twisted paper handles, green factner. on front.
+5. Clear thin flat plastic resealable bag holding a folded plain cream insert with green factner. label.
+6. Clear display hanging bag with a green reinforced header and hanging hole, white factner. header.
+
+ROW 2:
+7. Flat sealed opaque white plastic shipping mailer with green factner. print.
+8. White flexible plastic shopping carrier bag with die-cut oval handle and green factner.
+9. Compact roll of transparent stretch packaging film with a green-and-white factner. paper band.
+10. Flat sealed three-side pouch with green-and-white body and factner. mark.
+11. Cream stand-up zip pouch with green lower band and factner. mark.
+12. White stand-up spout pouch with a green screw cap in upper corner and factner. mark.
+
+ROW 3:
+13. Slim single-serve sealed stick sachet, vertically oriented, white and green factner. print.
+14. Cream plastic cylindrical pump bottle with green pump head and factner.
+15. Low white wide-mouth plastic cream jar with green lid and factner.
+16. White cosmetic squeeze tube with green flip cap at bottom and factner.
+17. Clear rectangular plastic takeaway food tub with lid and green factner. band, empty.
+18. Transparent hinged clamshell retail package enclosing a blank cream insert bearing factner.
+
+ROW 4:
+19. Open round white cushion cosmetic compact with green lid exterior, neutral cream inner cushion, factner. on lid.
+20. Clear tall glass beverage bottle with green screw lid and green-and-cream factner. label, no liquid.
+21. Clear squat glass jam jar with green metal lid and factner. paper label, empty.
+22. Frosted glass skincare dropper bottle with green cap, white bulb, factner. mark.
+23. Square clear glass perfume bottle with green rectangular cap and minimalist factner. label.
+24. Rectangular cream metal tin case with slightly open hinged lid, green factner.
+
+ROW 5:
+25. White aluminum beverage can with green lower band, silver pull tab, factner. wordmark.
+26. Small silver aluminum cosmetic squeeze tube with green cap and green factner.
+27. Small silver industrial metal pail with handle, white label and green factner., no warning symbols.
+28. Natural pale wooden gift box with sliding lid slightly open and green factner. mark.
+29. Tall wooden single wine bottle presentation box with rope carrying handle and small factner. mark, no bottle.
+30. Plain compact plywood shipping crate with strong edge battens and small green factner. stencil.
+
+ROW 6:
+31. Small clean wooden shipping pallet with a green-and-white factner. band wrapped around one slat.
+32. White insulated foam shipping box with detached lid leaning behind and green factner. label.
+33. Silver insulated bubble shipping envelope with fold-over closure and small green factner. label.
+34. Cream insulated tote cooler bag with dark green handles and trim, factner. front.
+35. Open silver reflective insulation liner shaped to fit a shipping box, no outer box, green factner. label.
+36. A single flat white reusable cold gel ice pack with rounded corners and green factner. print.
+
+Quality: a consistent family, accurate materials and distinct silhouettes, no stray props, no products missing, exactly six columns and six rows, a clean atlas for CSS sprite coordinates.

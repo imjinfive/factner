@@ -121,6 +121,7 @@ const roomSchema = readFileSync(new URL('../migrations/0013_bid_market.sql', imp
 const reviewSchema = readFileSync(new URL('../migrations/0015_market_post_review.sql', import.meta.url), 'utf8');
 const offerSchema = readFileSync(new URL('../migrations/0018_market_offer_review.sql', import.meta.url), 'utf8');
 const agreementSchema = readFileSync(new URL('../migrations/0019_submission_agreements.sql', import.meta.url), 'utf8');
+const consultationSchema = readFileSync(new URL('../migrations/0022_post_consultation.sql', import.meta.url), 'utf8');
 async function roomCall(room, path, { input, token, origin = 'https://review.example.test' } = {}) {
   const headers = { Origin: origin, 'Content-Type': 'application/json' };
   if (token) headers.Authorization = 'Bearer ' + token;
@@ -131,7 +132,7 @@ async function roomCall(room, path, { input, token, origin = 'https://review.exa
 }
 
 test('a preview login never initializes an unknown or expired room',async t=>{
-  const ctx=roomContext(t),room=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema);
+  const ctx=roomContext(t),room=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema);
   const input={email:'test-'+'a'.repeat(24)+'@preview.factner.invalid',password:'a-generated-password-for-preview'};
   assert.equal((await roomCall(room,'preview-login',{input})).status,401);
   assert.equal(ctx.storage.getAlarm(),null);
@@ -141,27 +142,27 @@ test('a preview login never initializes an unknown or expired room',async t=>{
   await roomCall(room,'login',{input:{email:'package1@gmail.com',password:reviewPassword}});
   ctx.storage.sql.exec("INSERT INTO market_accounts VALUES('preview-account',?,'테스트 업체','packaging',?)",input.email,await passwordHash(input.password));
   const expiry=ctx.storage.getAlarm();assert.ok(expiry>Date.now());
-  const resumed=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema);
+  const resumed=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema);
   assert.equal((await roomCall(resumed,'preview-login',{input})).status,200);
   ctx.storage.sql.exec('UPDATE review_room SET expires_at=?',Date.now()-1);
-  assert.equal((await roomCall(new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema),'preview-login',{input})).status,410);
+  assert.equal((await roomCall(new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema),'preview-login',{input})).status,410);
   await room.alarm();assert.equal((await roomCall(room,'preview-login',{input})).status,401);
   assert.equal(ctx.storage.getAlarm(),null);
 });
 
 test('review logins, activity and sessions are independent per room, survive eviction and expire',async t=>{
-  const ctx=roomContext(t),one=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema),two=new BidRoom(roomContext(t),roomSchema,reviewSchema,offerSchema,agreementSchema);
+  const ctx=roomContext(t),one=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema),two=new BidRoom(roomContext(t),roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema);
   const fields={email:'package1@gmail.com',password:reviewPassword,role:'packaging'};
   assert.equal((await roomCall(one,'login',{input:fields,origin:'https://other.test'})).status,403);
   assert.equal((await roomCall(one,'state')).status,401);assert.equal((await roomCall(one,'events')).status,404);
-  const {token}= (await roomCall(one,'login',{input:fields})).data, resumed=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema);
+  const {token}= (await roomCall(one,'login',{input:fields})).data, resumed=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema);
   assert.equal((await roomCall(resumed,'state',{token})).data.posts.length,0);
   assert.equal((await roomCall(two,'state',{token})).status,401);
   assert.equal((await roomCall(resumed,'register',{input:registration})).status,404);
   assert.equal((await roomCall(resumed,'demo',{input:{role:'admin'}})).status,404);
   const expiresAt=ctx.storage.getAlarm();assert.ok(Math.abs(expiresAt-Date.now()-7*86400000)<3000);
   ctx.storage.sql.exec('UPDATE review_room SET expires_at=?',Date.now()-1);
-  const expired=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema);assert.equal((await roomCall(expired,'state',{token})).status,410);
+  const expired=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema);assert.equal((await roomCall(expired,'state',{token})).status,410);
   await expired.alarm();assert.equal(ctx.storage.getAlarm(),null);
   assert.equal(ctx.storage.sql.exec("SELECT count(*) AS n FROM sqlite_master WHERE type='table'").one().n,0);
 });
@@ -194,7 +195,7 @@ test('old rooms retire only generated posts, keep handwritten rows and contracts
    sql.exec(reviewSchema);
    sql.exec("UPDATE market_posts SET review_status='approved' WHERE id IN (?,?)",original,handwritten);
   }
-  const room=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema);
+  const room=new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema);
   const supplier=(await roomCall(room,'login',{input:{email:'package1@gmail.com',password:reviewPassword}})).data.token;
   const state=(await roomCall(room,'state',{token:supplier})).data;
   assert.deepEqual(state.posts.map(p=>p.id),previouslyMigrated?[handwritten]:[]);
@@ -206,7 +207,7 @@ test('old rooms retire only generated posts, keep handwritten rows and contracts
   assert.equal(sql.exec('SELECT count(*) n FROM market_offers WHERE id=?',offer).one().n,1);
   assert.equal((await roomCall(room,'login',{input:{email:'brand1@gmail.com',password:reviewPassword}})).status,401);
   assert.equal((await roomCall(room,'state',{token})).status,401);
-  await roomCall(new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema),'state',{token:supplier});
+  await roomCall(new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema),'state',{token:supplier});
   assert.equal(review(original).review_version,2);assert.equal(ctx.storage.getAlarm(),expiry);
  }
 });
@@ -215,7 +216,7 @@ test('only an actual owner can review a specifically shared post inside its orig
  const {raw,env}=fixture(t),roomA='a'.repeat(64),roomB='b'.repeat(64),missing='c'.repeat(64);
  const rooms=new Map(),contexts=new Map(),forwarded=[];
  for(const key of [roomA,roomB,missing]){
-   const ctx=roomContext(t);contexts.set(key,ctx);rooms.set(key,new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema));
+   const ctx=roomContext(t);contexts.set(key,ctx);rooms.set(key,new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema));
  }
  async function signIn(key,email){
    return (await roomCall(rooms.get(key),'login',{input:{email,password:reviewPassword}})).data.token;
@@ -260,7 +261,7 @@ test('only an actual owner can review a specifically shared post inside its orig
 
 test('shared room offer review shows test identities only to its owner and approves only the requested post bid',async t=>{
  const {raw,env}=fixture(t),roomA='d'.repeat(64),roomB='e'.repeat(64),contexts=new Map(),rooms=new Map();
- for(const key of [roomA,roomB]){const ctx=roomContext(t);contexts.set(key,ctx);rooms.set(key,new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema));}
+ for(const key of [roomA,roomB]){const ctx=roomContext(t);contexts.set(key,ctx);rooms.set(key,new BidRoom(ctx,roomSchema,reviewSchema,offerSchema,agreementSchema,consultationSchema));}
  const room=rooms.get(roomA),supplier=(await roomCall(room,'login',{input:{email:'package1@gmail.com',password:reviewPassword}})).data.token;
  await roomCall(rooms.get(roomB),'login',{input:{email:'package1@gmail.com',password:reviewPassword}});
  const sql=contexts.get(roomA).storage.sql,brandEmail='test-'+'a'.repeat(24)+'@preview.factner.invalid',password='legacy-preview-password';

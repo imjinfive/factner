@@ -33,15 +33,17 @@ export class BidRoom {
   #reviewSchema;
   #offerSchema;
   #agreementSchema;
+  #consultationSchema;
   #env;
   #ready = null;
 
-  constructor(ctx, schema, reviewSchema, offerSchema, agreementSchema) {
+  constructor(ctx, schema, reviewSchema, offerSchema, agreementSchema, consultationSchema) {
     this.#ctx = ctx;
     this.#schema = schema;
     this.#reviewSchema = reviewSchema;
     this.#offerSchema = offerSchema;
     this.#agreementSchema = agreementSchema;
+    this.#consultationSchema = consultationSchema;
     this.#env = roomEnvironment(ctx.storage);
   }
 
@@ -57,6 +59,7 @@ export class BidRoom {
         const migrateSubmissions=()=>{
           if(!sql.exec('PRAGMA table_info(market_offers)').toArray().some(row=>row.name==='review_status'))sql.exec(this.#offerSchema);
           if(!sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='submission_agreements'").toArray().length)sql.exec(this.#agreementSchema);
+          if(this.#consultationSchema && sql.exec('PRAGMA table_info(market_posts)').toArray().find(row=>row.name==='quantity')?.notnull)sql.exec(this.#consultationSchema);
         };
         if (existing) {
           if(!sql.exec('PRAGMA table_info(market_posts)').toArray().some(row=>row.name==='review_status')){

@@ -16,7 +16,9 @@ function pager(total,page,pageSize,unit) {
     <button type="button" class="secondary" data-page="${page-1}" ${page<=1?'disabled':''}>이전</button>
     <button type="button" class="secondary" data-page="${page+1}" ${page>=last?'disabled':''}>다음</button></div>`;
 }
-const price = (quantity,unitPrice) => `${count(quantity)}개 × ${count(unitPrice)}원`;
+const requestedQuantity = value => value == null ? '수량 협의' : `${count(value)}개`;
+const requestedPrice = value => value == null ? '단가 제안 요청' : `${count(value)}원/개`;
+const price = (quantity,unitPrice) => `${requestedQuantity(quantity)} · ${requestedPrice(unitPrice)}`;
 
 export async function marketView({api,send,shell,esc,notice,isActive=()=>true,inventory=false,offerQueue=false,initialStatus='all',initialReview,initialPostId,openMatching,testReview,onExitTest}) {
   shell('<section class="admin-market" id="admin-market"></section>');
@@ -107,7 +109,7 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
       }
       target.innerHTML=`<div class="table-scroll"><table class="am-posts ${review==='pending'?'am-queue-table':''}"><thead><tr><th scope="col">공고 · 브랜드</th><th scope="col">요청 수량 · 희망 단가</th><th scope="col">${review==='pending'?'제출일':'받은 제안'}</th><th scope="col">마감일</th><th scope="col">상태</th></tr></thead>
         <tbody>${data.posts.map(post=>`<tr><td><button type="button" class="link-button am-title" data-post="${esc(post.id)}">${esc(post.title)}</button><small>${esc(post.brandName)} · ${category(post.category)}</small></td>
-          <td>${count(post.quantity)}개<small>${count(post.unitPrice)}원/개</small></td><td>${review==='pending'?date(post.createdAt):count(post.offerCount)+'건'}</td><td>${date(post.deadline)}</td>
+          <td>${requestedQuantity(post.quantity)}<small>${requestedPrice(post.unitPrice)}</small></td><td>${review==='pending'?date(post.createdAt):count(post.offerCount)+'건'}</td><td>${date(post.deadline)}</td>
           <td><span class="badge am-status" data-state="${esc(post.reviewStatus)}">${review==='approved'?(filters[post.status]||'확인 필요'):reviewLabels[post.reviewStatus]}</span>${review==='all'&&post.reviewStatus==='approved'?`<small>${filters[post.status]||'확인 필요'}</small>`:''}${post.connection?`<small>연결 요청 · ${requestStates[post.connection.status]||'확인 필요'}</small>`:''}${!post.eligible?'<small>브랜드 승인 상태 확인</small>':''}</td></tr>`).join('')}
         </tbody></table></div>${pager(data.total,data.page,data.pageSize,'건')}`;
       target.querySelectorAll('[data-post]').forEach(button=>button.onclick=()=>showDetail(button.dataset.post));
@@ -275,7 +277,7 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
       at('h1').textContent=pending?'공고 심사':post.title;target.setAttribute('aria-busy','false');
       target.innerHTML=`<section class="panel am-preview">${pending?`<h2>${esc(post.title)}</h2>`:'<h2>공고 내용</h2>'}
         <dl><dt>요청 브랜드</dt><dd>${esc(post.brandName)} <small>관리자에게만 표시</small>${!post.eligible?' · 가입 승인 상태 확인':''}</dd><dt>분야</dt><dd>${category(post.category)}</dd>
-        <dt>요청 수량</dt><dd>${count(post.quantity)}개</dd><dt>희망 단가</dt><dd>${count(post.unitPrice)}원/개</dd><dt>규격</dt><dd>${esc(post.size)||'미기재'}</dd>
+        <dt>요청 수량</dt><dd>${requestedQuantity(post.quantity)}</dd><dt>희망 단가</dt><dd>${requestedPrice(post.unitPrice)}</dd><dt>규격</dt><dd>${esc(post.size)||'미기재'}</dd>
         <dt>제출일</dt><dd>${date(post.createdAt)}</dd><dt>제안 마감</dt><dd>${date(post.deadline)}</dd></dl>
         <div class="am-description"><h3>제작 조건</h3><p class="pre">${esc(post.description)||'미기재'}</p></div>${contactDetails(post.brand)}${agreementDetails(data.agreements||[],'post',post.id)}</section>
         ${reviewPanel(post,data.reviewEvents||[])}

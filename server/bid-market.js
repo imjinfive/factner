@@ -108,7 +108,9 @@ async function createPost(env, user, input,live) {
   const title = text(input.title,100,true),size=text(input.size,160),description=text(input.description,2000,true);
   const identity=await authorIdentity(env,user,live);
   validateAnonymous([title,size,description].join(' '),identity);
-  const { quantity, unitPrice } = quoteTier(input);
+  const quantity = input.quantity === null ? null : integer(input.quantity,100000000,'수량');
+  const unitPrice = input.unitPrice === null ? null : integer(input.unitPrice,1000000000,'단가');
+  if(quantity != null && unitPrice != null && quantity * unitPrice > 1e12) fail(400,'수량과 단가를 확인해주세요.');
   const signed=submissionSignature(input.agreement),time=now(),deadline=biddingDeadline(time);
   const id = crypto.randomUUID();
   const check=live?` WHERE EXISTS(SELECT 1 FROM members m WHERE m.id=? AND m.role='brand' AND ${approvedMarketMember('m')})`:'';

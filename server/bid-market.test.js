@@ -9,7 +9,7 @@ import {SUBMISSION_AGREEMENT} from '../shared/submission-agreement.js';
 import {biddingDeadline,reviewPost} from './market-review.js';
 import {reviewOffer} from './offer-review.js';
 
-function fixture(t) {
+function fixture(t, consultation=true) {
   const sql = new DatabaseSync(':memory:');
   t.after(()=>sql.close());
   sql.exec('PRAGMA foreign_keys=ON');
@@ -17,6 +17,7 @@ function fixture(t) {
   sql.exec(readFileSync(new URL('../migrations/0015_market_post_review.sql',import.meta.url),'utf8'));
   sql.exec(readFileSync(new URL('../migrations/0018_market_offer_review.sql',import.meta.url),'utf8'));
   sql.exec(readFileSync(new URL('../migrations/0019_submission_agreements.sql',import.meta.url),'utf8'));
+  if(consultation)sql.exec(readFileSync(new URL('../migrations/0022_post_consultation.sql',import.meta.url),'utf8'));
   const env = { BID_DEMO:true, DB:{
     prepare(query) {
       const statement = sql.prepare(query);
@@ -52,6 +53,42 @@ const agreement={accepted:true,version:SUBMISSION_AGREEMENT.version,signature:'�
 const post = { category:'packaging',title:'칼선에 맞춘 상자',quantity:500,unitPrice:2100,size:'80×50×30㎜',description:'동일 사양으로 견적을 요청합니다.',agreement };
 const offer = { tiers:[{quantity:1000,unitPrice:1800},{quantity:500,unitPrice:2000}],note:'운임 별도',agreement };
 const consent = { accepted:true, version:BID_TERMS.version,signature:'비공개 서명자' };
+
+test('consultation migration preserves referenced offers, contracts, reviews and signatures',async t=>{
+  const f=fixture(t,false),postId=await approvedPost(f);
+  const offerId=(await f.api(f.box,'posts/'+postId+'/offers',offer)).data.id;
+  f.sql.exec("UPDATE market_offers SET review_status='approved'");
+  assert.equal((await f.api(f.brand,'offers/'+offerId+'/select',{...consent,quantity:500})).status,201);
+  f.sql.prepare('INSERT INTO market_post_reviews VALUES(?,?,?,?,?,?,?)').run(postId,1,'approve','admin','operator','확인','2026-11-03');
+  const tables=['market_posts','market_offers','market_contracts','market_post_reviews','submission_agreements'];
+  const before=tables.map(name=>f.sql.prepare(`SELECT * FROM ${name}`).all());
+  f.sql.exec('BEGIN');
+  f.sql.exec(readFileSync(new URL('../migrations/0022_post_consultation.sql',import.meta.url),'utf8'));
+  f.sql.exec('COMMIT');
+  assert.deepEqual(tables.map(name=>f.sql.prepare(`SELECT * FROM ${name}`).all()),before);
+  assert.deepEqual(f.sql.prepare('PRAGMA foreign_key_check').all(),[]);
+  assert.equal(f.sql.prepare('PRAGMA table_info(market_posts)').all().find(row=>row.name==='quantity').notnull,0);
+});
+
+test('unknown request quantity and budget are explicit nulls while bids require actual positive quotes',async t=>{
+  const f=fixture(t);
+  const created=await f.api(f.brand,'posts',{...post,quantity:null,unitPrice:null});
+  assert.equal(created.status,201);
+  assert.equal(created.data.reviewStatus,'pending');
+  const mine=(await f.api(f.brand,'state')).data.posts[0];
+  assert.equal(mine.quantity,null);assert.equal(mine.unitPrice,null);
+  assert.deepEqual((await f.api(null,'state')).data.posts,[]);
+  f.sql.exec("UPDATE market_posts SET review_status='approved'");
+  assert.equal((await f.api(f.box,'posts/'+created.data.id+'/offers',{...offer,tiers:[{quantity:null,unitPrice:null}]})).status,400);
+  const bid=await f.api(f.box,'posts/'+created.data.id+'/offers',offer);
+  assert.equal(bid.status,201);
+  f.sql.exec("UPDATE market_offers SET review_status='approved'");
+  assert.equal((await f.api(f.brand,'offers/'+bid.data.id+'/select',{...consent,quantity:null})).status,400);
+  assert.equal((await f.api(f.brand,'offers/'+bid.data.id+'/select',{...consent,quantity:500})).status,201);
+  const contract=(await f.api(f.brand,'state')).data.contracts[0];
+  assert.equal(contract.quantity,500);assert.equal(contract.unitPrice,2000);
+  assert.equal((await f.api(f.brand,'posts',{...post,quantity:undefined})).status,400);
+});
 async function approvedPost(f){
   const draft=await f.api(f.brand,'posts',post);
   assert.equal(draft.data.reviewStatus,'pending');

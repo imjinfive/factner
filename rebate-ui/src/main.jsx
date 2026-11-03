@@ -8,7 +8,6 @@ import SiteFooter from "./SiteFooter";
 import ServiceIntro from "./ServiceIntro";
 import {BrandMark, Button, Photo} from "./BrandControls";
 import MemberPortal from "./MemberPortal";
-import MatchingFlow from "./MatchingFlow";
 import {pageFromHistory,matchingFromHistory} from "./navigation.js";
 import {siteNavigationEvent, writeSiteEntry} from "./site-history.js";
 import OrderAlerts,{OrderAlertContext,OrderAlertNotice} from "./OrderAlerts";
@@ -16,7 +15,7 @@ import "./styles.css";
 import "./funnel-shell.css";
 const spring={type:"spring",stiffness:420,damping:30,mass:0.8};
 const money=n=>new Intl.NumberFormat("ko-KR").format(n);
-const navItems=[["intro","서비스 소개"],["request","파트너 찾기"],["guide","이용 안내"]];
+const navItems=[["request","제작 공고"],["guide","이용 안내"]];
 function Modal({ open, onClose, title, description, children, wide = false }) {
   const reduce = useReducedMotion();
   return (
@@ -91,17 +90,17 @@ function Guide({onRequest}) {
  return <section className="shell inner-page revised-guide">
   <div className="page-heading"><h1>필요한 조건만 알려주세요.</h1><p>찾고, 비교하고, 연결하는 일은 팩트너가 함께합니다.</p></div>
   <ol className="funnel-guide-steps">{[
-   ['가입 신청과 검증','가입 신청 후 운영팀이 업체와 자료를 확인하고 승인해요.'],
-   ['업체 정보 준비','운영팀과 소통하며 실제 패키징 정보와 제작 조건을 등록해요.'],
-   ['후보 비교와 연결 요청','필요한 품목을 선택하고, 원하는 파트너를 여러 곳 골라 요청하세요.'],
-   ['거래 연결 후 발주','운영팀이 거래를 연결하면 승인된 패키징 정보로 발주할 수 있어요.']
+   ['필요한 패키징 선택','몇 가지 질문으로 제작 의뢰 초안을 만들어요. 모르는 조건은 비워두세요.'],
+   ['가입 신청','선택한 조건을 그대로 보관해요. 운영팀이 가입 정보를 확인합니다.'],
+   ['공고와 제안','승인 후 의뢰를 등록하고, 제작업체의 제안을 비교해요.'],
+   ['제작 시작','상세 조건을 정하고 운영팀의 연결 확인 후 제작을 진행해요.']
   ].map(([title,copy],i)=><li key={title}><span>{i+1}</span><div><h2>{title}</h2><p>{copy}</p></div></li>)}</ol>
-  <Button onClick={onRequest}>맞는 파트너 찾기 <ArrowRight size={20}/></Button>
+  <Button onClick={onRequest}>시작하기 <ArrowRight size={20}/></Button>
   <h2 className="faq-title">궁금한 점</h2><div className="faq">{[
-   ['아직 규격이나 수량을 몰라도 되나요?','운영팀과 먼저 제작 조건을 정할 수 있어요. 파트너 찾기에서 필요한 품목을 고르면 미리보기를 확인할 수 있어요.'],
+   ['아직 규격이나 수량을 몰라도 되나요?','모르겠어요를 선택하면 상담이 필요한 조건으로 남겨둡니다. 제작업체의 제안을 받은 뒤 상세 조건을 정할 수 있어요.'],
    ['신청하면 바로 이용할 수 있나요?','가입 신청은 심사 대기로 접수됩니다. 운영팀의 승인 후 로그인할 수 있고, 발주는 거래 업체 연결 후 이용할 수 있어요.'],
    ['가입비는 얼마인가요?','가입비는 아직 미정이며 운영팀이 별도로 안내합니다. 정기 구독은 없고, 사이트에서 결제를 진행하지는 않아요.'],
-   ['화면의 후보가 실제 업체인가요?','가입 전 미리보기는 예시라고 표시된 가상 후보입니다. 가입 승인 후에는 운영팀이 소개와 조건을 등록한 실제 익명 후보를 확인하고 연결 검토를 요청할 수 있어요.']
+   ['설문을 마치면 바로 공고가 등록되나요?','설문은 의뢰 초안입니다. 가입 승인 후 내용을 확인하고 공고 심사를 요청하면 됩니다.']
   ].map(([q,a])=><details key={q}><summary>{q}<Plus size={19}/></summary><p>{a}</p></details>)}</div>
  </section>;
 }
@@ -115,7 +114,7 @@ export default function MemberApp(){
  const [requestedOrder,setRequestedOrder]=useState(null),[attentionRefresh,setAttentionRefresh]=useState(0),[orderAlertNotice,setOrderAlertNotice]=useState(null);
  const [requests,setRequests]=useState(()=>readSaved('factner:requests',[]));
  const [modal,setModal]=useState(null),[toast,setToast]=useState('');
- const [theme,setTheme]=useState(()=>matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+ const [theme,setTheme]=useState(()=>document.documentElement.dataset.theme||'light');
  const reduce=useReducedMotion(),toastTimer=useRef();
  useEffect(()=>{let active=true;api('member/me').then(data=>{if(active)setMember(data.member);}).catch(()=>{}).finally(()=>{if(active)setAuthLoading(false);});return()=>{active=false;};},[]);
  useEffect(()=>{document.documentElement.dataset.theme=theme;},[theme]);
@@ -140,7 +139,7 @@ export default function MemberApp(){
  }
  function openModal(value){if(!document.activeElement?.closest('.modal')){document.querySelector('[data-return-focus]')?.removeAttribute('data-return-focus');document.activeElement?.setAttribute('data-return-focus','');}setModal(value);}
  function openOrderAlert(id){if(modal){notify('입력 중인 창을 닫은 뒤 발주 알림을 확인해주세요.');return;}setRequestedOrder({id,key:Date.now()});navigate('account');}
- const startRequest=()=>navigate('request',{matching:matchingFromHistory(null,member)});
+ const startRequest=()=>writeSiteEntry('market',member?(member.role==='brand'?'new':'feed'):'intro');
  const openAccount=()=>{if(member)navigate('account');else writeSiteEntry('market','login');};
  const beginSignup=()=>writeSiteEntry('market','signup');
  useEffect(()=>{
@@ -187,7 +186,7 @@ export default function MemberApp(){
    <div className="header-actions"><button className="member-login-link" onClick={openAccount}>{member?'마이페이지':'로그인'}</button></div>
   </div></header>
   <main id="main" tabIndex={-1}>
-   {flowVisited&&<div hidden={page!=='request'}><MatchingFlow Button={Button} onSignup={beginSignup} onAccount={openAccount} member={member} authLoading={authLoading} active={page==='request'}/></div>}
+   {page==='request'&&<ServiceIntro/>}
    <AnimatePresence mode="wait"><motion.div key={page} initial={reduce?false:{opacity:0,y:page==='intro'?0:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:0.18}}>
     {page==='intro'&&<ServiceIntro Button={Button} Photo={Photo} onRequest={()=>writeSiteEntry('market','feed')}/>}
     {page==='guide'&&<Guide onRequest={startRequest}/>}

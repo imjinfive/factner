@@ -1,0 +1,6 @@
+Factner representative packaging illustrations
+Generation mode: built-in image_gen; one 6 x 6 atlas.
+These are illustrative product examples, not real supplier photographs or proof of production capability.
+Each cell has a white background, a representative packaging silhouette and a green factner. brand mark.
+Cell order is exported as packagingArtKeys in src/bids/PackagingArt.jsx.
+The final prompt is saved in packaging-atlas-prompt.txt.
