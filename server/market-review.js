@@ -7,6 +7,7 @@ const phone=/(?:\+82(?:0)?|0082(?:0)?|0)(?:1[016789]|2|[3-6]\d|70|50[2-8]|80)\d{
 const internationalPhone=/\+\s*\(?[1-9](?:[\s()./·‐‑–—-]*\d){7,14}(?![\s()./·‐‑–—-]*\d)/u;
 const companyLabel=/(?:주식회사|유한(?:책임)?회사|\(주\))\s*[\p{L}\d]{2,}|[\p{L}\d]{2,}\s*(?:주식회사|유한(?:책임)?회사|\(주\))|[\p{L}\d]{2,}\s+(?:co(?:mpany)?[.,\s]+(?:ltd|limited)|ltd|llc|inc|corp|gmbh)\b/iu;
 const contactLabel=/(?:성명|담당자명?|대표자명?|대표이사)\s*[:=]\s*[\p{L}]{2,}|(?:담당자|대표자|대표이사)\s+[김이박최정강조윤장임한오서신권황안송전홍유고문양손배백허남심노][가-힣]{1,2}(?=$|[\s,./()])/u;
+export const biddingDeadline=(at=Date.now())=>new Date(new Date(at).getTime()+7*86400000+9*3600000).toISOString().slice(0,10);
 export async function authorIdentity(env,user,live){
  if(!live)return user;
  const [member,settings]=await Promise.all([stmt(env,'SELECT name,contact,phone,email,version FROM members WHERE id=?',user.id).first(),service(env)]);
@@ -45,8 +46,9 @@ export async function reviewPost(env,user,id,input,{admin=false,live=false}={}){
  const time=now(),next=states[action];
  const eligibility=live&&(action==='approve'||!admin)?` AND EXISTS(SELECT 1 FROM members m WHERE m.id=market_posts.brand_id AND m.role='brand' AND ${approvedMarketMember('m')}${identity?' AND m.version=?':''})`:'';
  const result=await env.DB.batch([
-   stmt(env,`UPDATE market_posts SET review_status=?,review_reason=?,reviewed_at=?,review_version=review_version+1
-     WHERE id=? AND brand_id=? AND review_version=? AND review_status=?${eligibility}`,next,reason,time,id,row.brand_id,input.version,row.review_status,...(live&&identity?[identity.version]:[])),
+   stmt(env,`UPDATE market_posts SET review_status=?,review_reason=?,reviewed_at=?,review_version=review_version+1,
+     deadline=CASE WHEN ?='approved' THEN ? ELSE deadline END
+     WHERE id=? AND brand_id=? AND review_version=? AND review_status=?${eligibility}`,next,reason,time,next,biddingDeadline(time),id,row.brand_id,input.version,row.review_status,...(live&&identity?[identity.version]:[])),
    stmt(env,'INSERT INTO market_post_reviews(post_id,version,action,actor,actor_id,reason,created_at) SELECT ?,?,?,?,?,?,? WHERE changes()=1',
      id,input.version+1,action,admin?'admin':'author',user.id,reason,time)]);
  if(!result[0].meta.changes)fail(409,'회원 또는 공고 상태가 변경되었습니다. 다시 확인해주세요.');

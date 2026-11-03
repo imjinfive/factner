@@ -188,7 +188,7 @@ function PaymentDialog({ contract, kind, mutate, onClose }) {
     canReview={valid} review={recap} recordLabel="모의 결제 기록" onClose={onClose}
     onRecord={() => mutate(`/contracts/${contract.id}/pay`, { kind, amount })}>
     {sample ? <label className="fd-input">양측이 확인한 샘플비 · 원
-      <input required type="number" min="1" max="1000000000000" step="1" inputMode="numeric" value={input}
+      <input required type="text" inputMode="numeric" pattern="[0-9]+" maxLength={13} value={input}
         onChange={e => setInput(e.target.value)} placeholder="예시 금액 입력"/></label> : <PriceSummary {...contract}/>}
     {recap}
   </ActionDialog>;

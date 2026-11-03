@@ -5,6 +5,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import worker from './worker.js';
 import {digest,randomToken} from './security.js';
 import {marketApi} from './bid-market.js';
+import {SUBMISSION_AGREEMENT} from '../shared/submission-agreement.js';
 
 const date='2026-11-02T01:00:00.000Z',policy='published-member-terms',base='/api/admin/market/posts';
 const tiers=[{quantity:500,unitPrice:240},{quantity:1000,unitPrice:200}];
@@ -33,8 +34,9 @@ async function fixture(t){
  }
  async function customer(id){
    const token=randomToken();
-   if(id)raw.prepare('INSERT INTO member_sessions VALUES(?,?,?,1)').run(await digest(token),id,Date.now()+600000);
+   if(id)raw.prepare('INSERT INTO member_sessions SELECT ?,?,?,version FROM members WHERE id=?').run(await digest(token),id,Date.now()+600000,id);
    return async(path,data)=>{
+     if(data&&(path==='posts'||/^posts\/[^/]+\/offers$/.test(path)))data={agreement:{accepted:true,version:SUBMISSION_AGREEMENT.version,signature:'테스트 서명'},...data};
      const origin='https://main.example.test';
      const response=await worker.fetch(new Request(origin+'/api/bid/'+path,{method:data?'POST':'GET',headers:{Origin:origin,'Content-Type':'application/json',
        Cookie:id?'factner_member='+token:''},body:data?JSON.stringify(data):undefined}),{...env,APP_KIND:'main'});
@@ -54,9 +56,9 @@ async function fixture(t){
    raw.prepare("INSERT INTO market_posts(id,brand_id,category,title,quantity,unit_price,size,description,deadline,created_at,review_status) VALUES(?,?,?,?,?,?,?,?,?,?,'approved')").run(id,brandId,'packaging',title,500,300,'40 × 50','무광 인쇄',deadline,date);
    return id;
  }
- function offer(postId,supplierId=supplier,alias='제안사 A'){
+ function offer(postId,supplierId=supplier,alias='제안사 A',status='approved'){
    const id=crypto.randomUUID();
-   raw.prepare('INSERT INTO market_offers VALUES(?,?,?,?,?,?,?)').run(id,postId,supplierId,alias,JSON.stringify(tiers),'배송 포함',date);return id;
+   raw.prepare('INSERT INTO market_offers(id,post_id,supplier_id,alias,tiers,note,created_at,review_status) VALUES(?,?,?,?,?,?,?,?)').run(id,postId,supplierId,alias,JSON.stringify(tiers),'배송 포함',date,status);return id;
  }
  async function select(offerId,quantity=500){
    const url=new URL('https://main.example.test/api/bid/offers/'+offerId+'/select');
@@ -81,7 +83,7 @@ test('only the owner sees real submitted work, bounded searchable pages and an o
  assert.equal((await f.api(base,undefined,'GET',f.owner,'main')).status,404);
  const list=await f.api(base),q=await f.api(base+'?q='+encodeURIComponent('별도')+'&status=open');
  assert.equal(list.status,200);assert.equal(list.data.total,3);assert.equal(list.data.posts.find(p=>p.id===expired).status,'expired');
- assert.deepEqual(list.data.counts,{pendingRegistrations:1,pendingPosts:0,openPosts:1,offers:26,pendingConnections:1,reviewingConnections:0});
+ assert.deepEqual(list.data.counts,{pendingRegistrations:1,pendingPosts:0,openPosts:1,offers:26,pendingOffers:0,pendingConnections:1,reviewingConnections:0});
  assert.equal(q.data.total,1);assert.equal(q.data.posts[0].id,other);assert.deepEqual(q.data.counts,list.data.counts);
  const details=(await f.api(base+'/'+post)).data;
  assert.equal(details.total,26);assert.equal(details.offers.length,25);assert.equal(details.offers.some(o=>o.id===ids[25]),false);
@@ -89,7 +91,9 @@ test('only the owner sees real submitted work, bounded searchable pages and an o
  assert.equal(details.post.connection.quantity,1000);assert.equal(details.post.connection.unitPrice,200);
  assert.equal((await f.api(base+'/'+post+'?page=2')).data.offers.length,1);
  assert.equal((await f.api(base+'?page=-1')).status,400);assert.equal((await f.api(base+'?status=unknown')).status,400);
- assert.doesNotMatch(JSON.stringify([list.data,details]),/@|01012345678|비공개담당자|password|구회원|시연자/);
+ assert.doesNotMatch(JSON.stringify(list.data),/@|01012345678|비공개담당자|password|구회원|시연자/);
+ assert.equal(details.post.brand.contact,'비공개담당자');assert.equal(details.offers[0].supplier.phone,'01012345678');
+ assert.doesNotMatch(JSON.stringify(details),/password|구회원|시연자/);
 });
 
 test('whole inventory paginates every review state and lifecycle without mixing examples into the real total',async t=>{
@@ -136,34 +140,34 @@ test('one real partner completes multiple selected posts with separate tier snap
  const memberRequest=(await f.api('/api/admin/matching/requests?memberId='+f.brand)).data.requests[0];
  assert.equal(memberRequest.marketPostCount,2);assert.ok([a,b].includes(memberRequest.marketPostId));
  assert.deepEqual(list.posts.map(p=>p.connection.linkedPostCount),[2,2]);
- const reqPath='/api/admin/matching/requests/'+request.id,action={version:1,confirmed:true};
+ const reqPath='/api/admin/matching/requests/'+request.id,action={version:1,confirmed:true,explained:true};
  assert.equal((await f.api(reqPath,{...action,status:'completed'},'PATCH')).status,409);
  assert.equal((await f.api(reqPath,{...action,status:'reviewing'},'PATCH')).status,200);
  assert.equal((await f.api(base)).data.counts.reviewingConnections,1);
  assert.equal((await f.api(base+'/'+a+'/connect',action)).status,409);
- assert.equal((await f.api(base+'/'+a+'/connect',{version:2,confirmed:false})).status,400);
- assert.equal((await f.api(base+'/'+a+'/connect',{version:2,confirmed:true},'POST',f.staff)).status,403);
- const linked=await f.api(base+'/'+a+'/connect',{version:2,confirmed:true,note:'양측 생산 일정 확인'});assert.equal(linked.status,200);
+ assert.equal((await f.api(base+'/'+a+'/connect',{version:2,confirmed:false,explained:true})).status,400);
+ assert.equal((await f.api(base+'/'+a+'/connect',{version:2,confirmed:true,explained:true},'POST',f.staff)).status,403);
+ const linked=await f.api(base+'/'+a+'/connect',{version:2,confirmed:true,explained:true,note:'양측 생산 일정 확인'});assert.equal(linked.status,200);
  assert.equal(linked.data.id,request.id);assert.equal(linked.data.status,'completed');
- assert.deepEqual((await f.api(base+'/'+b+'/connect',{version:2,confirmed:true})).data,linked.data);
+ assert.deepEqual((await f.api(base+'/'+b+'/connect',{version:2,confirmed:true,explained:true})).data,linked.data);
  assert.equal(f.raw.prepare('SELECT count(*) AS n FROM member_partner_events').get().n,1);
  assert.equal(f.raw.prepare("SELECT count(*) AS n FROM matching_request_events WHERE status='completed'").get().n,1);
  const resolved=(await f.api(base+'?status=completed')).data;
  assert.equal(resolved.posts.length,2);assert.equal(resolved.counts.reviewingConnections,0);
  assert.deepEqual(resolved.posts.map(p=>p.connection.quantity).sort((a,b)=>a-b),[500,1000]);
  assert.equal((await f.api('/api/admin/partners/'+linked.data.partnerId,{version:1,status:'ended'},'PATCH')).status,200);
- assert.equal((await f.api(base+'/'+a+'/connect',{version:2,confirmed:true})).status,409);
+ assert.equal((await f.api(base+'/'+a+'/connect',{version:2,confirmed:true,explained:true})).status,409);
  const c=f.post();await f.select(f.offer(c));
  assert.equal((await f.api(base+'/'+c+'/connect',action)).status,409);
- assert.equal((await f.api('/api/admin/partners/'+linked.data.partnerId,{version:2,status:'active'},'PATCH')).status,200);
+ assert.equal((await f.api('/api/admin/partners/'+linked.data.partnerId,{version:2,status:'active',explained:true},'PATCH')).status,200);
  assert.equal((await f.api(base+'/'+c)).data.post.connection.status,'completed');
 });
 
 test('market actions recheck both participants inside the transaction; a rejected selection never creates a partner',async t=>{
- const f=await fixture(t),post=f.post(),selection=await f.select(f.offer(post)),action={version:1,confirmed:true};
+ const f=await fixture(t),post=f.post(),selection=await f.select(f.offer(post)),action={version:1,confirmed:true,explained:true};
  f.DB.beforeBatch=()=>f.raw.prepare("UPDATE members SET consent_version='pilot' WHERE id=?").run(f.supplier);
  assert.equal((await f.api(base+'/'+post+'/connect',action)).status,409);
- assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier})).status,409);
+ assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier,explained:true})).status,409);
  assert.equal(f.raw.prepare('SELECT count(*) AS n FROM member_partners').get().n,0);
  const match='/api/admin/matching/requests/'+selection.id;
  assert.equal((await f.api(match,{...action,status:'reviewing'},'PATCH')).status,409);
@@ -183,7 +187,7 @@ test('submission is private until an owner reviews it; withdrawal hides it while
    supplier=await f.customer(f.supplier),guest=await f.customer(null);
  const job={title:'첫 제작',size:'50 × 60',description:'한정 수량의 포장',quantity:500,unitPrice:260,category:'packaging',deadline:'2099-01-01'};
  const draft=await brand('posts',job);assert.equal(draft.status,201);assert.equal(draft.data.reviewStatus,'pending');
- const id=draft.data.id,route=base+'/'+id+'/review',confirm={confirmed:true,version:1};
+ const id=draft.data.id,route=base+'/'+id+'/review',confirm={confirmed:true,version:1,explained:true};
  const ownerOnly=(await brand('state')).data.posts[0];assert.equal(ownerOnly.reviewVersion,1);assert.equal(ownerOnly.description,job.description);
  for(const caller of [other,supplier,guest])assert.doesNotMatch(JSON.stringify((await caller('state')).data),new RegExp(id+'|'+job.title+'|'+job.description));
  assert.equal((await supplier('posts/'+id+'/offers',{tiers,note:''})).status,404);
@@ -198,13 +202,14 @@ test('submission is private until an owner reviews it; withdrawal hides it while
  assert.equal(approved.id,id);assert.equal(approved.reviewStatus,'approved');assert.ok(approved.reviewedAt);assert.equal(approved.reviewReason,undefined);
  assert.equal((await f.api(route,{...confirm,action:'reject',reason:'다시 확인'})).status,409);
  const proposal=await supplier('posts/'+id+'/offers',{tiers,note:''});assert.equal(proposal.status,201);
+ assert.equal((await f.api('/api/admin/market/offers/'+proposal.data.id+'/review',{confirmed:true,version:1,action:'approve'})).status,200);
  const picked=await brand('offers/'+proposal.data.id+'/select',{confirmed:true,accepted:true,quantity:500});assert.equal(picked.status,201);
  assert.equal((await brand('posts/'+id+'/withdraw',confirm)).status,409);
  const withdrawn=await brand('posts/'+id+'/withdraw',{confirmed:true,version:2});assert.equal(withdrawn.status,200);assert.equal(withdrawn.data.reviewStatus,'withdrawn');
  const state=(await supplier('state')).data;
  assert.deepEqual(state.posts,[]);assert.equal(state.offers.length,0);assert.equal(state.connections[0].id,picked.data.id);assert.equal(state.connections[0].title,'비공개 공고');
  assert.doesNotMatch(JSON.stringify(state),new RegExp(job.title+'|'+job.description));
- assert.equal((await f.api(base+'/'+id+'/connect',confirm)).status,409);assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier})).status,409);
+ assert.equal((await f.api(base+'/'+id+'/connect',confirm)).status,409);assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier,explained:true})).status,409);
  assert.equal((await f.api(base+'?review=withdrawn')).data.total,1);
  const events=(await f.api(base+'/'+id)).data.reviewEvents;
  assert.deepEqual(events.map(e=>[e.action,e.actor,e.version]),[['withdraw','author',3],['approve','admin',2]]);
@@ -234,4 +239,105 @@ test('private identity checks cover every brief field; approval validates migrat
  assert.equal((await f.api(base+'/'+nextId+'/review',{...confirm,action:'approve'})).status,409);
  assert.equal(f.raw.prepare('SELECT review_status FROM market_posts WHERE id=?').get(nextId).review_status,'pending');
  assert.equal(f.raw.prepare('SELECT count(*) n FROM market_post_reviews WHERE post_id=?').get(nextId).n,0);
+});
+
+test('new bids remain private until owner approval; admins see contact and immutable signature records',async t=>{
+ const f=await fixture(t),post=f.post(),brand=await f.customer(f.brand),supplier=await f.customer(f.supplier),guest=await f.customer(null);
+ const sent=await supplier('posts/'+post+'/offers',{tiers,note:'샘플 일정 협의'});assert.equal(sent.status,201);
+ const id=sent.data.id,path='/api/admin/market/offers/'+id+'/review',decision={action:'approve',version:1,confirmed:true};
+ const brandState=(await brand('state')).data,own=(await supplier('state')).data;
+ assert.equal(brandState.offers.length,0);assert.equal(brandState.posts[0].offerCount,0);
+ assert.equal(own.offers[0].reviewStatus,'pending');assert.equal(own.offers[0].note,'샘플 일정 협의');
+ assert.doesNotMatch(JSON.stringify((await guest('state')).data),new RegExp(id+'|샘플 일정 협의'));
+ assert.equal((await brand('offers/'+id+'/select',{accepted:true,quantity:500})).status,404);
+ assert.equal((await f.api('/api/admin/market/offers',undefined,'GET',f.staff)).status,403);
+ assert.equal((await f.api(path,decision,'POST',f.staff)).status,403);
+ assert.equal((await f.api(path,decision,'POST',f.owner,'main')).status,404);
+ const queue=(await f.api('/api/admin/market/offers?q='+encodeURIComponent('제작 공방'))).data;
+ assert.equal(queue.total,1);assert.equal(queue.offers[0].id,id);assert.equal(queue.offers[0].offerPage,1);
+ assert.equal((await f.api('/api/admin/market/offers?review=bad')).status,400);
+ assert.equal((await f.api('/api/admin/market/offers?page=0')).status,400);
+ const detail=(await f.api(base+'/'+post)).data;
+ assert.equal(detail.post.brand.contact,'비공개담당자');assert.equal(detail.offers[0].supplier.phone,'01012345678');
+ assert.equal(detail.agreements[0].signature,'테스트 서명');assert.equal(detail.agreements[0].document.body,'테스트');
+ assert.equal(detail.agreements[0].resourceId,id);assert.ok(detail.agreements[0].signedAt);
+ assert.equal((await f.api(path,decision)).status,200);
+ assert.equal((await f.api(path,decision)).status,409);
+ assert.equal((await f.api('/api/admin/market/offers')).data.total,0);
+ const published=(await brand('state')).data;
+ assert.equal(published.offers[0].id,id);assert.equal(published.posts[0].offerCount,1);
+ assert.doesNotMatch(JSON.stringify(published),/01012345678|비공개담당자|@|테스트 서명/);
+ assert.equal((await brand('offers/'+id+'/select',{accepted:true,quantity:500})).status,201);
+ const connect=base+'/'+post+'/connect';
+ assert.equal((await f.api(connect,{confirmed:true,version:1})).status,400);
+ assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier})).status,400);
+ assert.equal((await f.api(connect,{confirmed:true,version:1,explained:true})).status,200);
+ const event=f.raw.prepare('SELECT actor,note,created_at FROM member_partner_events').get();
+ assert.equal(event.actor,'owner');assert.match(event.note,/유선으로 설명/);assert.ok(event.created_at);
+});
+
+test('offer reviews reject contact details, stale decisions and membership races; withdrawal blocks every new matching path',async t=>{
+ const f=await fixture(t),post=f.post(),id=f.offer(post,f.supplier,'제안사 A','pending'),path='/api/admin/market/offers/'+id+'/review';
+ const decision={action:'approve',confirmed:true,version:1};
+ f.raw.prepare("UPDATE market_offers SET note='010-9876-5432로 연락' WHERE id=?").run(id);
+ assert.equal((await f.api(path,decision)).status,400);
+ f.raw.prepare("UPDATE market_offers SET note='배송 포함' WHERE id=?").run(id);
+ f.DB.beforeBatch=()=>f.raw.prepare('UPDATE members SET version=version+1 WHERE id=?').run(f.supplier);
+ assert.equal((await f.api(path,decision)).status,409);
+ assert.equal(f.raw.prepare('SELECT review_status FROM market_offers WHERE id=?').get(id).review_status,'pending');
+ assert.equal(f.raw.prepare('SELECT count(*) n FROM market_offer_reviews').get().n,0);
+ assert.equal((await f.api(path,{...decision,action:'reject',reason:''})).status,400);
+ assert.equal((await f.api(path,decision)).status,200);
+ await f.select(id);
+ assert.equal((await f.api(path,{action:'withdraw',confirmed:true,version:2,reason:'연락처 재확인'})).status,200);
+ assert.equal((await f.api(base+'/'+post+'/connect',{confirmed:true,explained:true,version:1})).status,409);
+ assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier,explained:true})).status,409);
+ assert.equal(f.raw.prepare('SELECT count(*) n FROM member_partners').get().n,0);
+ const detail=(await f.api(base+'/'+post)).data;
+ assert.equal(detail.selectedOffer.reviewStatus,'withdrawn');assert.equal(detail.post.connection.eligible,false);
+ assert.deepEqual(detail.offers[0].reviewEvents.map(e=>[e.action,e.version]),[['withdraw',3],['approve',2]]);
+ const second=f.offer(f.post(),f.supplier,'제안사 A','pending');
+ assert.equal((await f.api('/api/admin/market/offers/'+second+'/review',{action:'reject',confirmed:true,version:1,reason:'조건을 다시 확인해주세요.'})).status,200);
+ const own=(await (await f.customer(f.supplier))('state')).data;
+ assert.equal(own.offers.find(o=>o.id===second).reviewReason,'조건을 다시 확인해주세요.');
+});
+
+test('offer review migration preserves selected history and places only unselected old offers in the review queue',()=>{
+ const raw=new DatabaseSync(':memory:');
+ try{
+   raw.exec('CREATE TABLE market_offers(id TEXT PRIMARY KEY,created_at TEXT,note TEXT); CREATE TABLE market_contracts(offer_id TEXT); CREATE TABLE market_connection_requests(offer_id TEXT);');
+   raw.exec("INSERT INTO market_offers VALUES('room', '2026-11-01','기존 계약'),('live','2026-11-01','선정된 입찰'),('unselected','2026-11-01','미선정 입찰'); INSERT INTO market_contracts VALUES('room'); INSERT INTO market_connection_requests VALUES('live');");
+   const before=raw.prepare('SELECT * FROM market_offers ORDER BY id').all();
+   for(const name of ['0018_market_offer_review.sql','0020_preserve_selected_offers.sql'])raw.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+   const after=raw.prepare('SELECT * FROM market_offers ORDER BY id').all();
+   assert.deepEqual(after.map(({id,created_at,note})=>({id,created_at,note})),before.map(row=>({...row})));
+   assert.deepEqual(after.map(row=>[row.id,row.review_status]),[['live','approved'],['room','approved'],['unselected','pending']]);
+   assert.equal(raw.prepare('SELECT count(*) n FROM market_offer_reviews').get().n,0);
+ }finally{raw.close();}
+});
+
+test('one invalid selected bid blocks the pair even when another selected bid remains approved',async t=>{
+ const f=await fixture(t),a=f.post(),b=f.post(),offerA=f.offer(a),offerB=f.offer(b);
+ const request=await f.select(offerA);assert.equal((await f.select(offerB)).id,request.id);
+ assert.equal((await f.api('/api/admin/market/offers/'+offerA+'/review',{action:'withdraw',version:1,confirmed:true,reason:'제안 내용 재확인'})).status,200);
+ const confirmed={version:1,confirmed:true,explained:true};
+ assert.equal((await f.api(base+'/'+b+'/connect',confirmed)).status,409);
+ assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier,explained:true})).status,409);
+ assert.equal(f.raw.prepare('SELECT count(*) n FROM member_partners').get().n,0);
+ assert.equal(f.raw.prepare('SELECT status FROM matching_requests WHERE id=?').get(request.id).status,'pending');
+});
+
+test('a market request arriving during direct matching cannot bypass the oral notice confirmation',async t=>{
+ for(const existing of [false,true]){
+   const f=await fixture(t),post=f.post(),offer=f.offer(post),request=crypto.randomUUID();
+   if(existing)assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier})).status,201);
+   f.DB.beforeBatch=()=>{
+     f.raw.prepare("INSERT INTO matching_requests(id,requester_id,target_id,category,snapshot,created_at,updated_at) VALUES(?,?,?,'packaging','{}',?,?)").run(request,f.brand,f.supplier,date,date);
+     f.raw.prepare('INSERT INTO market_connection_requests VALUES(?,?,?,?,?,?)').run(post,offer,500,240,request,date);
+   };
+   assert.equal((await f.api('/api/admin/partners',{brandId:f.brand,supplierId:f.supplier})).status,409);
+   assert.equal(f.raw.prepare('SELECT count(*) n FROM member_partners').get().n,Number(existing));
+   assert.equal(f.raw.prepare('SELECT count(*) n FROM member_partner_events').get().n,Number(existing));
+   assert.equal(f.raw.prepare('SELECT status FROM matching_requests WHERE id=?').get(request).status,'pending');
+ }
 });

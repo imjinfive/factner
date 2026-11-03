@@ -57,7 +57,7 @@ export async function membersView(context){
 
  async function detail(id,section,drafts=[],compare=false){
   const requestId=++request;
-  const {member:m,files,reviews,orderCounts,profileEvents=[]}=await api(`admin/members/${id}`);
+  const {member:m,files,reviews,orderCounts,profileEvents=[],agreements=[]}=await api(`admin/members/${id}`);
   if(requestId!==request||context.isActive&&!context.isActive())return;
   if(m.status==='archived'){
    setDirty(false);
@@ -112,6 +112,7 @@ export async function membersView(context){
      <dl class="member-order-stats">${[['전체',orderCounts.total],['진행 중',orderCounts.active],['입고 완료',orderCounts.received],['취소',orderCounts.cancelled]].map(([label,count])=>`<div><dt>${label}</dt><dd>${count.toLocaleString('ko-KR')}<small>건</small></dd></div>`).join('')}</dl>
     </section>
     <details class="panel wide member-fold"><summary>가입 자료 ${files.length}개</summary><div class="review-files">${files.map(f=>`<a href="/api/admin/members/files/${f.id}" target="_blank" rel="noreferrer" class="review-file">${f.mime.startsWith('image/')?`<img src="/api/admin/members/files/${f.id}" alt="${esc(f.name)}">`:'<span class="review-document">PDF</span>'}<strong>${f.kind==='certificate'?'사업자등록증':'현장·패키징 사진'}</strong><span>${esc(f.name)}</span></a>`).join('')||'<p class="muted">첨부 자료가 없습니다.</p>'}</div></details>
+    <details class="panel wide member-fold" id="member-agreements"><summary>전자계약 서명 ${agreements.length}건</summary><ul class="timeline">${agreements.map(a=>`<li><strong>${{registration:'가입 심사 요청',post:'공고 심사 요청',offer:'입찰 심사 요청'}[a.purpose]}</strong><dl><dt>서명자</dt><dd>${esc(a.signature)}</dd><dt>서명 시각</dt><dd>${date(a.signedAt)}</dd><dt>문서 버전</dt><dd>${esc(a.version)}</dd><dt>서명한 내용</dt><dd class="pre">${esc(a.document.body)}</dd><dt>접수 번호</dt><dd>${esc(a.resourceId)}</dd></dl></li>`).join('')||'<li>보관된 서명이 없습니다.</li>'}</ul></details>
     <details class="panel wide member-fold"><summary>상태 변경 기록 ${reviews.length}건</summary><ul class="timeline">${reviews.map(r=>`<li><strong>${r.status==='approved'?'승인 / 이용 재개':states[r.status]}</strong><p class="pre">${esc(r.note)||'별도 안내 없음'}</p><small>${esc(r.actor)} · ${date(r.created_at)}</small></li>`).join('')||'<li>아직 심사하지 않았습니다.</li>'}</ul></details>
     ${profileEvents.length?`<section class="panel wide"><details><summary>회원정보 수정 기록 ${profileEvents.length}건</summary><ul class="timeline">${profileEvents.map(event=>`<li><small>${esc(event.actor)} · ${date(event.created_at)}</small>${Object.entries(event.changes).map(([key,value])=>`<p>${{name:'업체명',contact:'담당자',phone:'연락처',company:'업체 상세',packaging:'패키징'}[key]||esc(key)}: ${esc(typeof value.before==='object'?JSON.stringify(value.before,null,2):value.before)} → ${esc(typeof value.after==='object'?JSON.stringify(value.after,null,2):value.after)}</p>`).join('')}</li>`).join('')}</ul></details></section>`:''}
    </div>`);

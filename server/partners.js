@@ -25,18 +25,28 @@ function completeMatchingRequests(env,brandId,supplierId,actor,eventId,time){
 // connecting this pair also completes that selection and requires both market consents.
 const marketGate=`(NOT EXISTS(SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id
  WHERE r.requester_id=b.id AND r.target_id=s.id AND r.status IN ('pending','reviewing'))
- OR (${marketConsent('b')} AND ${marketConsent('s')} AND EXISTS(
-   SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id JOIN market_posts p ON p.id=c.post_id
-   WHERE r.requester_id=b.id AND r.target_id=s.id AND r.status IN ('pending','reviewing') AND p.review_status='approved')))`;
-export async function createPartner(env,user,brandId,supplierId,note,selection=null){
+ OR (${marketConsent('b')} AND ${marketConsent('s')} AND NOT EXISTS(
+   SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.id=c.offer_id AND o.post_id=p.id
+   WHERE r.requester_id=b.id AND r.target_id=s.id AND r.status IN ('pending','reviewing')
+     AND (p.review_status<>'approved' OR o.review_status<>'approved' OR p.brand_id<>b.id OR o.supplier_id<>s.id))))`;
+const noticeGate=explained=>explained?'1':`NOT EXISTS(SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id
+ WHERE r.requester_id=b.id AND r.target_id=s.id AND r.status IN ('pending','reviewing'))`;
+async function noticeBeforeMatching(env,brandId,supplierId,note,explained){
+ const market=await stmt(env,`SELECT r.id FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id
+   WHERE r.requester_id=? AND r.target_id=? AND r.status IN ('pending','reviewing') LIMIT 1`,brandId,supplierId).first();
+ if(market&&!explained)fail(400,'양쪽에 계약 내용을 유선으로 설명한 뒤 거래를 연결해주세요.');
+ return explained?'양측에 계약 내용과 거래 조건을 유선으로 설명하고 확인함.'+(note?'\n'+note:''):note;
+}
+export async function createPartner(env,user,brandId,supplierId,note,selection=null,explained=false){
  await eligible(env,brandId,supplierId);
+ note=await noticeBeforeMatching(env,brandId,supplierId,note,explained);
  const id=crypto.randomUUID(),time=now(),eventId=crypto.randomUUID();
  const chosen=selection?` AND EXISTS(SELECT 1 FROM matching_requests r JOIN market_connection_requests c ON c.request_id=r.id
    JOIN market_posts p ON p.id=c.post_id JOIN market_offers o ON o.post_id=p.id AND o.id=c.offer_id
    WHERE c.post_id=? AND r.id=? AND r.version=? AND r.status IN ('pending','reviewing') AND r.requester_id=b.id
-   AND r.target_id=s.id AND p.brand_id=b.id AND o.supplier_id=s.id AND p.review_status='approved')`:'';
+   AND r.target_id=s.id AND p.brand_id=b.id AND o.supplier_id=s.id AND p.review_status='approved' AND o.review_status='approved')`:'';
  const args=selection?[selection.postId,selection.id,selection.version]:[];
- const pair=`b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved' AND ${currentMember('b')} AND ${currentMember('s')} AND ${marketGate}${chosen}`;
+ const pair=`b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved' AND ${currentMember('b')} AND ${currentMember('s')} AND ${marketGate} AND ${noticeGate(explained)}${chosen}`;
  const result=await env.DB.batch([
    stmt(env,`INSERT OR IGNORE INTO member_partners(id,brand_id,supplier_id,created_at,updated_at) SELECT ?,b.id,s.id,?,? FROM members b JOIN members s ON s.id=? WHERE b.id=? AND ${pair}`,id,time,time,supplierId,brandId,...args),
    stmt(env,'INSERT INTO member_partner_events SELECT ?,?,?,?,?,? WHERE changes()=1',eventId,id,user.display_name,'매칭 등록',note,time),
@@ -44,7 +54,7 @@ export async function createPartner(env,user,brandId,supplierId,note,selection=n
    ...completeMatchingRequests(env,brandId,supplierId,user.display_name,eventId,time),
  ]);
  if(result[0].meta.changes)return {id,created:true};
- const existing=await stmt(env,`SELECT p.id,p.status,(${marketGate} AND b.status='approved' AND s.status='approved' AND ${currentMember('b')} AND ${currentMember('s')}) AS eligible FROM member_partners p JOIN members b ON b.id=p.brand_id JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=?`,brandId,supplierId).first();
+ const existing=await stmt(env,`SELECT p.id,p.status,(${marketGate} AND ${noticeGate(explained)} AND b.status='approved' AND s.status='approved' AND ${currentMember('b')} AND ${currentMember('s')}) AS eligible FROM member_partners p JOIN members b ON b.id=p.brand_id JOIN members s ON s.id=p.supplier_id WHERE p.brand_id=? AND p.supplier_id=?`,brandId,supplierId).first();
  if(existing?.status==='active'){
    if(!existing.eligible)fail(409,'회원 상태나 정식 동의를 다시 확인해주세요.');
    if(selection&&!await stmt(env,"SELECT id FROM matching_requests WHERE id=? AND status='completed'",selection.id).first())
@@ -79,19 +89,22 @@ export async function partnerApi(req,env,url,adminUser){
   return json({partners});
  }
  if(admin&&path===base&&req.method==='POST'){
-  const input=await body(req),result=await createPartner(env,user,input.brandId,input.supplierId,text(input.note,1000));
+  const input=await body(req),result=await createPartner(env,user,input.brandId,input.supplierId,text(input.note,1000),null,input.explained===true);
   return json({id:result.id},result.created?201:200);
  }
  const match=path.match(/^\/api\/admin\/partners\/([a-f0-9-]{36})$/);
  if(admin&&match&&req.method==='PATCH'){
-  const input=await body(req),note=text(input.note,1000);
+  const input=await body(req);let note=text(input.note,1000);
   if(!['active','ended'].includes(input.status)||!Number.isSafeInteger(input.version))fail(400,'매칭 상태와 버전을 확인해주세요.');
   const row=await stmt(env,'SELECT * FROM member_partners WHERE id=?',match[1]).first();if(!row)fail(404,'매칭을 찾을 수 없습니다.');
   if(row.version!==input.version)fail(409,'매칭 내용이 변경되었습니다. 새로고침해주세요.');
   if(row.status===input.status)return json({ok:true});
-  if(input.status==='active')await eligible(env,row.brand_id,row.supplier_id);
+  if(input.status==='active'){
+    await eligible(env,row.brand_id,row.supplier_id);
+    note=await noticeBeforeMatching(env,row.brand_id,row.supplier_id,note,input.explained===true);
+  }
   const time=now(),eventId=crypto.randomUUID(),result=await env.DB.batch([
-   stmt(env,`UPDATE member_partners SET status=?,version=version+1,updated_at=? WHERE id=? AND version=? AND (?='ended' OR EXISTS(SELECT 1 FROM members b JOIN members s ON s.id=member_partners.supplier_id WHERE b.id=member_partners.brand_id AND b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved' AND ${currentMember('b')} AND ${currentMember('s')} AND ${marketGate}))`,input.status,time,row.id,input.version,input.status),
+   stmt(env,`UPDATE member_partners SET status=?,version=version+1,updated_at=? WHERE id=? AND version=? AND (?='ended' OR EXISTS(SELECT 1 FROM members b JOIN members s ON s.id=member_partners.supplier_id WHERE b.id=member_partners.brand_id AND b.role='brand' AND s.role='supplier' AND b.status='approved' AND s.status='approved' AND ${currentMember('b')} AND ${currentMember('s')} AND ${marketGate} AND ${noticeGate(input.explained===true)}))`,input.status,time,row.id,input.version,input.status),
    stmt(env,'INSERT INTO member_partner_events SELECT ?,?,?,?,?,? WHERE changes()=1',eventId,row.id,user.display_name,input.status==='active'?'매칭 재개':'매칭 종료',note,time),
    ...(input.status==='active'?completeMatchingRequests(env,row.brand_id,row.supplier_id,user.display_name,eventId,time):[]),
   ]);

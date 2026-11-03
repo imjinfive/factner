@@ -42,7 +42,7 @@ function shell(content) {
   const navButton=([key,label])=>`<button type="button" data-nav="${key}" ${view===key?'class="selected" aria-current="page"':''}>${label}</button>`;
   const inSettings=view==='settings'||Object.hasOwn(settingsLabels,view);
   root.innerHTML=`<div class="layout"><aside><div class="wordmark">factner.</div><small>관리자</small>
-    <nav aria-label="관리자 업무">${owner?`<div class="nav-post-group" role="group" aria-label="공고 관리"><span class="nav-group-title">공고 관리</span>${[['market','공고 심사'],['posts','전체 공고']].map(navButton).join('')}</div>`:''}${items.map(navButton).join('')}</nav>
+    <nav aria-label="관리자 업무">${owner?`<div class="nav-post-group" role="group" aria-label="공고 관리"><span class="nav-group-title">공고 관리</span>${[['market','공고 심사'],['offers','입찰 심사'],['posts','전체 공고']].map(navButton).join('')}</div>`:''}${items.map(navButton).join('')}</nav>
     <div class="account"><p>${esc(user.display_name)}<br><small>${owner?'대표 관리자':'관리자'}</small></p>
       <div class="account-actions"><button type="button" id="logout" class="quiet">로그아웃</button>
         <button type="button" class="settings-button ${inSettings?'selected':''}" data-nav="settings" aria-label="설정" title="설정" aria-pressed="${inSettings}">${gearIcon}</button></div>
@@ -79,8 +79,9 @@ async function navigate(next,options={}) {
         if(user.role==='owner' && testPost)await marketView({...context,initialPostId:testPost.id,testReview:testPost,onExitTest:()=>navigate('market')});
         break;
       case 'market':
+      case 'offers':
       case 'posts':
-        if(user.role==='owner')await marketView({...context,inventory:next==='posts',initialStatus:options.status,initialReview:options.review,initialPostId:options.postId,
+        if(user.role==='owner')await marketView({...context,inventory:next==='posts',offerQueue:next==='offers',initialStatus:options.status,initialReview:options.review,initialPostId:options.postId,
           openMatching:(memberId,requestId)=>navigate('members',{memberId,requestId,section:'member-selections'})});
         break;
       case 'members':

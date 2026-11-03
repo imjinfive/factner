@@ -46,6 +46,8 @@ function reviewEnvironment(key){
     const stored=new DatabaseSync(':memory:');stored.exec('PRAGMA foreign_keys=ON');
     stored.exec(readFileSync(resolve(root,'migrations/0013_bid_market.sql'),'utf8'));
     stored.exec(readFileSync(resolve(root,'migrations/0015_market_post_review.sql'),'utf8'));
+    stored.exec(readFileSync(resolve(root,'migrations/0018_market_offer_review.sql'),'utf8'));
+    stored.exec(readFileSync(resolve(root,'migrations/0019_submission_agreements.sql'),'utf8'));
     stored.exec('CREATE TABLE rate_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,reset_at INTEGER NOT NULL)');
     seedReview(stored);
     reviewRooms.set(key,{DB:database(stored),BID_DEMO:'1'});

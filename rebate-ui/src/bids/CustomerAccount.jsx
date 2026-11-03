@@ -2,7 +2,7 @@ import {lazy, Suspense, useEffect, useLayoutEffect, useRef, useState} from 'reac
 import {ArrowLeft, ArrowRight, Clock, PenNib} from '@phosphor-icons/react';
 import {Button} from '../BrandControls';
 import {legalTypes, MemberActivityChoices, MemberLegalChoices, MemberLoginFields, MemberRegistrationFields} from '../MemberRegistration';
-import ReviewConfirm from '../ReviewConfirm';
+import ElectronicAgreement from '../ElectronicAgreement';
 import Turnstile from '../Turnstile';
 
 const Recovery = lazy(() => import('../MemberPortal').then(module => ({default:module.AccountRecovery})));
@@ -180,20 +180,20 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth, Sign
           <label className="member-check"><input type="checkbox" name="consent" required defaultChecked={draft.current.consent}/>가입 심사를 위한 개인정보 수집·이용에 동의합니다.</label>
           <label className="member-check"><input type="checkbox" name="termsConsent" required defaultChecked={draft.current.termsConsent}/>이용약관에 동의합니다.</label>
           {available && registration.turnstileSiteKey && <Turnstile siteKey={registration.turnstileSiteKey} onToken={setToken} resetKey={attempt} action="signup"/>}
-          <Button type="submit" className="member-full" disabled={!available || certBusy || photosBusy || Boolean(registration?.turnstileSiteKey && !token)}>가입 심사 신청 <ArrowRight size={18}/></Button>
+          <Button type="submit" className="member-full" disabled={!available || certBusy || photosBusy || Boolean(registration?.turnstileSiteKey && !token)}>심사 요청 <ArrowRight size={18}/></Button>
         </fieldset></form>
       </>}
       {step > 0 && <button className="member-back" type="button" disabled={busy} onClick={previousStep}><ArrowLeft size={18}/> 이전 단계</button>}
     </>}
     {!login && error && !pending && <p className="member-error" role="alert">{error}</p>}
     </div>
-    <ReviewConfirm open={Boolean(pending) && signup && available} busy={busy} error={error} title="가입 신청 정보를 확인해주세요" confirmLabel="가입 심사 신청"
-      onCancel={() => {setPending(null);setError('');if(history.state?.[reviewKey])history.back();}} onConfirm={()=>submit('/register',pending)}>
+    <ElectronicAgreement open={Boolean(pending) && signup && available} busy={busy} error={error}
+      onCancel={() => {setPending(null);setError('');if(history.state?.[reviewKey])history.back();}} onConfirm={agreement=>submit('/register',{...pending,agreement})}>
       {pending && <dl>{[
         ['활동',role === 'brand' ? '브랜드' : '패키징 제작업체'],['가입 유형',legalTypes[legal]],['패키징 디자인',role==='supplier'?(pending.packagingDesign?'함께 제공':'제작만 제공'):''],['이름',pending.name],['담당자',pending.contact],
         ['연락처',pending.phone],['이메일',pending.email],['사업자번호',pending.businessNumber],['첨부 자료',pending.files.map(file=>file.name).join('\n')],
         ['신청 후 상태','가입 대기 · 운영팀 검토 후 승인']
       ].filter(([,value])=>value).map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
-    </ReviewConfirm>
+    </ElectronicAgreement>
   </section>;
 }

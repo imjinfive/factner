@@ -7,6 +7,7 @@ import {memberSupport,memberWorkspaceApi} from './member-support.js';
 import {isReviewEmail} from '../scripts/bid-seed.mjs';
 import {approvedMarketMember,marketConsent} from './policy.js';
 import {currentMember} from './member-lifecycle.js';
+import {submissionSignature,agreementStatement,memberAgreements} from './submission-agreement.js';
 
 const consentVersion='member-pilot-2026-10-21';
 const fields='id,email,role,legal_type,name,contact,phone,business_number,status,review_note,created_at,updated_at,version';
@@ -55,6 +56,7 @@ export async function memberFile(req,env,id,user,admin=false){
 }
 export async function registerMember(req,env,input,{version,live=false,requireCaptcha=false}){
   await rate(env,`signup:${await digest(req.headers.get('CF-Connecting-IP')||'local')}`,10,3600);
+  const signature=live?submissionSignature(input.agreement):null;
   const {email,password}=loginInput(input);
   if(isReviewEmail(email))fail(409,'회원가입에 사용할 수 없는 이메일입니다.');
   if(!['brand','supplier'].includes(input.role)||!['individual','sole','corporate'].includes(input.legalType))fail(400,'가입 유형을 선택해주세요.');
@@ -78,6 +80,8 @@ export async function registerMember(req,env,input,{version,live=false,requireCa
   try{[saved]=await env.DB.batch([
    stmt(env,`INSERT INTO members(id,email,password_hash,role,legal_type,name,contact,phone,business_number,consent_version,created_at,updated_at,packaging_design) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?${allowed}`,id,email,await passwordHash(password),input.role,input.legalType,name,contact,phone,input.legalType==='individual'?'':number,version,date,date,input.packagingDesign==null?null:Number(input.packagingDesign),...(live?[version,version]:[])),
    ...files.map(f=>stmt(env,'INSERT INTO member_files SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=?)',f.id,id,f.kind,f.name,f.mime,f.size,f.bytes.buffer,date,id)),
+   ...(live?[agreementStatement(env,{memberId:id,purpose:'registration',resourceId:id,signature,time:date,
+     submission:{email,role:input.role,legalType:input.legalType,name,contact}})]:[]),
   ]);}catch(error){if(String(error.message).includes('UNIQUE'))fail(409,'이미 접수된 이메일입니다.');throw error;}
   if(!saved.meta.changes)fail(409,'가입 안내가 변경되었습니다. 다시 확인해주세요.');
   return json({id,status:'pending',support:await memberSupport(env,id)},201);
@@ -172,7 +176,7 @@ export async function memberAdminApi(req,env,url,user){
    const files=await stmt(env,"SELECT id,name,mime,kind FROM member_files WHERE member_id=? AND kind IN ('certificate','workplace')",member.id).all();
    const reviews=await stmt(env,'SELECT actor,status,note,created_at FROM member_reviews WHERE member_id=? ORDER BY created_at DESC,rowid DESC',member.id).all();
    const profileEvents=await stmt(env,'SELECT actor,changes,created_at FROM member_profile_events WHERE member_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50',member.id).all();
-   return json({member,files:files.results,reviews:reviews.results,orderCounts,profileEvents:profileEvents.results.map(e=>({...e,changes:JSON.parse(e.changes)}))});
+   return json({member,files:files.results,reviews:reviews.results,orderCounts,agreements:await memberAgreements(env,member.id),profileEvents:profileEvents.results.map(e=>({...e,changes:JSON.parse(e.changes)}))});
   }
   if(req.method==='PATCH'){
    if(member.archived)fail(409,'탈퇴 회원의 주문 보관 기록은 변경할 수 없습니다.');

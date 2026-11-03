@@ -31,13 +31,17 @@ export class BidRoom {
   #ctx;
   #schema;
   #reviewSchema;
+  #offerSchema;
+  #agreementSchema;
   #env;
   #ready = null;
 
-  constructor(ctx, schema, reviewSchema) {
+  constructor(ctx, schema, reviewSchema, offerSchema, agreementSchema) {
     this.#ctx = ctx;
     this.#schema = schema;
     this.#reviewSchema = reviewSchema;
+    this.#offerSchema = offerSchema;
+    this.#agreementSchema = agreementSchema;
     this.#env = roomEnvironment(ctx.storage);
   }
 
@@ -50,16 +54,22 @@ export class BidRoom {
         sql.exec('CREATE TABLE IF NOT EXISTS review_room (id INTEGER PRIMARY KEY CHECK(id=1), expires_at INTEGER NOT NULL)');
         const existing = sql.exec('SELECT expires_at FROM review_room WHERE id=1').toArray()[0];
         const prepare=query=>(...args)=>sql.exec(query,...args);
+        const migrateSubmissions=()=>{
+          if(!sql.exec('PRAGMA table_info(market_offers)').toArray().some(row=>row.name==='review_status'))sql.exec(this.#offerSchema);
+          if(!sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='submission_agreements'").toArray().length)sql.exec(this.#agreementSchema);
+        };
         if (existing) {
           if(!sql.exec('PRAGMA table_info(market_posts)').toArray().some(row=>row.name==='review_status')){
             sql.exec(this.#reviewSchema);
           }
+          migrateSubmissions();
           retireOriginalRoomPosts(prepare,existing.expires_at-lifetime);
           return existing.expires_at;
         }
         const start = Date.now();
         sql.exec(this.#schema);
         sql.exec(this.#reviewSchema);
+        migrateSubmissions();
         sql.exec('CREATE TABLE rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)');
         insertReviewFixtures(prepare);
         sql.exec('INSERT INTO review_room(id,expires_at) VALUES(1,?)', start + lifetime);

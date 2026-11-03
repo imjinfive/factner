@@ -1,0 +1,25 @@
+.electronic-agreement { width:min(580px,calc(100vw - 32px)); }
+.electronic-agreement h2:focus { outline:none; }
+.electronic-agreement-document { margin-top:22px; padding:24px 0; min-height:92px; border-block:1px solid var(--line); }
+.electronic-agreement-document p { margin:0; white-space:pre-wrap; line-height:1.7; }
+.electronic-agreement > .electronic-agreement-version { margin:8px 0 20px; font-size:12px; overflow-wrap:anywhere; }
+.electronic-agreement-summary { margin:0 0 20px; }
+.electronic-agreement-summary summary { padding:8px 0; cursor:pointer; font-size:14px; font-weight:600; }
+.electronic-agreement-summary .review-content { padding:12px 0 0; font-size:14px; }
+.electronic-agreement fieldset { display:grid; gap:16px; min-width:0; padding:0; margin:0; border:0; }
+.electronic-agreement-name { display:grid; gap:8px; font-weight:600; }
+.electronic-agreement-name input { width:100%; min-width:0; height:48px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; font:inherit; font-weight:400; color:var(--text); background:var(--surface); }
+.electronic-agreement-name input::placeholder { color:var(--muted); opacity:1; }
+.electronic-agreement-check { display:flex; align-items:flex-start; gap:10px; font-size:14px; line-height:1.6; cursor:pointer; }
+.electronic-agreement-check input { flex:none; width:18px; height:18px; margin:2px 0 0; accent-color:var(--green-dark); }
+.electronic-agreement :is(input,summary):focus-visible { outline:2px solid var(--green-dark); outline-offset:3px; }
+.electronic-agreement .review-actions { position:static; padding-top:24px; }
+.electronic-agreement .review-actions button:disabled { cursor:not-allowed; }
+.electronic-agreement form > .member-error { margin:16px 0 0; }
+@media(max-width:600px){
+ .electronic-agreement { max-height:calc(100dvh - 24px); }
+ .electronic-agreement > p { font-size:14px; }
+ .electronic-agreement .review-actions { gap:8px; }
+ .electronic-agreement .review-actions button { min-height:48px; padding:12px; }
+ .electronic-agreement-document { margin-top:16px; padding-block:18px; min-height:74px; }
+}

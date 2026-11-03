@@ -60,10 +60,10 @@ export async function memberWorkspace(context,member,reload){
   }));
   document.querySelectorAll('[data-connect-request]').forEach(button=>button.onclick=async()=>{
    const r=requests.find(r=>r.id===button.dataset.connectRequest),form=button.closest('form'),note=form?.elements.note.value||r.note||'';
-   if(!await reviewBeforeSave({title:'실제 거래 연결을 확인해주세요',rows:[['브랜드',r.requester_role==='brand'?r.requester_name:r.target_name],['제작 업체',r.requester_role==='supplier'?r.requester_name:r.target_name],['선택 품목',categories[r.category]||r.category],['운영 메모',note]],action:'양측 확인 완료 · 거래 연결',message:'양측과 거래 조건을 확인한 뒤 연결하세요. 연결 후 브랜드가 이 제작 업체로 발주할 수 있습니다.'}))return;
+   if(!await reviewBeforeSave({title:'실제 거래 연결을 확인해주세요',rows:[['브랜드',r.requester_role==='brand'?r.requester_name:r.target_name],['제작 업체',r.requester_role==='supplier'?r.requester_name:r.target_name],['선택 품목',categories[r.category]||r.category],['운영 메모',note]],action:'양측 확인 완료 · 거래 연결',message:'서명한 계약 내용과 거래 조건을 양쪽에 전화로 다시 설명한 후 연결하세요.',confirmation:'양쪽에 계약 내용을 유선으로 설명했습니다.'}))return;
    try{await context.withMemberSave(async()=>{
-    if(r.marketPostId)await send(`admin/market/posts/${encodeURIComponent(r.marketPostId)}/connect`,{confirmed:true,version:r.version,note});
-    else await send('admin/partners',{brandId:r.requester_role==='brand'?r.requester_id:r.target_id,supplierId:r.requester_role==='supplier'?r.requester_id:r.target_id,note,confirmed:true});
+    if(r.marketPostId)await send(`admin/market/posts/${encodeURIComponent(r.marketPostId)}/connect`,{confirmed:true,explained:true,version:r.version,note});
+    else await send('admin/partners',{brandId:r.requester_role==='brand'?r.requester_id:r.target_id,supplierId:r.requester_role==='supplier'?r.requester_id:r.target_id,note,confirmed:true,explained:true});
     notice('거래를 연결하고 선택 요청을 완료했어요.');await refresh();
    },form);}catch(error){notice(error.message);}
   });

@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Bag, Bell, Cube, Gift, ListMagnifyingGlass, MagnifyingGlass, Package, PencilRuler, Plus, Radio, Tag, Tray, X } from '@phosphor-icons/react';
 import { isPackagingPartner } from '../../../shared/partner-roles.js';
 import { isPublicPost, roomReviewUrl } from './post-visibility.js';
+import { packagingSize, positiveInteger } from './market-input.js';
+import ElectronicAgreement from '../ElectronicAgreement';
 import ReviewConfirm from '../ReviewConfirm';
 import './market.css';
 
@@ -30,7 +32,7 @@ function statusText(post, designer = false) {
   const days = daysLeft(post);
   if (post.status !== 'open' || days < 0) return '접수 종료';
   if (post.category === 'design') return designer ? '열람 전용' : '준비 중';
-  return days === 0 ? '오늘 마감' : `D−${days}`;
+  return days === 0 ? '오늘 마감' : `D-${days}`;
 }
 
 function elapsed(iso) {
@@ -103,19 +105,21 @@ function NewPost({ mutate, onDone, onCancel, initialCategory, isDemo }) {
   function preview(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    form.delete('type');
     const data = Object.fromEntries(form);
-    const candidate = { ...data, category, quantity: Number(data.quantity), unitPrice: Number(data.unitPrice) };
-    if (!data.title.trim() || !data.description.trim()) { setError('제목과 제작 조건을 입력해 주세요.'); return; }
-    if (candidate.quantity * candidate.unitPrice > 1e12) { setError('수량과 단가의 합계는 1조원 이하여야 합니다.'); return; }
-    setError('');
-    setDraft(candidate);
+    try {
+      const candidate = { title:data.title.trim(), description:data.description.trim(), category,
+        quantity:positiveInteger(data.quantity, 100000000, '요청 수량'), unitPrice:positiveInteger(data.unitPrice, 1000000000, '희망 단가'), size:packagingSize(data) };
+      if (!candidate.title || !candidate.description) throw new Error('제목과 제작 조건을 입력해 주세요.');
+      if (candidate.quantity * candidate.unitPrice > 1e12) throw new Error('수량과 단가의 합계는 1조원 이하여야 합니다.');
+      setError('');
+      setDraft(candidate);
+    } catch (err) { setError(err.message); }
   }
-  async function publish() {
+  async function publish(agreement) {
     if (submitLock.current) return;
     submitLock.current = true;
     setBusy(true);
-    try { const result = await mutate('/posts', draft); onDone(result.id); }
+    try { const result = await mutate('/posts', { ...draft, agreement }); onDone(result.id); }
     catch (err) { setError(err.message?.replaceAll('입찰', '제안') || '등록하지 못했습니다. 다시 시도해 주세요.'); }
     finally { submitLock.current = false; setBusy(false); }
   }
@@ -129,17 +133,22 @@ function NewPost({ mutate, onDone, onCancel, initialCategory, isDemo }) {
     </div>{initialCategory === 'design' && <p className="bm-hint">디자인 의뢰 등록은 준비 중입니다. 현재는 패키징 제작 의뢰를 등록할 수 있어요.</p>}</fieldset>
     <p className="bm-anonymous-guide" id="bm-anonymous-guide"><strong>공고는 익명으로 공개됩니다.</strong> 제목·규격·제작 조건에는 업체명, 브랜드명, 담당자명, 사업자번호, 전화번호, 이메일, 주소, 외부 링크를 적지 마세요.</p>
     <label>공고 제목<input name="title" required maxLength={100} aria-describedby="bm-anonymous-guide" placeholder="예: 화장품 단상자 인쇄·제작" /></label>
-    <div className="bm-two"><label>요청 수량 (개)<input name="quantity" type="number" min="1" max="100000000" step="1" required placeholder="5,000" /></label>
-      <label>희망 개당 단가 (원)<input name="unitPrice" type="number" min="1" max="1000000000" step="1" required placeholder="450" /></label></div>
-    <div className="bm-two"><label>규격 <small>선택</small><input name="size" maxLength={160} placeholder="예: 60 × 35 × 110 mm" /></label>
-      <label>입찰 마감일<input type="date" name="deadline" required min={koreanDay()} /></label></div>
+    <div className="bm-two"><label>요청 수량 (개)<input name="quantity" type="text" inputMode="numeric" maxLength={12} required placeholder="5,000" /></label>
+      <label>희망 개당 단가 (원)<input name="unitPrice" type="text" inputMode="numeric" maxLength={13} required placeholder="450" /></label></div>
+    <fieldset className="bm-fieldset bm-dimensions"><legend>규격 (mm) <small>선택</small></legend>
+      <div><label>가로<input name="width" type="text" inputMode="decimal" maxLength={12} placeholder="60" /></label>
+        <label>세로<input name="depth" type="text" inputMode="decimal" maxLength={12} placeholder="35" /></label>
+        <label>높이 <small>선택</small><input name="height" type="text" inputMode="decimal" maxLength={12} placeholder="110" /></label></div>
+      <p className="bm-hint">숫자만 입력하세요. 봉투·라벨처럼 납작한 제품은 높이를 비워도 됩니다.</p>
+    </fieldset>
     <label>제작 조건<textarea name="description" required rows={5} maxLength={2000} aria-describedby="bm-anonymous-guide" placeholder="희망 납기, 재질, 인쇄·후가공 조건 등을 적어주세요." /></label>
     {error && !draft && <p role="alert" className="bm-error">{error}</p>}
-    <div className="bm-actions"><button type="button" onClick={onCancel}>취소</button><button type="submit" className="bm-primary">심사 요청 전 확인 <ArrowRight size={16}/></button></div>
-  </form>{draft && <ReviewConfirm open title="이 내용으로 공고 심사를 요청할까요?" description={isDemo ? '관리자 승인 후 같은 테스트 공간의 제작업체에만 공개됩니다.' : '업체를 알아볼 수 있는 정보가 없는지 확인해 주세요. 승인 전까지는 내 공고에서만 볼 수 있습니다.'} busy={busy} error={error} onCancel={() => { setDraft(null); setError(''); }} onConfirm={publish} confirmLabel="심사 요청">
+    <p className="bm-hint">공고가 승인되면 7일 동안 입찰을 받습니다.</p>
+    <div className="bm-actions"><button type="button" onClick={onCancel}>취소</button><button type="submit" className="bm-primary">심사 요청 <ArrowRight size={16}/></button></div>
+  </form>{draft && <ElectronicAgreement open description="공고 내용과 전자계약서를 확인하고 서명해 주세요. 운영팀 승인 후 7일 동안 공고가 공개됩니다." busy={busy} error={error} onCancel={() => { setDraft(null); setError(''); }} onConfirm={publish}>
     <ReviewRows rows={[[ '분야', types[draft.category] ], ['제목', draft.title], ['수량 · 단가', `${number.format(draft.quantity)}개 · ${number.format(draft.unitPrice)}원`],
-      ['규격', draft.size || '미입력'], ['제안 마감', draft.deadline], ['제작 조건', draft.description]]} />
-  </ReviewConfirm>}</section>;
+      ['규격', draft.size || '미입력'], ['입찰 기간', '공고 승인 후 7일'], ['제작 조건', draft.description]]} />
+  </ElectronicAgreement>}</section>;
 }
 
 function QuoteForm({ post, mutate, onDone }) {
@@ -155,17 +164,19 @@ function QuoteForm({ post, mutate, onDone }) {
   }
   function preview(event) {
     event.preventDefault();
-    const values = tiers.map(row => ({ quantity: Number(row.quantity), unitPrice: Number(row.unitPrice) }));
-    if (new Set(values.map(row => row.quantity)).size !== values.length) { setError('각 조건의 수량을 다르게 입력해 주세요.'); return; }
-    if (values.some(row => row.quantity * row.unitPrice > 1e12)) { setError('각 조건의 합계는 1조원 이하여야 합니다.'); return; }
-    setError('');
-    setDraft({ tiers: values, note: note.trim() });
+    try {
+      const values = tiers.map(row => ({ quantity:positiveInteger(row.quantity, 100000000, '제작 수량'), unitPrice:positiveInteger(row.unitPrice, 1000000000, '개당 단가') }));
+      if (new Set(values.map(row => row.quantity)).size !== values.length) throw new Error('각 조건의 수량을 다르게 입력해 주세요.');
+      if (values.some(row => row.quantity * row.unitPrice > 1e12)) throw new Error('각 조건의 합계는 1조원 이하여야 합니다.');
+      setError('');
+      setDraft({ tiers: values, note: note.trim() });
+    } catch (err) { setError(err.message); }
   }
-  async function send() {
+  async function send(agreement) {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
-    try { await mutate(`/posts/${encodeURIComponent(post.id)}/offers`, draft); onDone(); }
+    try { await mutate(`/posts/${encodeURIComponent(post.id)}/offers`, { ...draft, agreement }); setDraft(null); onDone(); }
     catch (err) { setError(err.message || '입찰을 보내지 못했습니다. 다시 시도해 주세요.'); }
     finally { lock.current = false; setBusy(false); }
   }
@@ -173,19 +184,19 @@ function QuoteForm({ post, mutate, onDone }) {
     <form className="bm-form" onSubmit={preview}>
       <div className="bm-tier-labels" aria-hidden="true"><span>제작 수량 (개)</span><span>개당 단가 (원)</span></div>
       {tiers.map((row, index) => <div className="bm-tier-input" key={row.key}>
-        <input type="number" min="1" max="100000000" step="1" required aria-label={`조건 ${index + 1} 수량 (개)`} value={row.quantity} onChange={e => update(row.key,'quantity',e.target.value)} />
-        <input type="number" min="1" max="1000000000" step="1" required aria-label={`조건 ${index + 1} 개당 단가 (원)`} value={row.unitPrice} onChange={e => update(row.key,'unitPrice',e.target.value)} placeholder="단가 입력" />
+        <input type="text" inputMode="numeric" maxLength={12} required aria-label={`조건 ${index + 1} 수량 (개)`} value={row.quantity} onChange={e => update(row.key,'quantity',e.target.value)} />
+        <input type="text" inputMode="numeric" maxLength={13} required aria-label={`조건 ${index + 1} 개당 단가 (원)`} value={row.unitPrice} onChange={e => update(row.key,'unitPrice',e.target.value)} placeholder="단가 입력" />
         <button type="button" aria-label={`조건 ${index + 1} 삭제`} disabled={tiers.length === 1} onClick={() => setTiers(rows => rows.filter(r => r.key !== row.key))}><X size={15} /></button>
       </div>)}
       {tiers.length < 8 && <button className="bm-add" type="button" onClick={() => { const key = nextKey.current++; setTiers(rows => [...rows, {key, quantity: '', unitPrice: ''}]); }}><Plus size={15} />수량 조건 추가</button>}
       <label>견적 메모 <small>선택</small><textarea rows={2} value={note} maxLength={1200} onChange={e => setNote(e.target.value)} placeholder="납기, 후가공, 배송·세금 포함 여부" /></label>
-      <p className="bm-hint">한 공고에 여러 수량의 단가를 담아 한 번 입찰할 수 있습니다. 상호와 연락처는 적지 마세요.</p>
+      <p className="bm-hint">한 공고에 여러 수량의 단가를 담아 한 번 입찰할 수 있습니다. 상호와 연락처는 적지 마세요. 운영팀이 확인하고 승인한 입찰만 브랜드에 전달됩니다.</p>
       {error && !draft && <p role="alert" className="bm-error">{error}</p>}
-      <button type="submit" className="bm-primary">입찰 내용 확인 <ArrowRight size={16} /></button>
+      <button type="submit" className="bm-primary">입찰 심사 요청 <ArrowRight size={16} /></button>
     </form>
-    {draft && <ReviewConfirm open title="이 조건으로 입찰할까요?" busy={busy} error={error} confirmLabel="입찰 보내기" onCancel={() => { setDraft(null); setError(''); }} onConfirm={send}>
+    {draft && <ElectronicAgreement open description="입찰 조건과 전자계약서를 확인하고 서명해 주세요. 운영팀 승인 후 브랜드에 입찰이 전달됩니다." busy={busy} error={error} onCancel={() => { setDraft(null); setError(''); }} onConfirm={send}>
       <ReviewRows rows={[[ '공고', post.title ], ...draft.tiers.map(t => [`${number.format(t.quantity)}개`, `개당 ${number.format(t.unitPrice)}원 · 총 ${number.format(t.quantity * t.unitPrice)}원`]), ['메모', draft.note || '없음']]} />
-    </ReviewConfirm>}
+    </ElectronicAgreement>}
   </div>;
 }
 
@@ -193,17 +204,20 @@ function Offer({ offer, post, onSelect, allowSelect, selected }) {
   const [choice, setChoice] = useState(0);
   const tier = offer.tiers[choice];
   const alias = offer.alias;
+  const selectable = allowSelect && offer.reviewStatus==='approved';
   return <article className="bm-offer">
-    <div className="bm-offer-head"><strong>{alias}{offer.isMine && ' · 내 입찰'}</strong><span>{selected ? '선정된 입찰' : `수량 조건 ${offer.tiers.length}개`}</span></div>
+    <div className="bm-offer-head"><strong>{alias}{offer.isMine && ' · 내 입찰'}</strong><span>{selected ? '선정된 입찰' : offer.reviewStatus==='pending' ? '심사 대기' : offer.reviewStatus==='rejected' ? '심사 반려' : offer.reviewStatus==='withdrawn' ? '공개 중단' : `수량 조건 ${offer.tiers.length}개`}</span></div>
+    {offer.isMine && offer.reviewStatus==='pending' && <p className="bm-offer-review">운영팀이 입찰 내용을 확인하고 있습니다. 승인 후 브랜드에 전달됩니다.</p>}
+    {offer.isMine && ['rejected','withdrawn'].includes(offer.reviewStatus) && <p className="bm-offer-review">이 입찰은 브랜드에 공개되지 않습니다.{offer.reviewReason && <><br/>{offer.reviewReason}</>}</p>}
     <div className="bm-offer-tiers">
-      {offer.tiers.map((t, i) => <label key={t.quantity} className={allowSelect && choice === i ? 'chosen' : ''}>
-        {allowSelect && <input aria-label={`${alias} ${t.quantity}개 조건 선택`} type="radio" name={`tier-${offer.id}`} checked={choice === i} onChange={() => setChoice(i)} />}
+      {offer.tiers.map((t, i) => <label key={t.quantity} className={selectable && choice === i ? 'chosen' : ''}>
+        {selectable && <input aria-label={`${alias} ${t.quantity}개 조건 선택`} type="radio" name={`tier-${offer.id}`} checked={choice === i} onChange={() => setChoice(i)} />}
         <span>{number.format(t.quantity)}개</span><span>개당 {number.format(t.unitPrice)}원</span>
         <strong>총 {number.format(t.quantity * t.unitPrice)}원</strong>
       </label>)}
     </div>
     {offer.note && <p className="bm-note">{offer.note}</p>}
-    {allowSelect && tier && <button type="button" className="bm-secondary" onClick={() => onSelect(offer, post, tier)}>이 조건으로 매칭 요청 <ArrowUpRight size={15} /></button>}
+    {selectable && tier && <button type="button" className="bm-secondary" onClick={() => onSelect(offer, post, tier)}>이 조건으로 매칭 요청 <ArrowUpRight size={15} /></button>}
   </article>;
 }
 
@@ -391,7 +405,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   }
   const afterPost = id => { setNotice(isDemo ? '테스트 공고 심사를 요청했습니다.' : '공고 심사를 요청했습니다. 승인 후 공개됩니다.'); onView('mine/' + id); };
   const afterWithdraw = () => { setNotice('공고를 삭제했습니다.'); if (!mine && selected) onView('mine/' + selected.id); };
-  const sent = () => setNotice('입찰을 보냈습니다. 내 입찰에서 다시 확인할 수 있어요.');
+  const sent = () => setNotice('입찰 심사를 요청했습니다. 승인 후 브랜드에 전달됩니다.');
   if (view === 'new' && brand) return <section className="bm"><NewPost key={initialCategory} initialCategory={initialCategory} isDemo={isDemo} mutate={mutate} onDone={afterPost} onCancel={() => onView('feed')} /></section>;
   if ((mine && !user) || (view === 'new' && !brand)) return <section className="bm"><div className="bm-empty">
     <h1>{view === 'new' ? '브랜드 회원 전용입니다' : '로그인이 필요합니다'}</h1>

@@ -11,7 +11,7 @@
 }
 .admin-market { min-width:0; }
 .admin-market header :is(h1,p) { word-break:keep-all; overflow-wrap:anywhere; }
-.admin-market [data-detail] { display:grid; gap:18px; }
+.admin-market [data-detail] { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; }
 .admin-market .am-heading,.admin-market .am-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .admin-market .am-heading { justify-content:space-between; margin-bottom:18px; }
 .admin-market .am-heading :is(h2,h3) { margin:0; }
@@ -26,6 +26,12 @@
 .admin-market .am-tiers :is(th,td):not(:first-child) { text-align:right; }
 .admin-market .am-picked { background:var(--market-tint); color:var(--market-accent); font-weight:650; }
 .admin-market .am-note { margin:12px 0 0; }
+.admin-market .am-private { margin-top:16px; }
+.admin-market .am-private summary { cursor:pointer; color:var(--muted-ink); }
+.admin-market .am-private dl { margin-top:12px; }
+.admin-market .am-private dd { min-width:0; overflow-wrap:anywhere; }
+.admin-market .am-offer-review { margin-top:18px; }
+.admin-market .am-offer:focus-visible { outline:2px solid var(--focus-ink); outline-offset:6px; }
 .admin-market .am-queues { display:flex; flex-wrap:wrap; gap:4px; margin:0 0 16px; border-bottom:1px solid var(--market-rule); }
 .admin-market .am-queues button { min-height:44px; padding:8px 12px; border-radius:0; background:transparent; color:var(--muted-ink); }
 .admin-market .am-queues button[aria-pressed="true"] { color:var(--market-accent); box-shadow:inset 0 -2px var(--market-accent); }
@@ -61,6 +67,8 @@
   .admin-market .am-posts td:nth-child(3)::before { content:'제안 '; }
   .admin-market .am-queue-table td:nth-child(3)::before { content:'제출 '; }
   .admin-market .am-posts td:nth-child(4)::before { content:'마감 '; }
+  .admin-market .am-offer-queue td:nth-child(3)::before { content:'접수 '; }
+  .admin-market .am-offer-queue td:nth-child(4)::before { content:none; }
   .admin-market .am-posts td:last-child { display:block; margin-top:4px; }
   .admin-market .am-tiers :is(th,td) { padding:10px 6px; }
   .admin-market .am-queues { gap:0; }

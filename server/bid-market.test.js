@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 import { BID_TERMS } from '../shared/bid-terms.js';
 import { marketApi } from './bid-market.js';
 import { HttpError } from './http.js';
+import {SUBMISSION_AGREEMENT} from '../shared/submission-agreement.js';
+import {biddingDeadline,reviewPost} from './market-review.js';
+import {reviewOffer} from './offer-review.js';
 
 function fixture(t) {
   const sql = new DatabaseSync(':memory:');
@@ -12,16 +15,18 @@ function fixture(t) {
   sql.exec('PRAGMA foreign_keys=ON');
   sql.exec(readFileSync(new URL('../migrations/0013_bid_market.sql',import.meta.url),'utf8'));
   sql.exec(readFileSync(new URL('../migrations/0015_market_post_review.sql',import.meta.url),'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/0018_market_offer_review.sql',import.meta.url),'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/0019_submission_agreements.sql',import.meta.url),'utf8'));
   const env = { BID_DEMO:true, DB:{
     prepare(query) {
       const statement = sql.prepare(query);
       return { bind(...args) { return {
-        run:()=>({ meta:{ changes:statement.run(...args).changes } }),
+        run:()=>statement.columns().length?{results:statement.all(...args)}:{ meta:{ changes:statement.run(...args).changes } },
         all:()=>({ results:statement.all(...args) }),
         first:()=>statement.get(...args)
       }; } };
     },
-    batch(items) { return items.map(item=>item.all()); }
+    batch(items) { sql.exec('BEGIN');try{const rows=items.map(item=>item.run());sql.exec('COMMIT');return rows;}catch(error){sql.exec('ROLLBACK');throw error;} }
   } };
   const accounts = {};
   for (const [key,kind] of Object.entries({ brand:'brand',otherBrand:'brand',design:'design',box:'packaging',both:'both' })) {
@@ -43,8 +48,9 @@ function fixture(t) {
   }
   return { ...accounts,sql,env,api };
 }
-const post = { category:'packaging',title:'칼선에 맞춘 상자',quantity:500,unitPrice:2100,size:'80×50×30㎜',description:'동일 사양으로 견적을 요청합니다.',deadline:'2099-04-12' };
-const offer = { tiers:[{quantity:1000,unitPrice:1800},{quantity:500,unitPrice:2000}],note:'운임 별도' };
+const agreement={accepted:true,version:SUBMISSION_AGREEMENT.version,signature:'서명 검증자'};
+const post = { category:'packaging',title:'칼선에 맞춘 상자',quantity:500,unitPrice:2100,size:'80×50×30㎜',description:'동일 사양으로 견적을 요청합니다.',agreement };
+const offer = { tiers:[{quantity:1000,unitPrice:1800},{quantity:500,unitPrice:2000}],note:'운임 별도',agreement };
 const consent = { accepted:true, version:BID_TERMS.version,signature:'비공개 서명자' };
 async function approvedPost(f){
   const draft=await f.api(f.brand,'posts',post);
@@ -60,7 +66,7 @@ test('bid board restricts participation by category and excludes identities and 
   for (const title of [f.brand.name,'문 의 ０１０－１２３４－５６７８','문의 info@private.co.kr','공식 www.example.com']) {
     assert.equal((await f.api(f.brand,'posts',{...post,title})).status,400);
   }
-  for (const change of [{deadline:'2026-02-30'},{deadline:'2000-01-01'},{quantity:-1},{unitPrice:'100'}]) {
+  for (const change of [{quantity:-1},{unitPrice:'100'}]) {
     assert.equal((await f.api(f.brand,'posts',{...post,...change})).status,400);
   }
   const id=await approvedPost(f);
@@ -72,6 +78,10 @@ test('bid board restricts participation by category and excludes identities and 
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',offer)).status,201);
   assert.equal((await f.api(f.box,'posts/'+id+'/offers',offer)).status,409);
   assert.equal((await f.api(f.both,'posts/'+id+'/offers',offer)).status,201);
+  assert.equal((await f.api(null,'state')).data.posts[0].offerCount,0);
+  assert.deepEqual((await f.api(f.brand,'state')).data.offers,[]);
+  assert.equal((await f.api(f.box,'state')).data.offers[0].reviewStatus,'pending');
+  f.sql.exec("UPDATE market_offers SET review_status='approved'");
   const publicBoard=(await f.api(null,'state')).data;
   assert.equal(publicBoard.posts.find(p=>p.id===id).offerCount,2);
   assert.deepEqual(publicBoard.offers,[]);
@@ -93,6 +103,7 @@ test('a historic design brief stays readable while its offers and contracts cann
   const f=fixture(t);
   const postId=await approvedPost(f);
   const offerId=(await f.api(f.both,'posts/'+postId+'/offers',offer)).data.id;
+  f.sql.exec("UPDATE market_offers SET review_status='approved'");
   const contractId=(await f.api(f.brand,'offers/'+offerId+'/select',{...consent,quantity:500})).data.id;
   f.sql.prepare("UPDATE market_posts SET category='design' WHERE id=?").run(postId);
   assert.equal((await f.api(null,'state')).data.posts[0].category,'design');
@@ -110,6 +121,7 @@ test('one awarded tier, signatures and an admin decision precede private reveal 
   const f=fixture(t),postId=await approvedPost(f);
   const a=(await f.api(f.box,'posts/'+postId+'/offers',offer)).data.id;
   const b=(await f.api(f.both,'posts/'+postId+'/offers',offer)).data.id;
+  f.sql.exec("UPDATE market_offers SET review_status='approved'");
   const select=(user,id,extra={})=>f.api(user,'offers/'+id+'/select',{...consent,quantity:500,...extra});
   assert.equal((await select(f.otherBrand,a)).status,404);
   assert.equal((await select(f.brand,a,{version:'invalid'})).status,409);
@@ -163,6 +175,7 @@ test('identical selection and signature retries return the existing record and i
   const postId = await approvedPost(f);
   const offerId = (await f.api(f.box,'posts/'+postId+'/offers',offer)).data.id;
   const alternative = (await f.api(f.both,'posts/'+postId+'/offers',offer)).data.id;
+  f.sql.exec("UPDATE market_offers SET review_status='approved'");
   const select = (extra={}, id=offerId) => f.api(f.brand,'offers/'+id+'/select',{...consent,quantity:500,...extra});
   const selections = await Promise.all([select(),select()]);
   assert.deepEqual(selections.map(r=>r.status).sort(),[200,201]);
@@ -189,4 +202,42 @@ test('identical selection and signature retries return the existing record and i
   f.sql.prepare('UPDATE market_contracts SET version=?,terms_json=? WHERE id=?').run('older-version',JSON.stringify({...BID_TERMS,version:'older-version'}),id);
   assert.deepEqual((await select({version:'older-version'})).data,{id,status:'revealed'});
   assert.equal((await select()).status,409);
+});
+
+test('signed submissions keep server documents and atomic snapshots, with a fresh seven-day public period',async t=>{
+ const f=fixture(t);
+ for(const invalid of [undefined,{...agreement,accepted:false},{...agreement,version:'old'},{...agreement,signature:'  '}]){
+   assert.ok([400,409].includes((await f.api(f.brand,'posts',{...post,agreement:invalid})).status));
+ }
+ assert.equal(f.sql.prepare('SELECT count(*) n FROM market_posts').get().n,0);
+ const id=(await f.api(f.brand,'posts',{...post,deadline:'2099-01-01',agreement:{...agreement,document:{body:'forged'},signedAt:'1900-01-01'}})).data.id;
+ assert.equal(f.sql.prepare('SELECT deadline FROM market_posts WHERE id=?').get(id).deadline,biddingDeadline());
+ f.sql.prepare("UPDATE market_posts SET deadline='2000-01-01' WHERE id=?").run(id);
+ const approval=await reviewPost(f.env,f.admin,id,{action:'approve',version:1,confirmed:true},{admin:true});
+ assert.equal(approval.status,200);
+ assert.equal(f.sql.prepare('SELECT deadline FROM market_posts WHERE id=?').get(id).deadline,biddingDeadline());
+ assert.equal(biddingDeadline('2026-11-03T14:59:59Z'),'2026-11-10');
+ assert.equal(biddingDeadline('2026-11-03T15:00:00Z'),'2026-11-11');
+ const record=f.sql.prepare('SELECT * FROM submission_agreements WHERE resource_id=?').get(id);
+ assert.deepEqual(JSON.parse(record.document_json),SUBMISSION_AGREEMENT);
+ assert.equal(record.signature,agreement.signature);assert.equal(record.member_id,f.brand.id);
+ assert.equal(JSON.parse(record.submission_json).description,post.description);
+ assert.equal(JSON.parse(record.submission_json).biddingPeriodDays,7);
+ assert.ok(Math.abs(Date.now()-Date.parse(record.signed_at))<5000);
+ assert.throws(()=>f.sql.prepare('UPDATE submission_agreements SET signature=?').run('다른 이름'),/immutable/);
+ assert.throws(()=>f.sql.exec('DELETE FROM submission_agreements'),/immutable/);
+ const a=(await f.api(f.box,'posts/'+id+'/offers',offer)).data.id;
+ assert.equal((await f.api(f.brand,'offers/'+a+'/select',{...consent,quantity:500})).status,404);
+ await reviewOffer(f.env,f.admin,a,{action:'approve',confirmed:true,version:1},{live:false});
+ assert.equal((await f.api(f.brand,'state')).data.offers.length,1);
+ await reviewOffer(f.env,f.admin,a,{action:'withdraw',confirmed:true,version:2,reason:'확인 후 비공개'},{live:false});
+ assert.deepEqual((await f.api(f.brand,'state')).data.offers,[]);
+ assert.equal((await f.api(f.box,'state')).data.offers[0].reviewReason,'확인 후 비공개');
+ assert.equal((await f.api(f.brand,'offers/'+a+'/select',{...consent,quantity:500})).status,404);
+ assert.equal(f.sql.prepare('SELECT count(*) n FROM submission_agreements').get().n,2);
+ f.sql.exec("CREATE TRIGGER reject_test_signature BEFORE INSERT ON submission_agreements BEGIN SELECT RAISE(ABORT,'signature unavailable'); END;");
+ await assert.rejects(()=>f.api(f.brand,'posts',post),/signature unavailable/);
+ assert.equal(f.sql.prepare('SELECT count(*) n FROM market_posts').get().n,1);
+ await assert.rejects(()=>f.api(f.both,'posts/'+id+'/offers',offer),/signature unavailable/);
+ assert.equal(f.sql.prepare('SELECT count(*) n FROM market_offers').get().n,1);
 });

@@ -11,6 +11,8 @@ import {bidApi,roomDatabase} from './bid-auth.js';
 import {seedReview,reviewPassword} from '../scripts/bid-seed.mjs';
 import {digest,passwordHash} from './security.js';
 import {customerTrialVersion,trialCertificate} from '../shared/customer-trial.js';
+import {SUBMISSION_AGREEMENT} from '../shared/submission-agreement.js';
+import {adminMarketApi} from './admin-market.js';
 
 const migrationDir=new URL('../migrations/',import.meta.url);
 function database(t,files){
@@ -28,7 +30,7 @@ function fixture(t){
   const env={DB,APP_KIND:'main',[localMemberPreview]:true,BID_ROOMS:{idFromName:key=>key,get:key=>({fetch:async req=>{
     if(!rooms.has(key)){
       if(new URL(req.url).pathname==='/api/bid/preview-login')return Response.json({error:'다시 로그인해주세요.'},{status:401});
-      const isolate=database(t,['0001_initial.sql','0013_bid_market.sql','0015_market_post_review.sql']);seedReview(isolate.raw);
+      const isolate=database(t,['0001_initial.sql','0013_bid_market.sql','0015_market_post_review.sql','0018_market_offer_review.sql','0019_submission_agreements.sql']);seedReview(isolate.raw);
       rooms.set(key,{DB:isolate.DB,[roomDatabase]:isolate.DB});
     }
     try{return await bidApi(req,rooms.get(key),new URL(req.url));}
@@ -55,10 +57,34 @@ function fixture(t){
   return {call,raw,env,publish,approve,owner,rooms};
 }
 const password='sample-member-password-998';
+const agreement={accepted:true,version:SUBMISSION_AGREEMENT.version,signature:'테스트 서명자'};
 const account=(key,kind='brand')=>({email:key+'@example.test',password,name:key+' 업체',contact:'담당자',phone:'010-1234-5678',
-  kind,...(kind==='packaging'?{packagingDesign:false}:{}),legalType:'individual',files:[],consent:true,termsConsent:true,consentVersion:'accepted-version'});
-const job={category:'packaging',title:'단상자 신규 제작',quantity:1000,unitPrice:300,size:'50 × 50',description:'코팅 종이 / 택배 납품',deadline:'2099-01-01'};
-const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225}],note:'배송 포함'};
+  kind,...(kind==='packaging'?{packagingDesign:false}:{}),legalType:'individual',files:[],consent:true,termsConsent:true,consentVersion:'accepted-version',agreement});
+const job={category:'packaging',title:'단상자 신규 제작',quantity:1000,unitPrice:300,size:'50 × 50',description:'코팅 종이 / 택배 납품',agreement};
+const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225}],note:'배송 포함',agreement};
+
+test('signup requires an electronic signature and keeps its immutable document privately with the application',async t=>{
+ const f=fixture(t);f.publish();const fields=account('signed');
+ for(const value of [undefined,{...agreement,accepted:false},{...agreement,version:'old'},{...agreement,signature:'\u200b'}]){
+   const response=await f.call('bid/register',{...fields,agreement:value});
+   assert.ok([400,409].includes(response.status));
+ }
+ assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,0);
+ const result=await f.call('bid/register',fields);assert.equal(result.status,201);
+ const row=f.raw.prepare('SELECT * FROM submission_agreements').get();
+ assert.equal(row.member_id,result.data.id);assert.equal(row.resource_id,result.data.id);assert.equal(row.purpose,'registration');
+ assert.deepEqual(JSON.parse(row.document_json),SUBMISSION_AGREEMENT);
+ assert.equal(JSON.parse(row.submission_json).email,fields.email);
+ assert.ok(!JSON.stringify(row).includes(password));
+ const url=new URL('https://admin.example.test/api/admin/members/'+result.data.id);
+ const details=await (await memberAdminApi(new Request(url),f.env,url,f.owner)).json();
+ assert.equal(details.agreements[0].signature,agreement.signature);assert.equal(details.agreements[0].document.body,'테스트');
+ assert.ok(!JSON.stringify((await f.call('bid/state')).data).includes(agreement.signature));
+ assert.equal((await f.call('admin/members/'+result.data.id)).status,404);
+ f.raw.exec("CREATE TRIGGER fail_signup_signature BEFORE INSERT ON submission_agreements BEGIN SELECT RAISE(ABORT,'signature unavailable'); END;");
+ const failed=await f.call('bid/register',{...fields,email:'failed-sign@example.test'});assert.equal(failed.status,500);
+ assert.equal(f.raw.prepare('SELECT count(*) n FROM members').get().n,1);
+});
 
 test('retired temporary signup cannot create another room, even on an original unpublished draft',async t=>{
   const f=fixture(t);
@@ -213,6 +239,15 @@ test('approved accounts share real posts across logins; one selected offer reach
   const aOffer=(await f.call('bid/posts/'+post+'/offers',pricing,a.headers)).data.id;
   const bOffer=(await f.call('bid/posts/'+post+'/offers',pricing,b.headers)).data.id;
   const board=async actor=>(await f.call('bid/state',undefined,actor.headers)).data;
+  assert.deepEqual((await board(brand)).offers,[]);
+  assert.equal((await f.call('bid/state')).data.posts[0].offerCount,0);
+  assert.equal((await board(a)).offers[0].reviewStatus,'pending');
+  assert.equal((await f.call('bid/offers/'+aOffer+'/select',{accepted:true,quantity:1000},brand.headers)).status,404);
+  for(const id of [aOffer,bOffer]){
+    const url=new URL('https://admin.example.test/api/admin/market/offers/'+id+'/review');
+    const approved=await adminMarketApi(new Request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'approve',confirmed:true,version:1})}),f.env,url,f.owner);
+    assert.equal(approved.status,200);
+  }
   const bids=(await board(brand)).offers;
   assert.deepEqual(new Set(bids.map(o=>o.alias)),new Set(['제안사 A','제안사 B']));
   assert.deepEqual(bids.find(o=>o.id===aOffer).tiers,pricing.tiers);
@@ -236,7 +271,7 @@ test('approved accounts share real posts across logins; one selected offer reach
   assert.deepEqual((await board(winner===a?b:a)).connections,[]);
   assert.equal((await f.call('bid/state',undefined,winner.headers)).data.connections[0].status,'pending');
   const adminURL=new URL('https://admin.example.test/api/admin/partners');
-  await partnerApi(new Request(adminURL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brandId:brand.id,supplierId:winner.id,note:'연결 확인'})}),f.env,adminURL,f.owner);
+  await partnerApi(new Request(adminURL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brandId:brand.id,supplierId:winner.id,note:'연결 확인',explained:true})}),f.env,adminURL,f.owner);
   assert.equal((await f.call('bid/state',undefined,brand.headers)).data.connections[0].status,'completed');
   assert.equal((await f.call('bid/contracts/'+againSelect.data.id+'/pay',{kind:'production'},brand.headers)).status,403);
   assert.equal(f.raw.prepare('SELECT count(*) n FROM market_payments').get().n,0);
