@@ -3,7 +3,7 @@ import {productVariants,variantInfo} from './packaging-catalog.js';
 import './packaging-art.css';
 
 const representatives={
- 'paper-carton':'tuck','paper-corrugated':'g-box','paper-rigid':'two-piece','paper-bag':'shopping',
+ 'paper-carton':'tuck','paper-corrugated':'g-box','paper-rigid':'two-piece','paper-bag':'shopping','paper-cafe':'tray',
  'vinyl-flat':'adhesive','vinyl-display':'header','vinyl-mailer':'standard','vinyl-shopping':'die-cut','vinyl-film':'shrink',
  'pouch-flat':'stand','pouch-zip':'stand','pouch-spout':'center','pouch-stick':'stick',
  'plastic-bottle':'pump','plastic-jar':'cream','plastic-tube':'standard','plastic-food':'salad','plastic-case':'insert','plastic-makeup':'cushion',

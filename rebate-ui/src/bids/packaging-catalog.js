@@ -5,7 +5,7 @@ export const materials = [
 
 // Family IDs also identify the existing artwork and saved v1 surveys.
 export const products = {
-  paper: [['carton','일반 종이박스','단상자'],['corrugated','골판지 박스','골판지 G형 박스'],['rigid','싸바리 박스','2단 싸바리 박스'],['bag','쇼핑백','종이 쇼핑백']],
+  paper: [['carton','일반 종이박스','단상자'],['corrugated','골판지 박스','골판지 G형 박스'],['rigid','싸바리 박스','2단 싸바리 박스'],['bag','쇼핑백','종이 쇼핑백'],['cafe','카페 포장','커피트레이']],
   vinyl: [['flat','일반 포장봉투','접착식 봉투'],['display','진열용 봉투','헤더 봉투'],['mailer','택배봉투','택배봉투'],['shopping','비닐 쇼핑백','손잡이 봉투'],['film','포장 필름','수축필름']],
   pouch: [['flat','기본 파우치','스탠드 파우치'],['zip','지퍼 파우치','스탠드 지퍼 파우치'],['spout','스파우트 파우치','마개형 파우치'],['stick','소포장 파우치','스틱 파우치']],
   plastic: [['bottle','병·보틀','펌프형 병'],['jar','통·단지','크림통'],['tube','튜브','일반 튜브'],['food','식품 용기','샐러드 용기'],['case','케이스·성형 포장','제품 고정 트레이'],['makeup','색조 화장품 용기','쿠션 케이스']],
@@ -25,6 +25,7 @@ const variants = {
   'paper-corrugated': [['g-box','골판지 G형 박스'],['carton','골판지 단상자'],['handle','골판지 손잡이 박스'],['pizza','피자박스'],['separate','골판지 분리형 박스'],['shopping','쇼핑백형 골판지 박스'],['g-handle','손잡이형 골판지 G형 박스'],['drink-handle','플라스틱 핸들형 음료박스'],['outer','아웃 박스']],
   'paper-rigid': [['cover','표지 싸바리 박스'],['two-piece','2단 싸바리 박스'],['three-piece','3단 싸바리 박스']],
   'paper-bag': [['shopping','쇼핑백'],['triangle','삼각 쇼핑백']],
+  'paper-cafe': [['tray','커피트레이'],['holder','컵홀더']],
   'vinyl-flat': [['open','비접착 봉투'],['adhesive','접착식 봉투'],['zip','지퍼백'],['slider','슬라이더 지퍼백'],['gusset','옆면 확장형 봉투']],
   'vinyl-display': [['header','헤더 봉투'],['hanging','걸이 구멍 봉투'],['apparel','의류 포장봉투']],
   'vinyl-mailer': [['standard','일반 택배봉투'],['double-seal','이중 접착 택배봉투'],['handle','손잡이 택배봉투'],['bubble','에어캡 안전봉투']],
@@ -37,7 +38,7 @@ const variants = {
   'plastic-bottle': [['cap','일반 캡형 병'],['pump','펌프형 병'],['spray','스프레이형 병'],['trigger','트리거 분무기 병'],['dropper','스포이트형 병'],['airless','에어리스 용기']],
   'plastic-jar': [['cream','크림통'],['wide-mouth','광구통'],['powder','분말통'],['pail','버킷·페일통'],['jerrycan','손잡이 말통']],
   'plastic-tube': [['standard','일반 튜브'],['nozzle','노즐형 튜브'],['pump','펌프형 튜브'],['applicator','어플리케이터형 튜브']],
-  'plastic-food': [['meal','도시락 용기'],['salad','샐러드 용기'],['sauce','소스컵'],['dessert','디저트컵'],['tray','식품 트레이']],
+  'plastic-food': [['meal','도시락 용기'],['salad','샐러드 용기'],['sauce','소스컵'],['dessert','디저트컵'],['tray','식품 트레이'],['coffee-cup','커피컵']],
   'plastic-case': [['folding','투명 접이식 케이스'],['blister','블리스터 포장'],['clamshell','여닫이 일체형 케이스'],['insert','제품 고정 트레이']],
   'plastic-makeup': [['cushion','쿠션 케이스'],['compact','팩트 케이스'],['lipstick','립스틱 용기'],['lipgloss','립글로스 용기'],['balm','스틱밤 용기'],['mascara','마스카라 용기']],
   'glass-bottle': [['drink','음료병'],['sauce','소스병'],['oil','오일병'],['liquor','주류병']],

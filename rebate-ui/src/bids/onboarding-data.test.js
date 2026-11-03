@@ -45,15 +45,15 @@ test('product dimensions never become packaging dimensions and blank price remai
  const packaging=onboardingPostDraft(base);assert.equal(packaging.width,'40');assert.equal(packaging.depth,'50');
 });
 
-test('catalog covers all 36 artwork families with unique stable product variants',()=>{
+test('catalog covers all 37 artwork families with unique stable product variants',()=>{
  const families=Object.entries(products).flatMap(([material,rows])=>rows.map(([id])=>`${material}-${id}`));
- assert.equal(families.length,36);
+ assert.equal(families.length,37);
  const variants=families.flatMap(id=>{
   const rows=productVariants(id);assert.ok(rows.length>0,id);
   for(const item of rows){assert.equal(item.product,id);assert.equal(variantInfo(item.id),item);}
   return rows;
  });
- assert.equal(variants.length,163);assert.equal(new Set(variants.map(v=>v.id)).size,163);
+ assert.equal(variants.length,166);assert.equal(new Set(variants.map(v=>v.id)).size,166);
  assert.equal(productVariants('paper-carton').filter(v=>v.name==='일반 단상자').length,1);
  assert.deepEqual(productVariants('not-a-product'),[]);
 });

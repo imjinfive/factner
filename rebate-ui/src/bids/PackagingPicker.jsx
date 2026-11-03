@@ -45,7 +45,6 @@ export default function PackagingPicker({draft,onUpdate,onToggle}){
   </>}
   {brand&&<button type="button" className={'ob-recommend-choice'+(draft.material==='unknown'?' is-selected':'')} aria-pressed={draft.material==='unknown'} onClick={()=>onUpdate({material:'unknown',product:'',variant:'',materialOption:'',appearance:'',woodSpecies:''})}><Question size={20}/><span>어떤 종류인지 모르겠어요. 추천받을게요.</span></button>}
   {brand&&draft.material==='unknown'&&<div className="ob-recommend"><label htmlFor="ob-product-use">무엇을 포장하시나요?</label><input id="ob-product-use" value={draft.productUse} maxLength={80} onChange={e=>onUpdate({productUse:e.target.value})} placeholder="예: 향수, 쿠키, 의류"/></div>}
-  <p className="ob-art-note">형태 선택을 돕는 AI 연출 이미지예요.</p>
   <div className="ob-products">
    {brand&&(family||search)?variants.map(v=><ProductCard key={v.id} family={productInfo(v.product)} variant={v.id} name={v.name} detail={productInfo(v.product)?.label} selected={draft.variant===v.id} onClick={()=>chooseVariant(v)}/>):visibleFamilies.map(f=><ProductCard key={f.id} family={f} name={f.label} detail={brand?`${materialLabel(f.material)} · ${productVariants(f.id).length}가지 형태`:materialLabel(f.material)} selected={brand?draft.product===f.id:draft.supplierProducts.includes(f.id)} onClick={()=>chooseFamily(f.id)}/>)}
   </div>
