@@ -1,4 +1,4 @@
-import { normalizeOnboardingDraft, materialLabel, productInfo } from '../rebate-ui/src/bids/onboarding-data.js';
+import { normalizeOnboardingDraft, materialLabel, productInfo, selectedProductInfo, selectedProductOptions } from '../rebate-ui/src/bids/onboarding-data.js';
 import { fail } from './http.js';
 
 export function onboardingInput(value, role) {
@@ -21,7 +21,8 @@ export function onboardingRows(survey) {
   return [
     ['제작 경험',survey.experience==='yes'?'있음':survey.experience==='no'?'처음':'미응답'],
     ['기존 불편',survey.complaints.join(' · ')],
-    ['희망 품목',survey.role==='brand'?(productInfo(survey.product)?.name||materialLabel(survey.material)):survey.supplierProducts.map(id=>productInfo(id)?.name).filter(Boolean).join(' · ')],
+    ['희망 품목',survey.role==='brand'?(selectedProductInfo(survey)?.name||materialLabel(survey.material)):survey.supplierProducts.map(id=>productInfo(id)?.name).filter(Boolean).join(' · ')],
+    ...selectedProductOptions(survey).map(option=>[option.label,option.value]),
     ['수량',survey.quantity?`${Number(survey.quantity).toLocaleString('ko-KR')}개`:survey.quantityUnknown?'상담 후 결정':''],
     ['크기',survey.sizeUnknown?'상담 후 결정':[survey.width,survey.depth,survey.height].filter(Boolean).join(' × ')+(survey.width?` mm (${survey.sizeBasis==='product'?'내용물':'패키징'})`:'')],
     ['포장할 제품',survey.productUse],['희망 일정',survey.timing],

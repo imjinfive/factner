@@ -4,7 +4,7 @@ import {Button} from '../BrandControls';
 import {legalTypes, MemberActivityChoices, MemberLegalChoices, MemberLoginFields, MemberRegistrationFields} from '../MemberRegistration';
 import ElectronicAgreement from '../ElectronicAgreement';
 import Turnstile from '../Turnstile';
-import {readOnboardingDraft,clearOnboardingDraft,materialLabel,productInfo,normalizeOnboardingDraft} from './onboarding-data.js';
+import {readOnboardingDraft,clearOnboardingDraft,materialLabel,productInfo,selectedProductInfo,normalizeOnboardingDraft} from './onboarding-data.js';
 
 const Recovery = lazy(() => import('../MemberPortal').then(module => ({default:module.AccountRecovery})));
 const entryKey = 'customerSignup';
@@ -44,7 +44,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth}) {
   const continuing = onboarding.role === role && Boolean(role);
   const surveySummary = role==='supplier'
     ? onboarding.supplierProducts.slice(0,2).map(id=>productInfo(id)?.label).filter(Boolean).join(' · ')+(onboarding.supplierProducts.length>2?` 외 ${onboarding.supplierProducts.length-2}개`:'')
-    : [productInfo(onboarding.product)?.name || materialLabel(onboarding.material),onboarding.quantity?`${Number(onboarding.quantity).toLocaleString('ko-KR')}개`:'수량 상담'].join(' · ');
+    : [selectedProductInfo(onboarding)?.name || materialLabel(onboarding.material),onboarding.quantity?`${Number(onboarding.quantity).toLocaleString('ko-KR')}개`:'수량 상담'].join(' · ');
 
   useLayoutEffect(() => {
     discardReview();setChoice(progress());setError('');setPending(null);setDone(history.state?.customerSignupComplete === true);

@@ -65,7 +65,7 @@ const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225
 
 test('survey is privately retained through approval, login on another device and admin review',async t=>{
   const f=fixture(t);f.publish();
-  const onboarding={version:1,role:'brand',experience:'no',material:'paper',product:'paper-carton',quantityUnknown:true,sizeUnknown:true,budgetUnknown:true,timing:'상담 후 결정',status:'approved',password:'do-not-store'};
+  const onboarding={version:1,role:'brand',experience:'no',material:'glass',product:'glass-cosmetic',variant:'glass-cosmetic-dropper',appearance:'brown',quantityUnknown:true,sizeUnknown:true,budgetUnknown:true,timing:'상담 후 결정',status:'approved',password:'do-not-store'};
   const fields={...account('survey'),onboarding};
   for(const invalid of [{...onboarding,role:'supplier'},{...onboarding,version:2},{...onboarding,extra:'x'.repeat(8192)}]){
     assert.equal((await f.call('bid/register',{...fields,onboarding:invalid})).status,400);
@@ -77,13 +77,18 @@ test('survey is privately retained through approval, login on another device and
   assert.equal((await f.call('bid/login',{email:fields.email,password})).status,403);
   await f.approve(registered.data.id);
   const login=await f.call('bid/login',{email:fields.email,password});
-  assert.equal(login.data.user.onboarding.product,'paper-carton');
+  assert.equal(login.data.user.onboarding.product,'glass-cosmetic');
+  assert.equal(login.data.user.onboarding.variant,'glass-cosmetic-dropper');
+  assert.equal(login.data.user.onboarding.appearance,'brown');
   assert.equal(login.data.user.onboarding.quantityUnknown,true);
   const newDevice=await f.call('bid/login',{email:fields.email,password});
   assert.deepEqual((await f.call('bid/session',undefined,{Cookie:newDevice.cookie})).data.user.onboarding,login.data.user.onboarding);
   const url=new URL('https://admin.example.test/api/admin/members/'+registered.data.id);
-  assert.deepEqual((await (await memberAdminApi(new Request(url),f.env,url,f.owner)).json()).member.onboarding,login.data.user.onboarding);
-  assert.doesNotMatch(JSON.stringify((await f.call('bid/state')).data),/paper-carton|상담 후 결정/);
+  const adminDetail=await (await memberAdminApi(new Request(url),f.env,url,f.owner)).json();
+  assert.deepEqual(adminDetail.member.onboarding,login.data.user.onboarding);
+  assert.ok(adminDetail.surveyRows.some(([label,value])=>label==='희망 품목'&&value==='스포이트병'));
+  assert.ok(adminDetail.surveyRows.some(([label,value])=>label==='외관'&&value==='갈색'));
+  assert.doesNotMatch(JSON.stringify((await f.call('bid/state')).data),/glass-cosmetic|상담 후 결정/);
   const supplier={...account('survey-maker','packaging'),packagingDesign:undefined,onboarding:{version:1,role:'supplier',supplierProducts:['paper-carton'],quantityRange:'small',availability:'now',selectedPostId:'public-post'}};
   const maker=await f.call('bid/register',supplier);assert.equal(maker.status,201);
   await f.approve(maker.data.id);
