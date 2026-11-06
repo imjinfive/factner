@@ -48,7 +48,7 @@ export function MemberLoginFields({Button, email, passwordRef, onEmailChange, on
 }
 export function MemberActivityChoices({onChoose,children}) {
   return <div className="member-choice-list">{[
-    ['brand',Storefront,'브랜드','우리 제품에 맞는 패키징을 찾아요'],
+    ['brand',Storefront,'개인·브랜드 의뢰인','제작할 패키징을 찾아요'],
     ['supplier',Factory,'박스·패키징 제작 업체','브랜드의 패키징 제작 의뢰를 찾아요']
   ].map(([key,Icon,title,copy]) => <button type="button" className="member-choice" key={key} onClick={()=>onChoose(key)}>
     <span className="member-symbol"><Icon size={32}/></span><span><strong>{title}</strong><small>{copy}</small></span>
@@ -63,7 +63,7 @@ export function MemberLegalChoices({onChoose}) {
 export function MemberRegistrationFields({role, legal, draft, cert, setCert, onCertBusy, photos, setPhotos, onPhotosBusy, passwordRef}) {
   return <>
     <p className="member-tag">{role==='brand'?'브랜드':'패키징 제작 업체'} · {legalTypes[legal]}</p>
-    <Field label={role==='brand'?'브랜드명':'업체명 / 활동명'} name="name" defaultValue={draft.name||''} maxLength={100} required/>
+    <Field label={role==='brand'?(legal==='individual'?'신청인 또는 브랜드명':'브랜드명'):'업체명 / 활동명'} name="name" defaultValue={draft.name||''} maxLength={100} required/>
     <div className="member-form-grid"><Field label="담당자" name="contact" defaultValue={draft.contact||''} maxLength={60} required/>
       <Field label="연락처" name="phone" defaultValue={draft.phone||''} type="tel" inputMode="tel" maxLength={30} onInput={e=>formatInput(e,formatPhone)} required/></div>
     <Field label="이메일" name="email" defaultValue={draft.email||''} type="email" autoComplete="username" maxLength={254} required/>

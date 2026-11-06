@@ -129,7 +129,7 @@ export async function marketView({api,send,shell,esc,notice,isActive=()=>true,in
   }
   function agreementDetails(agreements,purpose,resourceId){
     const records=agreements.filter(a=>a.purpose===purpose&&a.resourceId===resourceId);
-    return records.map(record=>`<details class="am-private"><summary>전자계약서 서명 기록</summary>
+    return records.map(record=>`<details class="am-private"><summary>제출 당시 서명 기록</summary>
       <dl><dt>문서 버전</dt><dd>${esc(record.version)}</dd><dt>서명자</dt><dd>${esc(record.signature)}</dd><dt>서명 시각</dt><dd>${esc(new Date(record.signedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))}</dd></dl>
       <p class="pre">${esc(record.document.body)}</p></details>`).join('');
   }

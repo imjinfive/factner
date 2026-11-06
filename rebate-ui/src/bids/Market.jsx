@@ -179,7 +179,7 @@ function NewPost({ mutate, onDone, onCancel, prefill, isDemo }) {
     {error && !draft && <p role="alert" className="bm-error">{error}</p>}
     <p className="bm-hint">공고가 승인되면 7일 동안 입찰을 받습니다.</p>
     <div className="bm-actions"><button type="button" onClick={onCancel}>취소</button><button type="submit" className="bm-primary">심사 요청 <ArrowRight size={16}/></button></div>
-  </form>{draft && <ElectronicAgreement open description="공고 내용과 전자계약서를 확인하고 서명해 주세요. 운영팀 승인 후 7일 동안 공고가 공개됩니다." busy={busy} error={error} onCancel={() => { setDraft(null); setError(''); }} onConfirm={publish}>
+  </form>{draft && <ElectronicAgreement open description="공고 내용과 제출 확인서를 읽고 서명해 주세요. 운영팀 승인 후 7일 동안 공고가 공개됩니다." busy={busy} error={error} onCancel={() => { setDraft(null); setError(''); }} onConfirm={publish}>
     <ReviewRows rows={[[ '분야', types[draft.category] ], ['제목', draft.title], ['수량 · 단가', `${requestedQuantity(draft.quantity)} · ${requestedPrice(draft.unitPrice)}`],
       ['규격', draft.size || '미입력'], ['입찰 기간', '공고 승인 후 7일'], ['제작 조건', draft.description]]} />
   </ElectronicAgreement>}</section>;
@@ -228,7 +228,7 @@ function QuoteForm({ post, mutate, onDone }) {
       {error && !draft && <p role="alert" className="bm-error">{error}</p>}
       <button type="submit" className="bm-primary">입찰 심사 요청 <ArrowRight size={16} /></button>
     </form>
-    {draft && <ElectronicAgreement open description="입찰 조건과 전자계약서를 확인하고 서명해 주세요. 운영팀 승인 후 브랜드에 입찰이 전달됩니다." busy={busy} error={error} onCancel={() => { setDraft(null); setError(''); }} onConfirm={send}>
+    {draft && <ElectronicAgreement open description="입찰 조건과 제출 확인서를 읽고 서명해 주세요. 운영팀 승인 후 브랜드에 입찰이 전달됩니다." busy={busy} error={error} onCancel={() => { setDraft(null); setError(''); }} onConfirm={send}>
       <ReviewRows rows={[[ '공고', post.title ], ...draft.tiers.map(t => [`${number.format(t.quantity)}개`, `개당 ${number.format(t.unitPrice)}원 · 총 ${number.format(t.quantity * t.unitPrice)}원`]), ['메모', draft.note || '없음']]} />
     </ElectronicAgreement>}
   </div>;

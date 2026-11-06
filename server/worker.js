@@ -15,6 +15,7 @@ import {memberSupportAdminApi} from './member-support.js';
 import {publicBidApi,localMemberPreview} from './public-bid.js';
 import {adminMarketApi} from './admin-market.js';
 import {adminRoomPostReview} from './room-post-review.js';
+import {businessFields} from '../admin-ui/business-fields.js';
 export const statuses = {received:'접수', reviewing:'검토 중', consulting:'상담 중', quoted:'견적 안내', completed:'완료', cancelled:'취소'};
 export function quoteInput(input) {
   const data = {
@@ -46,7 +47,8 @@ async function mainApi(req, env, url) {
   if (url.pathname === '/api/config' && req.method === 'GET') {
     const config = await service(env);
     const doc=await policy(env);
-    return json({...config, mode:config.accepting ? 'live' : 'test', consentVersion:doc.version,turnstileSiteKey:env.TURNSTILE_SECRET_KEY?env.TURNSTILE_SITE_KEY||'':''});
+    const {business,businessPublished,...publicConfig}=config;
+    return json({...publicConfig, business:businessPublished?business:null, mode:config.accepting ? 'live' : 'test', consentVersion:doc.version,turnstileSiteKey:env.TURNSTILE_SECRET_KEY?env.TURNSTILE_SITE_KEY||'':''});
   }
   if (url.pathname === '/api/quotes' && req.method === 'POST') {
     await rate(env, `quote:${await digest(req.headers.get('CF-Connecting-IP') || 'local')}`, 10, 3600);
@@ -102,6 +104,17 @@ async function adminApi(req, env, url) {
       const input = await body(req);
       const config = {...configBefore,operator:text(input.operator,100),contactEmail:text(input.contactEmail,254),accepting:input.accepting===undefined?configBefore.accepting:input.accepting===true,
         memberAccepting:input.memberAccepting===undefined?Boolean(configBefore.memberAccepting ?? configBefore.accepting):input.memberAccepting===true};
+      if(input.business!==undefined){
+        config.business=Object.fromEntries(businessFields.map(([key,,max])=>[key,text(input.business?.[key],max)]));
+        const {businessNumber,verificationUrl}=config.business;
+        if(businessNumber && !/^(?:\d{10}|\d{3}-\d{2}-\d{5})$/.test(businessNumber))fail(400,'사업자등록번호 10자리를 확인해주세요.');
+        if(verificationUrl){
+          let link;try{link=new URL(verificationUrl);}catch{}
+          if(link?.protocol!=='https:' || !/(^|\.)ftc\.go\.kr$/.test(link.hostname) || link.username || link.password)fail(400,'공정거래위원회(https://www.ftc.go.kr) 사업자정보 확인 링크를 입력해주세요.');
+        }
+      }
+      if(input.businessPublished!==undefined)config.businessPublished=input.businessPublished===true;
+      if(config.businessPublished && (!config.operator || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.contactEmail) || !['representative','businessNumber','address','phone','hosting'].every(key=>config.business?.[key])))fail(400,'공개할 상호·대표자·사업자번호·주소·전화·이메일·호스팅 제공자를 확인해주세요.');
       if(config.memberAccepting){
         if(input.policyVersion!==undefined && input.policyVersion!==doc.version)fail(409,'운영 문서가 바뀌었습니다. 새로고침 후 다시 확인해주세요.');
         const missing=memberIntake(config,doc,captchaReady).checks.filter(item=>!item.ready);

@@ -79,7 +79,7 @@ export default function OnboardingSurvey({onContinue,posts=[],partners=[],onLogi
   {step==='role'?<>
    <div className="ob-home-title"><h1>거래의 신뢰는 <span>팩트너부터.</span></h1><p>패키징을 고르고, 제작업체의 견적을 비교하세요.</p></div>
    <div className="ob-role-panels">
-    {[['brand','브랜드를 운영하고 있어요','패키징 제작업체를 찾고 있어요.',Storefront],['supplier','패키징 제작업체입니다','새로운 고객을 찾고 있어요.',Factory]].map(([role,label,copy,Icon])=><motion.button key={role} type="button" className="ob-role" onClick={()=>rolePick(role)} whileTap={reduce?undefined:{scale:.99}} transition={spring}><span className="ob-role-icon"><Icon size={62} weight="duotone" aria-hidden="true"/></span><div className="ob-role-copy"><h2>{label}</h2><p>{copy}</p></div><span className="ob-role-arrow"><ArrowRight size={22}/></span></motion.button>)}
+    {[['brand','패키징을 의뢰하고 싶어요','개인도 브랜드도 신청할 수 있어요.',Storefront],['supplier','패키징 제작업체입니다','새로운 고객을 찾고 있어요.',Factory]].map(([role,label,copy,Icon])=><motion.button key={role} type="button" className="ob-role" onClick={()=>rolePick(role)} whileTap={reduce?undefined:{scale:.99}} transition={spring}><span className="ob-role-icon"><Icon size={62} weight="duotone" aria-hidden="true"/></span><div className="ob-role-copy"><h2>{label}</h2><p>{copy}</p></div><span className="ob-role-arrow"><ArrowRight size={22}/></span></motion.button>)}
    </div>
    <p className="ob-home-note">몇 가지 선택으로 시작해요. 어려운 사양은 몰라도 괜찮아요.</p>
    {draft.role&&<button type="button" className="ob-resume" onClick={()=>move(onboardingResumeStep(draft))}>작성한 내용 이어보기 <ArrowRight size={16}/></button>}

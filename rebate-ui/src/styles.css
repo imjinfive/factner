@@ -782,6 +782,15 @@ main:focus {
   display: block;
   margin-top: 15px;
 }
+.footer-company {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  max-width: 60ch;
+  margin-top: 6px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
 .footer-right {
   display: flex;
   align-items: center;

@@ -130,7 +130,7 @@ test('signup requires an electronic signature and keeps its immutable document p
  assert.ok(!JSON.stringify(row).includes(password));
  const url=new URL('https://admin.example.test/api/admin/members/'+result.data.id);
  const details=await (await memberAdminApi(new Request(url),f.env,url,f.owner)).json();
- assert.equal(details.agreements[0].signature,agreement.signature);assert.equal(details.agreements[0].document.body,'테스트');
+ assert.equal(details.agreements[0].signature,agreement.signature);assert.equal(details.agreements[0].document.body,SUBMISSION_AGREEMENT.body);
  assert.ok(!JSON.stringify((await f.call('bid/state')).data).includes(agreement.signature));
  assert.equal((await f.call('admin/members/'+result.data.id)).status,404);
  f.raw.exec("CREATE TRIGGER fail_signup_signature BEFORE INSERT ON submission_agreements BEGIN SELECT RAISE(ABORT,'signature unavailable'); END;");

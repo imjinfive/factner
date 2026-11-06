@@ -293,7 +293,7 @@ test('shared room offer review shows test identities only to its owner and appro
  const own=(await roomCall(room,'state',{token:supplier})).data;assert.equal(own.offers[0].reviewStatus,'pending');
  const detail=(await inspect(path,roomA,owner)).data;
  assert.equal(detail.post.brand.email,brandEmail);assert.equal(detail.offers[0].supplier.email,'package1@gmail.com');
- assert.equal(detail.offers[0].supplier.name,'패키지업체 1');assert.equal(detail.agreements[0].signature,'테스트 서명자');assert.equal(detail.agreements[0].document.body,'테스트');
+ assert.equal(detail.offers[0].supplier.name,'패키지업체 1');assert.equal(detail.agreements[0].signature,'테스트 서명자');assert.equal(detail.agreements[0].document.body,SUBMISSION_AGREEMENT.body);
  assert.equal((await inspect(offerPath,roomA,owner,decision)).status,200);
  assert.equal((await inspect(offerPath,roomA,owner,decision)).status,409);
  const published=(await roomCall(room,'state',{token:brand})).data;assert.equal(published.offers[0].id,offer);assert.equal(published.posts.find(p=>p.id===post).offerCount,1);

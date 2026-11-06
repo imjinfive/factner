@@ -3,6 +3,7 @@ import {owner} from './auth.js';
 import {notificationReadiness} from './operations.js';
 import {currentMember} from './member-lifecycle.js';
 import {customerTrialVersion} from '../shared/customer-trial.js';
+import {saleTerms,salePrivacy} from '../admin-ui/consumer-sale.js';
 
 const draft = {
  version:'draft-2026-10-28',published:false,
@@ -99,6 +100,7 @@ export async function policyApi(req,env,url,user) {
    const content={operator:config.operator,contactEmail:config.contactEmail,
     privacy:text(input.privacy,5000,true),terms:text(input.terms,4000,true),collection:text(input.collection,1500,true),transfer:text(input.transfer,1500,true)};
    const published=input.published===true;
+   if(published && (content.terms===saleTerms||content.privacy===salePrivacy))fail(400,'직접판매 전환안입니다. 실제 결제·환불 및 개인정보 처리 조건을 반영한 최종 문서를 게시해주세요.');
    if(previous.customerTrial){
     const original=await stmt(env,'SELECT content FROM policy_versions WHERE id=?',customerTrialVersion).first();
     const trial=original?JSON.parse(original.content):previous;

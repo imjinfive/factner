@@ -1,5 +1,5 @@
 export const siteNavigationEvent = 'factner:navigation';
-const marketViews = new Set(['intro','feed','mine','new','contracts','login','signup','account','find-id','recover-password','reset-password','privacy','terms','policy']);
+const marketViews = new Set(['intro','feed','mine','new','contracts','login','signup','account','find-id','recover-password','reset-password','privacy','terms','policy','sales']);
 const memberPages = new Set(['intro','request','guide','account','activity']);
 
 // Old links still open their intended screen. New entries store the destination in browser history.

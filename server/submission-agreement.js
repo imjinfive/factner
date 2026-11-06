@@ -2,7 +2,7 @@ import {SUBMISSION_AGREEMENT} from '../shared/submission-agreement.js';
 import {fail,stmt,text} from './http.js';
 
 export function submissionSignature(input) {
- if(input?.accepted!==true||input?.version!==SUBMISSION_AGREEMENT.version)fail(409,'전자계약서를 확인하고 서명해주세요.');
+ if(input?.accepted!==true||input?.version!==SUBMISSION_AGREEMENT.version)fail(409,'제출 확인서를 다시 확인하고 서명해주세요.');
  const signature=text(input.signature,80,true);
  if(/[\p{Cc}\p{Cf}]/u.test(signature))fail(400,'서명자 이름을 확인해주세요.');
  return signature;

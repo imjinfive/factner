@@ -259,7 +259,7 @@ test('new bids remain private until owner approval; admins see contact and immut
  assert.equal((await f.api('/api/admin/market/offers?page=0')).status,400);
  const detail=(await f.api(base+'/'+post)).data;
  assert.equal(detail.post.brand.contact,'비공개담당자');assert.equal(detail.offers[0].supplier.phone,'01012345678');
- assert.equal(detail.agreements[0].signature,'테스트 서명');assert.equal(detail.agreements[0].document.body,'테스트');
+ assert.equal(detail.agreements[0].signature,'테스트 서명');assert.equal(detail.agreements[0].document.body,SUBMISSION_AGREEMENT.body);
  assert.equal(detail.agreements[0].resourceId,id);assert.ok(detail.agreements[0].signedAt);
  assert.equal((await f.api(path,decision)).status,200);
  assert.equal((await f.api(path,decision)).status,409);

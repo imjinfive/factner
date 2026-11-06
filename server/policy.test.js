@@ -6,6 +6,7 @@ import worker from './worker.js';
 import {policy,policyApi,readiness} from './policy.js';
 import {drainNotifications} from './operations.js';
 import {randomToken} from './security.js';
+import {saleTerms,salePrivacy} from '../admin-ui/consumer-sale.js';
 function database() {
  const raw=new DatabaseSync(':memory:'),dir=new URL('../migrations/',import.meta.url);
  for(const file of readdirSync(dir).filter(file=>file.endsWith('.sql')).sort())raw.exec(readFileSync(new URL(file,dir),'utf8'));
@@ -30,6 +31,21 @@ async function administrator(env) {
 const environment=()=>({DB:database(),APP_KIND:'main',BOOTSTRAP_TOKEN:randomToken()});
 const valid=()=>({id:crypto.randomUUID(),receiptToken:randomToken(),brand:'가상 브랜드',category:'단상자',quantity:500,description:'가상 패키징 견적 테스트',contactName:'테스트 담당',email:'test@example.com',consent:true,termsConsent:true,consentVersion:'draft-2026-10-28',website:'',testOnly:true});
 const operator={operator:'가상 운영자',contactEmail:'hello@example.com',accepting:false};
+test('only published business details reach the footer',async()=>{
+ const env=environment(),admin=await administrator(env),guest=client(env);
+ const business={representative:'테스트',businessNumber:'000-00-00000',address:'테스트 주소',phone:'02-000-0000',hosting:'테스트 호스팅'};
+ const save=changes=>admin('admin/settings',{...operator,...changes},'PUT');
+ const visible=async()=>(await guest('config')).data.business;
+ assert.equal(await visible(),null);
+ assert.equal((await save({business})).status,200);
+ assert.equal(await visible(),null);
+ assert.equal((await save({business:{...business,verificationUrl:'https://ftc.go.kr.example.com'},businessPublished:true})).status,400);
+ assert.equal((await save({business:{...business,address:''},businessPublished:true})).status,400);
+ assert.equal((await save({businessPublished:true})).status,200);
+ assert.equal((await visible()).businessNumber,business.businessNumber);
+ assert.equal((await save({businessPublished:false})).status,200);
+ assert.equal(await visible(),null);
+});
 function setOperations(env,value){env.DB.raw.prepare("UPDATE settings SET value=? WHERE key='operations'").run(JSON.stringify(value));}
 function addSupplier(env){const time=new Date().toISOString();env.DB.raw.prepare("INSERT INTO suppliers(id,name,state,actual_confirmed,created_at,updated_at) VALUES('test-only-supplier','가상 협력업체','published',1,?,?)").run(time,time);}
 test('draft defaults are public, publication requires operator/review, and only owner may edit',async()=>{
@@ -39,6 +55,9 @@ test('draft defaults are public, publication requires operator/review, and only 
  assert.equal((await publicClient('policy')).data.version,draft.version);
  assert.equal((await admin('admin/policy',{...draft,published:true,reviewed:true},'PUT')).status,400);
  assert.equal((await admin('admin/settings',operator,'PUT')).status,200);
+ for(const update of [{terms:saleTerms},{privacy:salePrivacy}]){
+   assert.equal((await admin('admin/policy',{...draft,...update,published:true,reviewed:true},'PUT')).status,400);
+ }
  assert.equal((await admin('admin/policy',{...draft,published:true,reviewed:false},'PUT')).status,400);
  assert.equal((await admin('admin/policy',{...draft,version:'stale',published:false},'PUT')).status,409);
  const req=new Request('https://admin.factner.com/api/admin/policy',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)});

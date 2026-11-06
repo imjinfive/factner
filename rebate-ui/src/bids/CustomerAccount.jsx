@@ -179,11 +179,11 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth}) {
         <form className="member-form" onSubmit={review} onChange={rememberDraft}><fieldset disabled={!available || busy}>
           <MemberRegistrationFields role={role} legal={legal} draft={draft.current} cert={cert} setCert={setCert} onCertBusy={setCertBusy}
             photos={photos} setPhotos={setPhotos} onPhotosBusy={setPhotosBusy} passwordRef={password}/>
-          {registration?.collection && <details className="member-disclosure"><summary>가입 심사 자료 수집 안내</summary><p>{registration.collection}</p></details>}
-          {registration?.privacy && <details className="member-disclosure"><summary>개인정보처리방침</summary><p>{registration.privacy}</p></details>}
           {registration?.terms && <details className="member-disclosure"><summary>이용약관</summary><p>{registration.terms}</p></details>}
-          <label className="member-check"><input type="checkbox" name="consent" required defaultChecked={draft.current.consent}/>가입 심사를 위한 개인정보 수집·이용에 동의합니다.</label>
-          <label className="member-check"><input type="checkbox" name="termsConsent" required defaultChecked={draft.current.termsConsent}/>이용약관에 동의합니다.</label>
+          <label className="member-check"><input type="checkbox" name="termsConsent" required defaultChecked={draft.current.termsConsent}/>[필수] 이용약관에 동의합니다.</label>
+          {registration?.collection && <details className="member-disclosure"><summary>가입 심사를 위한 개인정보 수집·이용 안내</summary><p>{registration.collection}</p></details>}
+          <label className="member-check"><input type="checkbox" name="consent" required defaultChecked={draft.current.consent}/>[필수] 가입 심사를 위한 개인정보 수집·이용에 동의합니다.</label>
+          {registration?.privacy && <details className="member-disclosure"><summary>개인정보처리방침 보기</summary><p>{registration.privacy}</p></details>}
           {available && registration.turnstileSiteKey && <Turnstile siteKey={registration.turnstileSiteKey} onToken={setToken} resetKey={attempt} action="signup"/>}
           <Button type="submit" className="member-full" disabled={!available || certBusy || photosBusy || Boolean(registration?.turnstileSiteKey && !token)}>{continuing?'조건 저장하고 가입 신청':'가입 신청'} <ArrowRight size={18}/></Button>
         </fieldset></form>
