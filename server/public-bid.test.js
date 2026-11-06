@@ -13,6 +13,7 @@ import {digest,passwordHash} from './security.js';
 import {customerTrialVersion,trialCertificate} from '../shared/customer-trial.js';
 import {SUBMISSION_AGREEMENT} from '../shared/submission-agreement.js';
 import {adminMarketApi} from './admin-market.js';
+import {onboardingPostDraft} from '../rebate-ui/src/bids/onboarding-data.js';
 
 const migrationDir=new URL('../migrations/',import.meta.url);
 function database(t,files){
@@ -65,7 +66,7 @@ const pricing={tiers:[{quantity:1000,unitPrice:250},{quantity:2000,unitPrice:225
 
 test('survey is privately retained through approval, login on another device and admin review',async t=>{
   const f=fixture(t);f.publish();
-  const onboarding={version:1,role:'brand',experience:'no',material:'glass',product:'glass-cosmetic',variant:'glass-cosmetic-dropper',appearance:'brown',quantityUnknown:true,sizeUnknown:true,budgetUnknown:true,timing:'상담 후 결정',status:'approved',password:'do-not-store'};
+  const onboarding={version:1,role:'brand',experience:'no',material:'glass',product:'glass-cosmetic',variant:'glass-cosmetic-dropper',appearance:'brown',quantityUnknown:true,sizeUnknown:true,budgetUnknown:true,requiredDate:'2026-12-15',brandImages:['고급스러움','세련된'],brandImageOther:'차분한 느낌',supplierPriorities:['납기일을 잘 지켰으면 좋겠어요','불량률이 낮았으면 좋겠어요'],status:'approved',password:'do-not-store'};
   const fields={...account('survey'),onboarding};
   for(const invalid of [{...onboarding,role:'supplier'},{...onboarding,version:2},{...onboarding,extra:'x'.repeat(8192)}]){
     assert.equal((await f.call('bid/register',{...fields,onboarding:invalid})).status,400);
@@ -88,11 +89,30 @@ test('survey is privately retained through approval, login on another device and
   assert.deepEqual(adminDetail.member.onboarding,login.data.user.onboarding);
   assert.ok(adminDetail.surveyRows.some(([label,value])=>label==='희망 품목'&&value==='스포이트병'));
   assert.ok(adminDetail.surveyRows.some(([label,value])=>label==='외관'&&value==='갈색'));
-  assert.doesNotMatch(JSON.stringify((await f.call('bid/state')).data),/glass-cosmetic|상담 후 결정/);
-  const supplier={...account('survey-maker','packaging'),packagingDesign:undefined,onboarding:{version:1,role:'supplier',supplierProducts:['paper-carton'],quantityRange:'small',availability:'now',selectedPostId:'public-post'}};
+  assert.ok(adminDetail.surveyRows.some(([label,value])=>label==='브랜드 이미지'&&value==='고급스러움 · 세련된 · 차분한 느낌'));
+  assert.ok(adminDetail.surveyRows.some(([label,value])=>label==='원하는 제작업체'&&value.includes('납기일')));
+  assert.equal(login.data.user.onboarding.requiredDate,'2026-12-15');
+  assert.doesNotMatch(JSON.stringify((await f.call('bid/state')).data),/glass-cosmetic|차분한 느낌/);
+  const supplier={...account('survey-maker','packaging'),packagingDesign:undefined,onboarding:{version:1,role:'supplier',supplierProducts:['paper-carton-tuck','glass-cosmetic-dropper'],quantityRange:['small','medium'],availability:['now','discuss'],strengths:['납기일을 잘 지켜요','불량률이 낮아요','소량 제작에 강해요'],selectedPostId:'public-post'}};
   const maker=await f.call('bid/register',supplier);assert.equal(maker.status,201);
   await f.approve(maker.data.id);
-  assert.equal((await f.call('bid/login',{email:supplier.email,password})).data.user.onboarding.selectedPostId,'public-post');
+  const makerLogin=await f.call('bid/login',{email:supplier.email,password});
+  assert.equal(makerLogin.data.user.onboarding.selectedPostId,'public-post');
+  assert.deepEqual(makerLogin.data.user.onboarding.quantityRange,['small','medium']);
+  assert.deepEqual(makerLogin.data.user.onboarding.availability,['now','discuss']);
+  assert.deepEqual(makerLogin.data.user.onboarding.strengths,['납기일을 잘 지켜요','불량률이 낮아요']);
+  const makerUrl=new URL('https://admin.example.test/api/admin/members/'+maker.data.id);
+  const makerDetail=await (await memberAdminApi(new Request(makerUrl),f.env,makerUrl,f.owner)).json();
+  assert.ok(makerDetail.surveyRows.some(([label,value])=>label==='업체가 선택한 강점'&&value==='납기일을 잘 지켜요 · 불량률이 낮아요'));
+  assert.ok(makerDetail.surveyRows.some(([label,value])=>label==='희망 품목'&&value==='일반 단상자 · 스포이트병'));
+  const submitted=await f.call('bid/posts',{...job,...onboardingPostDraft(login.data.user.onboarding),quantity:null,unitPrice:null},{Cookie:login.cookie});
+  assert.equal(submitted.status,201,JSON.stringify(submitted.data));
+  assert.deepEqual((await f.call('bid/state',undefined,{Cookie:makerLogin.cookie})).data.posts,[]);
+  f.raw.prepare("UPDATE market_posts SET review_status='approved' WHERE id=?").run(submitted.data.id);
+  const publicPost=(await f.call('bid/state',undefined,{Cookie:makerLogin.cookie})).data.posts[0];
+  assert.match(publicPost.description,/브랜드 이미지: 고급스러움 · 세련된 · 차분한 느낌/);
+  assert.match(publicPost.description,/원하는 제작업체: 납기일을 잘 지켰으면 좋겠어요 · 불량률이 낮았으면 좋겠어요/);
+  assert.doesNotMatch(JSON.stringify(publicPost),/업체가 선택한 강점|survey-maker@example/);
 });
 
 test('signup requires an electronic signature and keeps its immutable document privately with the application',async t=>{

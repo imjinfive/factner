@@ -11,6 +11,7 @@ import {normalizeSiteEntry,siteNavigationEvent,writeSiteEntry} from '../site-his
 import {BidLoading,initialBidTheme,saveBidTheme} from './BidLoading';
 import {Connections,ConnectionDialog,DealDesk,SelectDialog} from './DealDesk';
 import './shell.css';
+import LivePosts from './LivePosts';
 
 const Market=lazy(()=>import('./Market'));
 const PartnerAccess=lazy(()=>import('./PartnerAccess'));
@@ -109,10 +110,10 @@ export default function BidApp({surface='market',initialHome=false}){
     window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);
   },[refresh,route]);
   useEffect(()=>{
-    if(!session?.user || !['feed','mine','contracts'].includes(view))return;
-    const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh();},60000);
+    if(!marketNeeded)return;
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh();},30000);
     return()=>clearInterval(timer);
-  },[view,Boolean(session?.user),refresh]);
+  },[marketNeeded,refresh]);
   useEffect(()=>{
     if(!marketNeeded||access||!session?.demo)return;
     if(session.hosted){
@@ -217,6 +218,7 @@ export default function BidApp({surface='market',initialHome=false}){
     <header className="site-header funnel-header"><div className="header-inner">
       <button className="logo" aria-label="팩트너 홈" onClick={()=>openSection(user?.kind==='brand'?'new':user&&user.kind!=='admin'?'feed':'intro')}><BrandMark/></button>
       <nav aria-label="주 메뉴">{links.map(([key,label])=><button key={key} className={'nav-link '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>openSection(key)}>{label}{view===key&&<motion.span className="nav-indicator" layoutId="partner-navigation"/>}</button>)}</nav>
+      {!ops&&user&&links.length>0&&marketNeeded&&<LivePosts posts={state?.posts||[]} onOpen={id=>navigate('feed/'+id)}/>}
       <div className="header-actions bx-account">{!session?<span className="bx-account-placeholder" aria-label="계정 확인 중"/>:session.user?<button className="member-login-link bx-user" onClick={()=>legacyMember?openMembers():go('account')}><span>{session.user.name}</span><CaretDown size={15}/></button>:<>
         <button className="member-login-link" onClick={()=>navigate('login')}>로그인</button>
         {!ops && <button className="member-login-link bx-signup" onClick={()=>navigate('signup')}>회원가입</button>}

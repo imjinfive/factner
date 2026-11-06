@@ -28,6 +28,7 @@ export function initialPostRequest(user,posts,entry={},completedIds=new Set(),ne
   // The authenticated state includes every owned post, including rejected and withdrawn records.
   const first=!posts.some(post=>post.isMine);
   const source=first?(entry?.onboardingDraft?.role==='brand'?entry.onboardingDraft:user.onboarding):null;
-  const draft=source?.role==='brand'?normalizeOnboardingDraft(source):{...emptyOnboardingDraft(),role:'brand'};
+  const profile=normalizeOnboardingDraft(user.onboarding);
+  const draft=source?.role==='brand'?normalizeOnboardingDraft(source):{...emptyOnboardingDraft(),role:'brand',brandImages:profile.brandImages,brandImageOther:profile.brandImageOther,supplierPriorities:profile.supplierPriorities};
   return {id:newId,ownerId:user.id,stage:first&&onboardingResumeStep(draft)==='result'?'review':'survey',draft};
 }

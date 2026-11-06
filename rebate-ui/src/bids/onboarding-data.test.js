@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeOnboardingDraft,readOnboardingDraft,saveOnboardingDraft,surveySteps,onboardingResumeStep,onboardingPostDraft,matchingSurveyPosts,products,productVariants,variantInfo,productOptions,selectedProductInfo,selectedProductOptions} from './onboarding-data.js';
+import {normalizeOnboardingDraft,readOnboardingDraft,saveOnboardingDraft,surveySteps,onboardingResumeStep,onboardingPostDraft,matchingSurveyPosts,toggleSupplierProduct,supplierSummaryGroups,supplierStrengths,brandImages,supplierPriorities,products,productVariants,variantInfo,productOptions,selectedProductInfo,selectedProductOptions} from './onboarding-data.js';
 test('unknown answers stay unknown and category changes invalidate stale products',()=>{
  const d=normalizeOnboardingDraft({role:'brand',material:'glass',product:'paper-carton',quantity:'1000',quantityUnknown:true,width:'100',sizeUnknown:true,budget:'30',budgetUnknown:true});
  assert.equal(d.product,'');assert.equal(d.quantity,'');assert.equal(d.width,'');assert.equal(d.budget,'');
@@ -8,7 +8,7 @@ test('unknown answers stay unknown and category changes invalidate stale product
 test('beginner skips complaints and supplier has no brand questions',()=>{
  assert.equal(surveySteps({role:'brand',experience:'no'}).includes('complaints'),false);
  assert.equal(surveySteps({role:'brand',experience:'yes'}).includes('complaints'),true);
- assert.deepEqual(surveySteps({role:'supplier'}),['role','packaging','capacity','goals','result']);
+ assert.deepEqual(surveySteps({role:'supplier'}),['role','packaging','capacity','goals','strengths','result']);
 });
 test('storage failure does not interrupt onboarding',()=>{
  const blocked={getItem(){throw Error();},setItem(){throw Error();}};
@@ -90,4 +90,51 @@ test('supplier suggestions include specific variants and survey payload stays be
  const wide=normalizeOnboardingDraft({role:'supplier',material:'wood',product:'wood-gift',variant:'wood-gift-slide',materialOption:'solid',woodSpecies:'목'.repeat(80),supplierProducts:allFamilies,productUse:'상'.repeat(80),timing:'일'.repeat(80),selectedPostId:'x'.repeat(80)});
  assert.ok(new TextEncoder().encode(JSON.stringify(wide)).byteLength<8192);
  assert.match(onboardingPostDraft({role:'brand',material:'cold',product:'cold-box',variant:'cold-box-epp'}).description,/유지 온도·시간은 포장 구성과 배송 조건에 따라 별도 확인/);
+});
+
+
+test('multiple supplier answers retain legacy strings and cap strengths at two',()=>{
+ const legacy=normalizeOnboardingDraft({role:'supplier',quantityRange:'small',availability:'now'});
+ assert.deepEqual(legacy.quantityRange,['small']);assert.deepEqual(legacy.availability,['now']);
+ const draft=normalizeOnboardingDraft({...legacy,quantityRange:['small','medium','bad','small'],availability:['now','discuss'],strengths:supplierStrengths});
+ assert.deepEqual(draft.quantityRange,['small','medium']);assert.deepEqual(draft.availability,['now','discuss']);assert.deepEqual(draft.strengths,supplierStrengths.slice(0,2));
+ assert.deepEqual(normalizeOnboardingDraft({...draft,role:'brand'}).strengths,[]);
+});
+
+test('supplier can choose exact variants across families or select a whole family',()=>{
+ const one='paper-carton-tuck',two='paper-carton-crashlock';
+ let choices=toggleSupplierProduct([],one);choices=toggleSupplierProduct(choices,two);
+ assert.deepEqual(choices,[one,two]);
+ choices=toggleSupplierProduct(choices,'paper-carton');assert.deepEqual(choices,['paper-carton']);
+ choices=toggleSupplierProduct(choices,one);assert.equal(choices.length,18);assert.equal(choices.includes(one),false);
+ assert.ok(choices.includes(two));assert.equal(choices.includes('paper-carton'),false);
+ assert.deepEqual(normalizeOnboardingDraft({role:'supplier',supplierProducts:['paper-carton',one,'glass-cosmetic-dropper']}).supplierProducts,['paper-carton','glass-cosmetic-dropper']);
+ const p={category:'packaging',reviewStatus:'approved',status:'open',deadline:'2026-12-01',title:'바닥 접착형 제작'};
+ assert.equal(matchingSurveyPosts([p],{supplierProducts:[two]},'2026-11-05').length,1);
+ assert.equal(matchingSurveyPosts([p],{supplierProducts:[one]},'2026-11-05').length,0);
+});
+
+test('brand preferences and valid calendar dates become editable public post text',()=>{
+ const draft=normalizeOnboardingDraft({role:'brand',requiredDate:'2026-12-15',timing:'한 달 이내',brandImages:['고급스러움','세련된','bad'],brandImageOther:'  차분한 느낌  ',supplierPriorities:supplierPriorities.slice(0,2)});
+ assert.equal(draft.timing,'');assert.equal(draft.requiredDate,'2026-12-15');assert.equal(draft.brandImageOther,'차분한 느낌');
+ assert.deepEqual(draft.brandImages,['고급스러움','세련된']);
+ const post=onboardingPostDraft(draft);assert.match(post.description,/희망 일정: 2026-12-15/);assert.match(post.description,/브랜드 이미지: 고급스러움 · 세련된 · 차분한 느낌/);assert.match(post.description,/원하는 제작업체: 납기일/);
+ for(const requiredDate of ['2026-02-30','2026-13-01','tomorrow'])assert.equal(normalizeOnboardingDraft({requiredDate}).requiredDate,'');
+ assert.equal(normalizeOnboardingDraft({role:'brand',brandImageOther:'가'.repeat(200)}).brandImageOther.length,120);
+ assert.equal(normalizeOnboardingDraft({}).budgetUnknown,false);
+ const allVariants=Object.entries(products).flatMap(([material,rows])=>rows.flatMap(([id])=>productVariants(material+'-'+id).map(v=>v.id)));
+ const wide=normalizeOnboardingDraft({role:'supplier',supplierProducts:allVariants,strengths:supplierStrengths,quantityRange:['small','medium','large','discuss'],availability:['now','discuss','later']});
+ assert.equal(wide.supplierProducts.length,166);assert.ok(new TextEncoder().encode(JSON.stringify(wide)).byteLength<8192);
+ const brand=normalizeOnboardingDraft({role:'brand',brandImages,brandImageOther:'가'.repeat(120),supplierPriorities});assert.ok(new TextEncoder().encode(JSON.stringify(brand)).byteLength<8192);
+});
+
+
+test('supplier summary uses a material representative for multiple selections and retains every item',()=>{
+ const pouch=['pouch-zip','pouch-spout','pouch-stick'];
+ const groups=supplierSummaryGroups(pouch);
+ assert.equal(groups.length,1);assert.equal(groups[0].kind,'pouch');assert.equal(groups[0].title,'파우치 패키징');assert.deepEqual(groups[0].items.map(item=>item.id),pouch);
+ const mixed=supplierSummaryGroups([...pouch,'glass-cosmetic-dropper','pouch-zip','invalid']);
+ assert.equal(mixed.length,2);assert.equal(mixed[1].kind,'glass-cosmetic-dropper');assert.equal(mixed[1].title,'스포이트병');
+ const all=Object.entries(products).flatMap(([material,rows])=>rows.flatMap(([id])=>productVariants(material+'-'+id).map(v=>v.id)));
+ const full=supplierSummaryGroups(all);assert.equal(full.length,8);assert.equal(full.reduce((sum,group)=>sum+group.items.length,0),166);
 });

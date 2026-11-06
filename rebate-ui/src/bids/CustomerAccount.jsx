@@ -4,7 +4,7 @@ import {Button} from '../BrandControls';
 import {legalTypes, MemberActivityChoices, MemberLegalChoices, MemberLoginFields, MemberRegistrationFields} from '../MemberRegistration';
 import ElectronicAgreement from '../ElectronicAgreement';
 import Turnstile from '../Turnstile';
-import {readOnboardingDraft,clearOnboardingDraft,materialLabel,productInfo,selectedProductInfo,normalizeOnboardingDraft} from './onboarding-data.js';
+import {readOnboardingDraft,clearOnboardingDraft,materialLabel,supplierProductLabel,selectedProductInfo,normalizeOnboardingDraft} from './onboarding-data.js';
 
 const Recovery = lazy(() => import('../MemberPortal').then(module => ({default:module.AccountRecovery})));
 const entryKey = 'customerSignup';
@@ -43,7 +43,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth}) {
   const step = legal ? 2 : role ? 1 : 0;
   const continuing = onboarding.role === role && Boolean(role);
   const surveySummary = role==='supplier'
-    ? onboarding.supplierProducts.slice(0,2).map(id=>productInfo(id)?.label).filter(Boolean).join(' · ')+(onboarding.supplierProducts.length>2?` 외 ${onboarding.supplierProducts.length-2}개`:'')
+    ? onboarding.supplierProducts.slice(0,2).map(supplierProductLabel).filter(Boolean).join(' · ')+(onboarding.supplierProducts.length>2?` 외 ${onboarding.supplierProducts.length-2}개`:'')
     : [selectedProductInfo(onboarding)?.name || materialLabel(onboarding.material),onboarding.quantity?`${Number(onboarding.quantity).toLocaleString('ko-KR')}개`:'수량 상담'].join(' · ');
 
   useLayoutEffect(() => {
@@ -154,7 +154,7 @@ export default function CustomerAccount({mode, session, onNavigate, onAuth}) {
     : ({login:'로그인','find-id':'아이디 찾기','recover-password':'비밀번호 찾기','reset-password':'새 비밀번호 설정'}[mode]);
   return <section className="member-auth pa-access">
     <header className="member-auth-heading"><h1>{title}</h1>
-      {signup && <p>{continuing?`${surveySummary || '제작 가능 품목 선택 완료'} · 가입 후 ${role==='brand'?'공고 준비':'입찰 준비'}`:['팩트너에서 어떤 일을 하실 건가요?','개인 또는 사업자로 신청할 수 있습니다.','운영팀이 신청 내용을 확인한 뒤 가입을 승인합니다.'][step]}</p>}</header>
+      {signup && (continuing?<div className="member-survey-carryover"><span>선택한 내용이 가입 신청에 함께 저장돼요</span><strong>{surveySummary || '제작 가능 품목 선택 완료'}</strong><p>{role==='brand'?'가입 후 공고 준비':'가입 후 입찰 준비'} <ArrowRight size={17} aria-hidden="true"/></p><small>{role==='brand'?'다시 입력할 필요 없어요. 가입 승인 후 이 조건으로 첫 공고를 준비해요.':'제작 품목·주문 조건·업체 강점이 이어져요. 가입 승인 후 입찰을 시작할 수 있어요.'}</small></div>:<p>{['팩트너에서 어떤 일을 하실 건가요?','개인 또는 사업자로 신청할 수 있습니다.','운영팀이 신청 내용을 확인한 뒤 가입을 승인합니다.'][step]}</p>)}</header>
     <div className="member-card"><div className="member-tabs" role="tablist" aria-label="계정">
       <button type="button" role="tab" aria-selected={login} disabled={busy} onClick={() => onNavigate('login')}>로그인</button>
       <button type="button" role="tab" aria-selected={signup} disabled={busy} onClick={startSignup}>회원가입</button>

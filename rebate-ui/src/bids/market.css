@@ -45,6 +45,11 @@
 .bm-search button { display: inline-flex; align-items: center; padding: 5px; }
 
 .bm-layout { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(330px,.85fr); gap: clamp(18px,2.2vw,32px); align-items: start; }
+.bm-centered { max-width: 920px; }
+.bm-centered .bm-layout { grid-template-columns: minmax(0,1fr); }
+.bm-centered:not(.bm-reading) .bm-side,.bm-centered.bm-reading :is(.bm-cover,.bm-toolbar,.bm-ledger) { display: none; }
+.bm-centered .bm-side { position: static; max-height: none; overflow: visible; }
+.bm.bm-centered .bm-back { display: inline-flex; margin-bottom: 12px; color: var(--green-dark); }
 .bm-ledger,.bm-side { min-width: 0; }
 .bm-ledger-head,.bm-ledger-head > div,.bm-sort,.bm-active-toggle { display: flex; align-items: center; }
 .bm-ledger-head { justify-content: space-between; gap: 8px; margin: 3px 0 12px; }

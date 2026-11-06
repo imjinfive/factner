@@ -1,4 +1,4 @@
-import { normalizeOnboardingDraft, materialLabel, productInfo, selectedProductInfo, selectedProductOptions } from '../rebate-ui/src/bids/onboarding-data.js';
+import { normalizeOnboardingDraft, materialLabel, supplierProductLabel, selectedProductInfo, selectedProductOptions,capacityOptions,availabilityOptions,selectionLabels } from '../rebate-ui/src/bids/onboarding-data.js';
 import { fail } from './http.js';
 
 export function onboardingInput(value, role) {
@@ -21,14 +21,15 @@ export function onboardingRows(survey) {
   return [
     ['제작 경험',survey.experience==='yes'?'있음':survey.experience==='no'?'처음':'미응답'],
     ['기존 불편',survey.complaints.join(' · ')],
-    ['희망 품목',survey.role==='brand'?(selectedProductInfo(survey)?.name||materialLabel(survey.material)):survey.supplierProducts.map(id=>productInfo(id)?.name).filter(Boolean).join(' · ')],
+    ['희망 품목',survey.role==='brand'?(selectedProductInfo(survey)?.name||materialLabel(survey.material)):survey.supplierProducts.map(supplierProductLabel).filter(Boolean).join(' · ')],
     ...selectedProductOptions(survey).map(option=>[option.label,option.value]),
     ['수량',survey.quantity?`${Number(survey.quantity).toLocaleString('ko-KR')}개`:survey.quantityUnknown?'상담 후 결정':''],
     ['크기',survey.sizeUnknown?'상담 후 결정':[survey.width,survey.depth,survey.height].filter(Boolean).join(' × ')+(survey.width?` mm (${survey.sizeBasis==='product'?'내용물':'패키징'})`:'')],
-    ['포장할 제품',survey.productUse],['희망 일정',survey.timing],
+    ['포장할 제품',survey.productUse],['희망 일정',survey.requiredDate||survey.timing],
     ['희망 단가',survey.budget?`${Number(survey.budget).toLocaleString('ko-KR')}원`:survey.role==='brand'&&survey.budgetUnknown?'업체 제안 요청':''],
-    ['제작 수량 범위',({small:'소량',medium:'중량',large:'대량',discuss:'협의 가능'})[survey.quantityRange]],
-    ['제작 가능 시점',({now:'바로 가능',discuss:'협의 가능',later:'추후 가능'})[survey.availability]],
+    ['제작 수량 범위',selectionLabels(survey.quantityRange,capacityOptions)],
+    ['제작 가능 시점',selectionLabels(survey.availability,availabilityOptions)],
+    ['업체가 선택한 강점',survey.strengths.join(' · ')],['브랜드 이미지',[...survey.brandImages,survey.brandImageOther].filter(Boolean).join(' · ')],['원하는 제작업체',survey.supplierPriorities.join(' · ')],
     ['희망 거래',survey.goals.join(' · ')],['관심 공고',survey.selectedPostId]
   ].filter(([,value])=>value);
 }

@@ -362,6 +362,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   const posts = archived ? allPosts.filter(post => post.category === 'design') : allPosts;
   const publicPosts = posts.filter(isPublicPost);
   const mine = view === 'mine', brand = user?.kind === 'brand';
+  const centered=mine&&!brand;
   useEffect(() => {
     // Two consecutive entries can show the same board with different filters.
     const restore = () => setHistoryVisit(visit => visit + 1);
@@ -386,14 +387,14 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   const visibleFilters = { ...filters, category:archived?'design':'packaging', activeOnly:!archived&&activeOnly };
   const rowTime = post => post.createdAt || post.reviewedAt;
   const rows = scope.filter(post => (post.reviewStatus!=='withdrawn'||filters.includeRemoved) && matchesFilters(post, visibleFilters)).sort((a,b) => Date.parse(rowTime(b)) - Date.parse(rowTime(a)));
-  const selected = postId ? scope.find(post => post.id === postId) : rows[0];
+  const selected = postId ? scope.find(post => post.id === postId) : centered ? null : rows[0];
   const selectedAward = (isDemo ? state?.contracts : state?.connections)?.find(item => item.postId === selected?.id);
   useLayoutEffect(() => {
     const saved = historyFilters(defaultFilters);
     const restored = archived ? { ...saved, category:'design', activeOnly:false } : saved;
     setFilters(postId && selected && !matchesFilters(selected, restored) ? allFilters : restored);
     if (!['feed', 'mine'].includes(view)) return;
-    const mobile = window.matchMedia('(max-width: 900px)').matches;
+    const mobile = centered || window.matchMedia('(max-width: 900px)').matches;
     const previous = history.state?.bidListReturn;
     if (previous?.view === view) {
       const frame = requestAnimationFrame(() => {
@@ -443,7 +444,7 @@ function WorkBoard({ state, user, view, onView, mutate, onSelect, onLogin, postI
   if ((mine && !user) || (view === 'new' && !brand)) return <section className="bm"><div className="bm-empty">
     <h1>{view === 'new' ? '브랜드 회원 전용입니다' : '로그인이 필요합니다'}</h1>
     <button type="button" className="bm-primary" onClick={user ? () => onView('feed') : onLogin}>{user ? '제작 공고' : '로그인'} <ArrowRight size={15} /></button></div></section>;
-  return <section className={postId ? 'bm bm-reading' : 'bm'}>
+  return <section className={`bm${postId?' bm-reading':''}${centered?' bm-centered':''}`}>
     <BoardHeader mine={mine} posts={scope} brand={brand} archived={archived} onNew={() => onView('new')} />
     <div className="bm-toolbar">{archived ? <span className="bm-kind">이전 의뢰 · 열람 전용</span> : <span className="bm-kind">패키징 제작</span>}<label className="bm-search"><MagnifyingGlass size={16}/><input aria-label="공고 검색" value={query} onChange={e => updateFilters({query:e.target.value})} placeholder="공고명·제작 조건 검색" />{query && <button type="button" onClick={() => updateFilters({query:''})} aria-label="검색어 지우기"><X size={14}/></button>}</label></div>
     <div className="bm-layout">

@@ -32,3 +32,11 @@ test('completed request tracking is account-scoped and storage failure does not 
   assert.equal(completedPostRequests('storage-test-brand',denied).has(id),true);
   assert.equal(completedPostRequests('another-brand',denied).has(id),false);
 });
+
+
+test('later posts keep brand preferences without reusing an old order quantity or product',()=>{
+ const profile={...survey,quantity:'5000',quantityUnknown:false,brandImages:['고급스러움'],brandImageOther:'차분한 느낌',supplierPriorities:['납기일을 잘 지켰으면 좋겠어요']};
+ const later=initialPostRequest({...user,onboarding:profile},[{isMine:true,reviewStatus:'approved'}],{},new Set(),nextId);
+ assert.equal(later.draft.product,'');assert.equal(later.draft.quantity,'');
+ assert.deepEqual(later.draft.brandImages,profile.brandImages);assert.equal(later.draft.brandImageOther,profile.brandImageOther);assert.deepEqual(later.draft.supplierPriorities,profile.supplierPriorities);
+});
