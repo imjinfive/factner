@@ -20,7 +20,7 @@ export function notificationReadiness(env,settings) {
   const recipient = settings.recipient || '';
   let reason = '';
   if (!recipient) reason='알림 수신 이메일이 미정입니다.';
-  else if (recipient !== env.NOTIFY_TO) reason='수신 주소 인증과 발송 연결이 필요합니다.';
+  else if (recipient !== env.NOTIFY_TO) reason='수신 주소의 Cloudflare 인증과 발송 연결이 필요합니다.';
   else if (!env.EMAIL?.send) reason='이메일 발송 연결이 필요합니다.';
   else if (!EMAIL.test(env.NOTIFY_FROM || '') || !env.NOTIFY_FROM.endsWith('@factner.com')) reason='팩트너 발신 주소를 연결해주세요.';
   const configured = !reason;

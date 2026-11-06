@@ -48,7 +48,7 @@ async function mainApi(req, env, url) {
     const config = await service(env);
     const doc=await policy(env);
     const {business,businessPublished,...publicConfig}=config;
-    return json({...publicConfig, business:businessPublished&&business?Object.fromEntries(businessFields.map(([key])=>[key,business[key]])):null, mode:config.accepting ? 'live' : 'test', consentVersion:doc.version,turnstileSiteKey:env.TURNSTILE_SECRET_KEY?env.TURNSTILE_SITE_KEY||'':''});
+    return json({...publicConfig, business:businessPublished?business:null, mode:config.accepting ? 'live' : 'test', consentVersion:doc.version,turnstileSiteKey:env.TURNSTILE_SECRET_KEY?env.TURNSTILE_SITE_KEY||'':''});
   }
   if (url.pathname === '/api/quotes' && req.method === 'POST') {
     await rate(env, `quote:${await digest(req.headers.get('CF-Connecting-IP') || 'local')}`, 10, 3600);
@@ -114,7 +114,7 @@ async function adminApi(req, env, url) {
         }
       }
       if(input.businessPublished!==undefined)config.businessPublished=input.businessPublished===true;
-      if(config.businessPublished && (!config.operator || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.contactEmail) || !['representative','businessNumber','address','phone'].every(key=>config.business?.[key])))fail(400,'공개할 상호·대표자·사업자번호·주소·전화·이메일를 확인해주세요.');
+      if(config.businessPublished && (!config.operator || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.contactEmail) || !['representative','businessNumber','address','phone','hosting'].every(key=>config.business?.[key])))fail(400,'공개할 상호·대표자·사업자번호·주소·전화·이메일·호스팅 제공자를 확인해주세요.');
       if(config.memberAccepting){
         if(input.policyVersion!==undefined && input.policyVersion!==doc.version)fail(409,'운영 문서가 바뀌었습니다. 새로고침 후 다시 확인해주세요.');
         const missing=memberIntake(config,doc,captchaReady).checks.filter(item=>!item.ready);

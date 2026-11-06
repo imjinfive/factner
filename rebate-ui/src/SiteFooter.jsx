@@ -18,7 +18,7 @@ export default function SiteFooter({onHome,onSection,active,theme,onTheme}){
     <button className="logo" aria-label="팩트너 홈" onClick={onHome}><BrandMark size={24}/></button>
     <p>운영사 {company.operator}</p>
     <div className="footer-company">
-      {businessFields.filter(([key])=>key!=='verificationUrl'&&company[key]).map(([key,label])=><span key={key}>{label} {company[key]}</span>)}
+      {businessFields.filter(([key])=>key!=='hosting'&&key!=='verificationUrl'&&company[key]).map(([key,label])=><span key={key}>{label} {company[key]}</span>)}
       {company.email&&<span>문의 이메일 <a href={'mailto:'+company.email}>{company.email}</a></span>}
       {company.verificationUrl&&<a href={company.verificationUrl}>사업자정보 확인</a>}
     </div>
